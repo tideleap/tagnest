@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "TagNest 一键收纳",
+  "version": "0.1.0",
+  "description": "一键收藏当前页或整个窗口到你的 TagNest 书签库，并自动归档到标签页组。",
+  "default_locale": null,
+  "permissions": ["activeTab", "tabs", "storage"],
+  "background": {
+    "service_worker": "bg/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "TagNest 一键收纳",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "commands": {
+    "capture-window": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+T"
+      },
+      "description": "一键收纳当前窗口到 TagNest"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

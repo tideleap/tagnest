@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TagNest 一键收纳</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <img class="mark" src="../icons/icon48.png" alt="" width="28" height="28" />
+        <div>
+          <h1>TagNest 一键收纳</h1>
+          <div class="sub" id="tagline">收藏与归档，一步到位</div>
+        </div>
+      </header>
+
+      <div class="status" id="status" hidden>
+        <span class="dot"></span>
+        <span class="text" id="statusText"></span>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="savePage" type="button">
+          <span class="glyph">＋</span><span>收藏当前页</span>
+        </button>
+        <button class="btn btn-secondary" id="captureWindow" type="button">
+          <span class="glyph">▣</span><span>收纳整个窗口</span>
+        </button>
+      </div>
+
+      <div class="result" id="result" hidden></div>
+
+      <footer class="footer">
+        <span class="hint" id="shortcutHint">Ctrl+Shift+T 收纳窗口</span>
+        <a class="link" id="openOptions" role="button" tabindex="0">设置</a>
+      </footer>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

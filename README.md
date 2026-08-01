@@ -54,13 +54,18 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
 - **Field-level encryption.** AI provider keys are sealed with AES-256-GCM before
   they touch the database, so a D1 export never contains live credentials.
 - **Tab groups (O12).** Curate an ordered set of your existing bookmarks into named,
-  color-coded groups and reopen the whole set in one click — the manual half of
-  "save my open tabs as a session" (live-window capture lands with the extension).
-- **AI-ready (configuration only).** The settings UI and API persist an AI
-  provider configuration (and only a `hasApiKey` flag is returned to the client);
-  the provider key is sealed with AES-256-GCM. **No inference call is made yet** —
-  the `autoTag` / `autoSummarize` switches are stored but currently inert.
-  Tracked as `O11` in [docs/BACKLOG.md](./docs/BACKLOG.md).
+  color-coded groups and reopen the whole set in one click; the extension's
+  "capture window" flow automatically files a window's tabs into a fresh group.
+- **AI auto-tagging & summaries (O11).** When you configure a provider (OpenAI,
+  Anthropic, Gemini, or any OpenAI-compatible `custom` endpoint) and enable
+  auto-tag/summarize, new bookmarks are enriched asynchronously in the
+  background — the provider key is sealed with AES-256-GCM, and no provider key
+  simply means a silent no-op that never blocks saving a bookmark.
+- **Browser extension (O10).** A Manifest V3 helper in [extension/](./extension/)
+  saves the current page or captures an entire window into a tab group in one
+  click (Ctrl+Shift+T). It talks to your instance over HTTPS with a scoped
+  personal API key and requests only `activeTab`, `tabs`, and `storage`. Load it
+  unpacked from `extension/` after enabling developer mode; see its README.
 
 ## Tech stack
 
@@ -82,6 +87,7 @@ tagnest/
     api/               Route handlers (auth, bookmarks, tags, import, export, stats, ai)
   migrations/          D1 schema (0001_init.sql)
   shared/              Types shared by front end and back end
+  extension/           Browser extension (Manifest V3) — load unpacked in dev
   scripts/smoke.sh     End-to-end smoke test
   tests/               Vitest unit tests (backend logic)
   wrangler.toml        Pages + D1 binding config

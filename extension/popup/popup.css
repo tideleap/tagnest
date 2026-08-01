@@ -1,0 +1,289 @@
+:root {
+  /* Light palette (mirrors src/styles/theme.css → p-*) */
+  --canvas: oklch(0.985 0.003 85);
+  --surface: oklch(1 0 0);
+  --surface-hover: oklch(0.972 0.004 85);
+  --sunken: oklch(0.955 0.005 85);
+
+  --ink: oklch(0.24 0.012 65);
+  --ink-soft: oklch(0.505 0.012 65);
+  --ink-faint: oklch(0.66 0.011 65);
+
+  --line: oklch(0.915 0.005 75);
+  --line-strong: oklch(0.85 0.007 75);
+
+  --brand: oklch(0.63 0.15 62);
+  --brand-hover: oklch(0.575 0.152 60);
+  --brand-soft: oklch(0.955 0.033 78);
+  --brand-ink: oklch(0.44 0.115 55);
+  --on-brand: oklch(1 0 0);
+
+  --positive: oklch(0.58 0.13 155);
+  --positive-soft: oklch(0.955 0.035 158);
+  --positive-ink: oklch(0.42 0.1 155);
+
+  --caution: oklch(0.72 0.15 78);
+  --caution-soft: oklch(0.96 0.04 86);
+  --caution-ink: oklch(0.47 0.1 68);
+
+  --critical: oklch(0.575 0.19 22);
+  --critical-hover: oklch(0.52 0.196 22);
+  --critical-soft: oklch(0.958 0.023 20);
+  --critical-ink: oklch(0.45 0.16 22);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  --shadow-overlay: 0 4px 6px -2px rgb(16 14 10 / 0.06), 0 12px 20px -6px rgb(16 14 10 / 0.1);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+  --font: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+}
+
+[data-theme='dark'] {
+  --canvas: oklch(0.175 0.006 70);
+  --surface: oklch(0.218 0.007 70);
+  --surface-hover: oklch(0.252 0.008 70);
+  --sunken: oklch(0.152 0.006 70);
+
+  --ink: oklch(0.955 0.004 85);
+  --ink-soft: oklch(0.735 0.009 78);
+  --ink-faint: oklch(0.575 0.01 75);
+
+  --line: oklch(0.305 0.008 72);
+  --line-strong: oklch(0.4 0.01 72);
+
+  --brand: oklch(0.755 0.145 68);
+  --brand-hover: oklch(0.81 0.13 72);
+  --brand-soft: oklch(0.3 0.048 62);
+  --brand-ink: oklch(0.83 0.12 74);
+  --on-brand: oklch(0.19 0.02 60);
+
+  --positive: oklch(0.72 0.14 158);
+  --positive-soft: oklch(0.285 0.05 158);
+  --positive-ink: oklch(0.8 0.12 158);
+
+  --caution: oklch(0.79 0.145 84);
+  --caution-soft: oklch(0.305 0.05 78);
+  --caution-ink: oklch(0.85 0.12 86);
+
+  --critical: oklch(0.665 0.175 24);
+  --critical-hover: oklch(0.715 0.16 24);
+  --critical-soft: oklch(0.295 0.058 22);
+  --critical-ink: oklch(0.79 0.13 26);
+
+  --shadow-overlay: 0 4px 6px -2px rgb(0 0 0 / 0.4), 0 12px 20px -6px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  font-family: var(--font);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  width: 320px;
+  min-height: 100%;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+/* ---- Header ---- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header .mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex: none;
+}
+.header h1 {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.header .sub {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 1px;
+}
+
+/* ---- Status chip ---- */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+}
+.status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  flex: none;
+}
+.status.ok .dot {
+  background: var(--positive);
+}
+.status.warn .dot {
+  background: var(--caution);
+}
+.status:not([hidden])[hidden='true'] {
+  display: none;
+}
+
+/* ---- Actions ---- */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), transform 0.05s var(--ease), box-shadow 0.15s var(--ease);
+  user-select: none;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+.btn-primary {
+  background: var(--brand);
+  color: var(--on-brand);
+  box-shadow: var(--shadow-overlay);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-hover);
+}
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.btn .glyph {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ---- Result ---- */
+.result {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: flex;
+  gap: 8px;
+  animation: fade 0.2s var(--ease);
+}
+.result[hidden] {
+  display: none;
+}
+.result.ok {
+  background: var(--positive-soft);
+  color: var(--positive-ink);
+}
+.result.info {
+  background: var(--brand-soft);
+  color: var(--brand-ink);
+}
+.result.warn {
+  background: var(--caution-soft);
+  color: var(--caution-ink);
+}
+.result.err {
+  background: var(--critical-soft);
+  color: var(--critical-ink);
+}
+.result .badge {
+  font-weight: 650;
+}
+.result .fine {
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Footer ---- */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.footer .hint {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.link {
+  font-size: 12.5px;
+  color: var(--brand-ink);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+.link:hover {
+  text-decoration: underline;
+}

@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 38 ／ ➖ superseded 2 ／ ⬜ open 5 ／ ⏸ blocked-external 1
+> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 39 ／ ➖ superseded 2 ／ ⬜ open 4 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -152,7 +152,7 @@ npm run backlog:write   # 重新生成下方状态表
 | `O7` | 公开分享（含 KV 边缘缓存） | P1 | ✅ done | 3/3 |  |
 | `O8` | 字段级加密 | P1 | ✅ done | 1/1 |  |
 | `O9` | 登录限流 / 防爆破 | P1 | ✅ done | 2/2 |  |
-| `O10` | 浏览器扩展（MV3） | P2 | ⬜ open | 0/1 | 完成后同时补齐 O12 的『一键收纳当前窗口』。 |
+| `O10` | 浏览器扩展（MV3） | P2 | ✅ done | 5/5 | 完成后同时补齐 O12 的『一键收纳当前窗口』。 |
 | `O11` | AI 自动标签 / 摘要 | P1 | ✅ done | 2/2 | 未配置 provider key 时静默降级为 no-op，不阻塞保存主流程。 |
 | `O12` | 标签页组管理 | P2 | ✅ done | 3/3 | 手动整理已交付；整窗收纳随 O10/B5 到位。 |
 | `Q1` | 新功能自动化测试补齐 | P0 | ✅ done | 3/3 |  |
@@ -175,11 +175,10 @@ npm run backlog:write   # 重新生成下方状态表
 
 **当前执行队列**（按优先级与依赖拓扑排序）：
 
-1. `O10` 浏览器扩展（MV3）（P2）
-2. `Q8e` PWA 离线（P2）
-3. `Q8f` 导入进度可视化（P2）
-4. `B8` 概览页 /dashboard（P3）
-5. `Q8d` 封面图展示（P3）
+1. `Q8e` PWA 离线（P2）
+2. `Q8f` 导入进度可视化（P2）
+3. `B8` 概览页 /dashboard（P3）
+4. `Q8d` 封面图展示（P3）
 
 <!-- END:BACKLOG-TABLE -->
 

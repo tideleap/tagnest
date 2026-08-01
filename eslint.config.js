@@ -11,6 +11,7 @@ export default tseslint.config(
       'parser.bundle.mjs',
       '_tmp_test_parser.mjs',
       'scripts',
+      'extension',
     ],
   },
   js.configs.recommended,

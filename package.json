@@ -24,6 +24,7 @@
     "deploy:preview": "node scripts/deploy.mjs --branch=preview",
     "deploy:check": "node scripts/deploy.mjs --dry-run",
     "release": "node scripts/deploy.mjs --push",
+    "extension:icons": "node extension/build-icons.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {

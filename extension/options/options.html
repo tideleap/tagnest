@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TagNest 扩展设置</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="headline">
+        <img src="../icons/icon128.png" alt="" />
+        <div>
+          <h1>TagNest 扩展设置</h1>
+          <p>填写你的书签库地址与个人访问密钥</p>
+        </div>
+      </header>
+
+      <div class="card">
+        <div class="field">
+          <label for="baseUrl">TagNest 服务器地址</label>
+          <input id="baseUrl" type="text" placeholder="https://tagnest.pages.dev"
+            spellcheck="false" autocomplete="url" />
+          <p class="hint">你的书签库部署地址，例如 <code>https://tagnest.pages.dev</code></p>
+        </div>
+
+        <div class="field">
+          <label for="apiKey">API 密钥</label>
+          <input id="apiKey" class="mono" type="password" placeholder="tnk_…"
+            spellcheck="false" autocomplete="off" />
+          <p class="hint">
+            需要读取与写入权限的访问密钥。在 TagNest 的
+            <a href="#" id="keyHelpLink">设置 → API 密钥</a> 中创建，并以
+            <code>tnk_</code> 开头。
+          </p>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="saveBtn" type="button">保存</button>
+          <button class="btn btn-secondary" id="testBtn" type="button">测试连接</button>
+          <button class="btn btn-ghost" id="clearBtn" type="button">清除</button>
+        </div>
+
+        <div class="feedback" id="feedback" hidden></div>
+      </div>
+    </div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -448,12 +448,28 @@
       "title": "浏览器扩展（MV3）",
       "source": "PM-REVIEW O10",
       "priority": "P2",
-      "status": "open",
+      "status": "done",
       "note": "完成后同时补齐 O12 的『一键收纳当前窗口』。",
       "evidence": [
         {
           "type": "file",
           "path": "extension/manifest.json"
+        },
+        {
+          "type": "file",
+          "path": "extension/bg/capture-window.js"
+        },
+        {
+          "type": "file",
+          "path": "extension/popup/popup.html"
+        },
+        {
+          "type": "file",
+          "path": "extension/options/options.html"
+        },
+        {
+          "type": "test",
+          "name": "extension"
         }
       ],
       "dependsOn": [
