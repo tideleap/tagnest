@@ -14,6 +14,12 @@ database_name = "tagnest-db"
 database_id = "26a1db40-1f6c-4bba-a8a3-52d632115508"
 migrations_dir = "migrations"
 
+# Edge cache for public share pages (O7). The code degrades to D1 when this
+# binding is absent, so it is safe to add after launch.
+[[kv_namespaces]]
+binding = "SHARE_CACHE"
+id = "e0090e3806074150badd3bf531b4fdb6"
+
 [vars]
 # Non-secret defaults. JWT_SECRET is deliberately absent — set it with
 #   npx wrangler pages secret put JWT_SECRET

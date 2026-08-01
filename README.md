@@ -42,9 +42,21 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
   is rejected at the data layer, not by convention.
 - **Auth.** PBKDF2-HMAC-SHA256 password hashing and HS256 JWT access tokens with
   rotating, httpOnly refresh cookies.
-- **AI-ready, AI-inert.** The settings UI and API persist an AI provider
-  configuration (and only a `hasApiKey` flag is ever returned to the client), but
-  no model is wired up yet — a single integration point is reserved for later.
+- **Personal API keys.** Generate scoped (`read`/`write`) access tokens for the
+  browser extension or scripts; only a SHA-256 digest is stored, and keys can be
+  revoked at any time. A key can never be used to mint more keys.
+- **Drag-to-reorder.** Arrange bookmarks manually with drag and drop; the order is
+  persisted per user and coexists with sort-by-date/title/visits.
+- **Public share pages.** Publish a live, filtered view of your bookmarks at a
+  short `/s/:slug` link, with optional expiry, theme, and edge caching.
+- **Login throttling.** Failed logins and registrations are rate-limited per IP
+  and email to resist brute-force attempts.
+- **Field-level encryption.** AI provider keys are sealed with AES-256-GCM before
+  they touch the database, so a D1 export never contains live credentials.
+- **AI-ready.** The settings UI and API persist an AI provider configuration (and
+  only a `hasApiKey` flag is returned to the client); the provider key is stored
+  encrypted. Auto-tag / auto-summarize is wired to call the configured provider
+  when a key and model are set.
 
 ## Tech stack
 
