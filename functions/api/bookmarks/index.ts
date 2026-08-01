@@ -6,6 +6,7 @@ import { newId, nowIso } from '../../_lib/ids';
 import { ensureTags, listBookmarks, loadBookmark, setBookmarkTags } from '../../_lib/db';
 import { canonicalUrl, faviconFor, titleFallback, urlKey } from '../../_lib/urlkey';
 import { createLogger } from '../../_lib/logger';
+import { enrichBookmark } from '../../_lib/ai';
 
 const SCOPES: BookmarkScope[] = ['inbox', 'all', 'favorites', 'archive', 'trash'];
 const SORTS: BookmarkSort[] = [
@@ -107,5 +108,17 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const created = await loadBookmark(ctx.env, userId, id);
   createLogger(ctx.env).info('bookmark.create', { userId });
+
+  // AI enrichment runs after the response is on its way. Saving a bookmark is
+  // a one-second action and must stay that way; the summary and suggested tags
+  // land on the next read. No-op unless the user configured a provider.
+  ctx.waitUntil(
+    enrichBookmark(ctx.env, userId, id, {
+      url,
+      title: created?.title ?? title,
+      description: created?.description ?? null,
+    }),
+  );
+
   return json(created, { status: 201 });
 };

@@ -11,3 +11,4 @@ dist/
 coverage/
 parser.bundle.mjs
 _tmp_*.mjs
+.workbuddy/
