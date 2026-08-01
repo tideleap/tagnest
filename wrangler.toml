@@ -6,15 +6,12 @@ pages_build_output_dir = "dist"
 compatibility_date = "2024-12-30"
 compatibility_flags = ["nodejs_compat"]
 
-# Create the database once, then paste the printed id here:
-#   npx wrangler d1 create tagnest-db
-#
-# Local development does not need a real id — `wrangler pages dev` provisions
-# a SQLite file under .wrangler/state and ignores database_id entirely.
+# Created 2026-08-01 via `npx wrangler d1 create tagnest-db` (region APAC).
+# database_id below is the real remote id; local dev ignores it.
 [[d1_databases]]
 binding = "DB"
 database_name = "tagnest-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "26a1db40-1f6c-4bba-a8a3-52d632115508"
 migrations_dir = "migrations"
 
 [vars]
