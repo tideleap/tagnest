@@ -124,8 +124,9 @@ if (!skipChecks) {
 
 if (!skipBuild) {
   heading('生产构建');
-  // TN_KEEP_DIST lets the build succeed where recursive delete is blocked.
-  run('npm', ['run', 'build'], { env: { TN_KEEP_DIST: process.env.TN_KEEP_DIST ?? '' } });
+  // TN_KEEP_DIST=1 keeps the build alive where a sandbox hook blocks the
+  // recursive delete of dist. CI has no such hook and can override to ''.
+  run('npm', ['run', 'build'], { env: { TN_KEEP_DIST: process.env.TN_KEEP_DIST ?? '1' } });
 
   const indexHtml = resolve(ROOT, 'dist/index.html');
   if (!existsSync(indexHtml)) fail('构建产物缺失：dist/index.html');
