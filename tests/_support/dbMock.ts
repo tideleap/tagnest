@@ -25,23 +25,27 @@ export class MockDb {
   auth_attempts: MockRow[] = [];
 
   prepare(sql: string): Statement {
-    const self = this;
+    // Arrow-function methods capture `this` (the MockDb instance) lexically, so
+    // we never alias `this` to a local variable (which trips no-this-alias) and
+    // `this.exec` still resolves to the instance method.
+    const params: unknown[] = [];
     const stmt: Statement = {
       sql,
-      params: [],
-      bind(...params: unknown[]) {
-        this.params = params;
-        return this;
+      params,
+      bind: (...p: unknown[]) => {
+        params.length = 0;
+        params.push(...p);
+        return stmt;
       },
-      async first<T = MockRow>(): Promise<T | null> {
-        const rows = self.exec(this.sql, this.params);
+      first: async <T = MockRow>(): Promise<T | null> => {
+        const rows = this.exec(sql, params);
         return (rows[0] as T) ?? null;
       },
-      async all<T = MockRow>(): Promise<{ results: T[] }> {
-        return { results: self.exec(this.sql, this.params) as T[] };
+      all: async <T = MockRow>(): Promise<{ results: T[] }> => {
+        return { results: this.exec(sql, params) as T[] };
       },
-      async run() {
-        self.exec(this.sql, this.params);
+      run: async () => {
+        this.exec(sql, params);
         return { success: true, meta: {} };
       },
     };
