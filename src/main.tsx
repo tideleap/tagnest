@@ -35,3 +35,14 @@ createRoot(container).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+// Install the service worker only in production, after the app is interactive.
+// In dev (Vite) the caching layer would mask hot reloads and is best skipped.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[tagnest] service worker registration failed:', err);
+    });
+  });
+}
+

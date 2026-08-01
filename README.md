@@ -66,6 +66,11 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
   click (Ctrl+Shift+T). It talks to your instance over HTTPS with a scoped
   personal API key and requests only `activeTab`, `tabs`, and `storage`. Load it
   unpacked from `extension/` after enabling developer mode; see its README.
+- **Installable & offline-capable (Q8e).** A PWA manifest + service worker make
+  TagNest installable on desktop/mobile. The app shell loads offline; static
+  assets refresh in the background (stale-while-revalidate). Bookmark API calls
+  are deliberately never cached, so you never see stale data for another
+  session.
 
 ## Tech stack
 

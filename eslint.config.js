@@ -17,6 +17,25 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // The PWA service worker runs in a dedicated browser worker scope.
+    files: ['public/*.js'],
+    languageOptions: {
+      globals: {
+        self: 'readonly',
+        caches: 'readonly',
+        clients: 'readonly',
+        Clients: 'readonly',
+        fetch: 'readonly',
+        Response: 'readonly',
+        Request: 'readonly',
+        Event: 'readonly',
+        FetchEvent: 'readonly',
+        ExtendableEvent: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     languageOptions: {

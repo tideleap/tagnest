@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 39 ／ ➖ superseded 2 ／ ⬜ open 4 ／ ⏸ blocked-external 1
+> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 40 ／ ➖ superseded 2 ／ ⬜ open 3 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -164,7 +164,7 @@ npm run backlog:write   # 重新生成下方状态表
 | `Q8b` | 标签颜色 | P2 | ✅ done | 1/1 |  |
 | `Q8c` | 深色模式 | P2 | ✅ done | 1/1 |  |
 | `Q8d` | 封面图展示 | P3 | ⬜ open | 0/1 | 后端 cover_url 已存储，前端未渲染。 |
-| `Q8e` | PWA 离线 | P2 | ⬜ open | 0/2 |  |
+| `Q8e` | PWA 离线 | P2 | ✅ done | 3/3 |  |
 | `Q8f` | 导入进度可视化 | P2 | ⬜ open | 0/1 |  |
 | `R1` | 文档漂移治理 | P0 | ✅ done | 3/3 | 已建立 docs/BACKLOG.md + backlog-check CI 门禁；README 失实描述已由 B1 纠正。 |
 | `R2` | 测试覆盖缺口 | P0 | ✅ done | 1/1 |  |
@@ -175,10 +175,9 @@ npm run backlog:write   # 重新生成下方状态表
 
 **当前执行队列**（按优先级与依赖拓扑排序）：
 
-1. `Q8e` PWA 离线（P2）
-2. `Q8f` 导入进度可视化（P2）
-3. `B8` 概览页 /dashboard（P3）
-4. `Q8d` 封面图展示（P3）
+1. `Q8f` 导入进度可视化（P2）
+2. `B8` 概览页 /dashboard（P3）
+3. `Q8d` 封面图展示（P3）
 
 <!-- END:BACKLOG-TABLE -->
 
