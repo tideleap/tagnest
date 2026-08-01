@@ -12,6 +12,18 @@ front end.
 > and is released under the permissive **MIT** license so it can be self-hosted
 > or used commercially without restriction.
 
+## Live
+
+TagNest is deployed and verified end-to-end on Cloudflare Pages:
+
+- **Production URL:** https://tagnest.pages.dev
+- **Back end:** Cloudflare Pages Functions + D1 (`tagnest-db`, region APAC) with an
+  `fts5` trigram full-text index.
+- **Auth:** PBKDF2-HMAC-SHA256 + HS256 JWT access tokens with rotating httpOnly
+  refresh cookies, using a production `JWT_SECRET` (set via `wrangler pages secret put`).
+- **Verified:** register → list → create → FTS5 search all succeed against the live
+  database; `/api/health` reports `{"status":"ok","database":"ok"}`.
+
 ## Features
 
 - **Full-text search that works for Chinese.** A D1/SQLite `fts5` index using the
@@ -108,6 +120,11 @@ trigram virtual table with insert/delete/update triggers kept in sync with
 `wrangler.toml` binds the database as `DB` and sets `DISABLE_SIGNUP` (default
 `false`); flip it to `true` after creating your account to close public
 registration.
+
+> This project is already deployed to **https://tagnest.pages.dev**. To ship an
+> update, just run `npm run deploy` (it builds `dist/` and runs
+> `wrangler pages deploy`). The D1 schema and `JWT_SECRET` are already provisioned;
+> only code changes need redeploying.
 
 ## License
 
