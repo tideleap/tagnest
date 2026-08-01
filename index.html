@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="TagNest — 快速、键盘优先的书签管理器" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>TagNest</title>
+    <script>
+      // Apply the stored theme before first paint to avoid a flash of the
+      // wrong palette. Kept inline and tiny on purpose.
+      (function () {
+        try {
+          var stored = localStorage.getItem('tagnest.theme');
+          var mode =
+            stored === 'dark' || stored === 'light'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.dataset.theme = mode;
+        } catch (e) {
+          /* private mode — fall back to the light default */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

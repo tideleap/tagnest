@@ -1,0 +1,24 @@
+name = "tagnest"
+pages_build_output_dir = "dist"
+
+# HTMLRewriter streaming, FormData in Functions and the newer WebCrypto
+# surface all depend on a recent compatibility date.
+compatibility_date = "2024-12-30"
+compatibility_flags = ["nodejs_compat"]
+
+# Create the database once, then paste the printed id here:
+#   npx wrangler d1 create tagnest-db
+#
+# Local development does not need a real id — `wrangler pages dev` provisions
+# a SQLite file under .wrangler/state and ignores database_id entirely.
+[[d1_databases]]
+binding = "DB"
+database_name = "tagnest-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+# Non-secret defaults. JWT_SECRET is deliberately absent — set it with
+#   npx wrangler pages secret put JWT_SECRET
+# so it is never committed.
+DISABLE_SIGNUP = "false"
