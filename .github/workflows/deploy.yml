@@ -15,10 +15,6 @@ jobs:
   deploy:
     name: Build & Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
-    # Run when Cloudflare creds are set. Supports either an API Token
-    # (CLOUDFLARE_API_TOKEN) or a Global API Key + email
-    # (CLOUDFLARE_API_KEY + CLOUDFLARE_EMAIL). Skipped (not failed) otherwise.
-    if: ${{ (secrets.CLOUDFLARE_API_TOKEN != '' || (secrets.CLOUDFLARE_API_KEY != '' && secrets.CLOUDFLARE_EMAIL != '')) && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
     permissions:
       contents: read
       deployments: write
@@ -37,8 +33,25 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Resolve credential presence without putting `secrets.*` in an `if:`
+      # (GitHub's workflow_dispatch preflight rejects secrets in job/step `if`).
+      - name: Check Cloudflare credentials
+        id: cf
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CF_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_ACCOUNT_ID" ] && { [ -n "$CF_TOKEN" ] || { [ -n "$CF_KEY" ] && [ -n "$CF_EMAIL" ]; }; }; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials not configured (need CLOUDFLARE_ACCOUNT_ID + either CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_KEY+CLOUDFLARE_EMAIL); skipping deploy."
+          fi
+
       - name: Deploy (production)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cf.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -49,7 +62,7 @@ jobs:
           command: pages deploy dist --project-name=tagnest --branch=main --commit-dirty=true
 
       - name: Deploy (preview)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.cf.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
