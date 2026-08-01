@@ -224,6 +224,51 @@ check "refresh issues new token" "$(printf '%s' "$BODY" | jget user.email)" "$EM
 CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -b "$JAR" -X POST "$BASE/auth/logout")
 check "logout succeeds" "$CODE" "204"
 
+say "api keys (O5)"
+BODY=$("${CURL[@]}" "${AUTH[@]}" -X POST "$BASE/keys" -H 'Content-Type: application/json' \
+  -d '{"name":"冒烟扩展","scopes":["read","write"]}')
+KEY_TOKEN=$(printf '%s' "$BODY" | jget token)
+check "key issued once with prefix" "$(printf '%s' "$BODY" | jget token | cut -c1-4)" "tnk_"
+BODY=$("${CURL[@]}" "${AUTH[@]}" "$BASE/keys")
+check "key listed by prefix" "$(printf '%s' "$BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).items;console.log(a.length&&a[0].prefix.startsWith("tnk_")?"1":"0")})')" "1"
+# The key authenticates like a session and is scoped.
+KID=$(printf '%s' "$BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).items[0].id))')
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $KEY_TOKEN" "$BASE/bookmarks?scope=all")
+check "key can read bookmarks" "$CODE" "200"
+# A key may not be used to mint more keys (privilege separation).
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $KEY_TOKEN" -X POST "$BASE/keys" \
+  -H 'Content-Type: application/json' -d '{"name":"nope"}')
+check "key cannot create keys" "$CODE" "403"
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "${AUTH[@]}" -X DELETE "$BASE/keys/$KID")
+check "key revoked" "$CODE" "204"
+BODY=$("${CURL[@]}" "${AUTH[@]}" "$BASE/keys")
+check "key gone after revoke" "$(printf '%s' "$BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).items.length))')" "0"
+
+say "drag-to-reorder (O6)"
+REORDER_BODY=$("${CURL[@]}" "${AUTH[@]}" "$BASE/bookmarks?scope=all")
+REORDER_IDS=$(printf '%s' "$REORDER_BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).items;console.log(JSON.stringify(a.slice().reverse().map(b=>b.id)))})')
+LAST_ID=$(printf '%s' "$REORDER_BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).items;console.log(a[a.length-1].id)})')
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "${AUTH[@]}" -X POST "$BASE/bookmarks/reorder" \
+  -H 'Content-Type: application/json' -d "{\"ids\":$REORDER_IDS}")
+check "reorder accepted" "$CODE" "204"
+BODY=$("${CURL[@]}" "${AUTH[@]}" "$BASE/bookmarks?scope=all&sort=manual")
+FIRST_ID=$(printf '%s' "$BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).items;console.log(a[0].id)})')
+check "manual order applied" "$FIRST_ID" "$LAST_ID"
+
+say "public share pages (O7)"
+BODY=$("${CURL[@]}" "${AUTH[@]}" -X POST "$BASE/shares" -H 'Content-Type: application/json' \
+  -d '{"title":"我的前端精选","tagNames":["前端"]}')
+SHARE_SLUG=$(printf '%s' "$BODY" | jget slug)
+[ -n "$SHARE_SLUG" ] && ok "share created" || bad "share created" "$BODY"
+# Anonymous read of the public route works without a session cookie or token.
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$BASE/public/$SHARE_SLUG")
+check "public share is reachable anonymously" "$CODE" "200"
+SHARE_ID=$(printf '%s' "$BODY" | jget id)
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "${AUTH[@]}" -X DELETE "$BASE/shares/$SHARE_ID")
+check "share revoked" "$CODE" "204"
+CODE=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$BASE/public/$SHARE_SLUG")
+check "revoked share 404s" "$CODE" "404"
+
 rm -f "$JAR" "$FIXTURE"
 
 printf '\n\033[1m%s passed, %s failed\033[0m\n' "$PASS" "$FAIL"
