@@ -51,7 +51,7 @@ jobs:
           fi
 
       - name: Deploy (production)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cf.outputs.configured == 'true'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.cf.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
