@@ -22,6 +22,9 @@ const NotFoundPage = lazy(() =>
 const SharePage = lazy(() =>
   import('@/pages/SharePage').then((m) => ({ default: m.SharePage })),
 );
+const TabGroupsPage = lazy(() =>
+  import('@/pages/TabGroupsPage').then((m) => ({ default: m.TabGroupsPage })),
+);
 
 function RouteFallback() {
   return (
@@ -85,6 +88,7 @@ export function App() {
             <Route path="/tags" element={<TagsPage />} />
             <Route path="/tags/:tagId" element={<LibraryPage />} />
             <Route path="/import" element={<ImportPage />} />
+            <Route path="/tab-groups" element={<TabGroupsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/:section" element={<SettingsPage />} />
           </Route>

@@ -5,6 +5,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Download,
+  FolderOpen,
   Inbox,
   Layers,
   Settings,
@@ -62,6 +63,7 @@ const PRIMARY: NavItem[] = [
 
 const SECONDARY: NavItem[] = [
   { to: '/tags', label: '标签', icon: TagIcon },
+  { to: '/tab-groups', label: '标签页组', icon: FolderOpen },
   { to: '/import', label: '导入导出', icon: Download },
   { to: '/library/trash', label: '回收站', icon: Trash2, countKey: 'trashed' },
   { to: '/settings', label: '设置', icon: Settings },

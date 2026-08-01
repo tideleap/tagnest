@@ -53,6 +53,9 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
   and email to resist brute-force attempts.
 - **Field-level encryption.** AI provider keys are sealed with AES-256-GCM before
   they touch the database, so a D1 export never contains live credentials.
+- **Tab groups (O12).** Curate an ordered set of your existing bookmarks into named,
+  color-coded groups and reopen the whole set in one click — the manual half of
+  "save my open tabs as a session" (live-window capture lands with the extension).
 - **AI-ready.** The settings UI and API persist an AI provider configuration (and
   only a `hasApiKey` flag is returned to the client); the provider key is stored
   encrypted. Auto-tag / auto-summarize is wired to call the configured provider

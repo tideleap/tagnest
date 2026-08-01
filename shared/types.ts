@@ -255,3 +255,39 @@ export interface ApiError {
 }
 
 export const TAG_COLOR_COUNT = 8;
+
+/* ------------------------------------------------------------------ *
+ * Tab groups (O12) — a user-curated ordered set of existing bookmarks.
+ * ------------------------------------------------------------------ */
+
+export interface TabGroup {
+  id: string;
+  name: string;
+  /** Palette slot 0-7, shared with tags. */
+  colorIndex: number;
+  /** Number of bookmarks currently in the group. */
+  count: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TabItemBookmark {
+  id: string;
+  url: string;
+  title: string;
+  faviconUrl: string | null;
+}
+
+export interface TabItem {
+  id: string;
+  groupId: string;
+  bookmarkId: string;
+  position: number;
+  bookmark: TabItemBookmark;
+  createdAt: string;
+}
+
+export interface GroupWithItems {
+  group: TabGroup;
+  items: TabItem[];
+}
