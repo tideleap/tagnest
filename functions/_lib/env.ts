@@ -9,6 +9,12 @@ export interface Env {
   /** Set to "true" to reject new registrations on a private instance. */
   DISABLE_SIGNUP?: string;
   /**
+   * Optional allowlist for open-but-gated registration: comma-separated exact
+   * emails (case-insensitive) or domain wildcards ("*@example.com"). Empty or
+   * unset leaves registration fully open. Ignored when DISABLE_SIGNUP=true.
+   */
+  ALLOWED_EMAILS?: string;
+  /**
    * Optional edge cache for public share pages. Absent in local dev and on
    * deployments that skip the binding; every read path degrades to D1.
    */

@@ -10,6 +10,7 @@ import {
 import { ApiException, conflict, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
 import { assertNotThrottled, recordFailure } from '../../_lib/throttle';
+import { assertEmailAllowed } from '../../_lib/signup';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ request, env }) => {
   if (env.DISABLE_SIGNUP === 'true') {
@@ -18,6 +19,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ r
 
   const body = await readJson<{ email?: string; password?: string; displayName?: string }>(request);
   const { email, password } = validateCredentials(body.email, body.password);
+  assertEmailAllowed(env, email);
 
   // Registration is open on this instance, so the same IP bucket that guards
   // login also caps automated account creation.

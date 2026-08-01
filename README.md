@@ -133,6 +133,11 @@ trigram virtual table with insert/delete/update triggers kept in sync with
 `false`); flip it to `true` after creating your account to close public
 registration.
 
+For a middle ground, leave registration open but gate it with
+`ALLOWED_EMAILS` — a comma-separated list of exact emails (case-insensitive) or
+domain wildcards (`*@example.com`). Empty/unset means anyone may sign up; the
+setting is ignored when `DISABLE_SIGNUP=true`.
+
 > This project is already deployed to **https://tagnest.pages.dev**. To ship an
 > update, just run `npm run deploy` (it builds `dist/` and runs
 > `wrangler pages deploy`). The D1 schema and `JWT_SECRET` are already provisioned;

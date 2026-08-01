@@ -25,3 +25,7 @@ id = "e0090e3806074150badd3bf531b4fdb6"
 #   npx wrangler pages secret put JWT_SECRET
 # so it is never committed.
 DISABLE_SIGNUP = "false"
+# Open-but-gated registration. Empty = anyone may sign up. Set a comma-separated
+# allowlist of exact emails or domain wildcards, e.g. "alice@x.com, *@corp.dev".
+# Ignored when DISABLE_SIGNUP=true.
+ALLOWED_EMAILS = ""
