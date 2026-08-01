@@ -2,6 +2,7 @@ import type { Env, RequestData } from '../_lib/env';
 import { authenticate } from '../_lib/auth';
 import { looksLikeApiKey, resolveApiKey } from '../_lib/apikeys';
 import { errorResponse, forbidden, unauthorized } from '../_lib/http';
+import { createLogger } from '../_lib/logger';
 
 /**
  * Routes reachable without an access token.
@@ -79,6 +80,12 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
   const { request, env, next, data } = ctx;
   const path = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
 
+  // Correlate a request across logs and back to the client. Reuse an inbound
+  // X-Request-Id if present (proxies, retry clients) so traces stay linked.
+  const rid = request.headers.get('X-Request-Id') || crypto.randomUUID();
+  const logger = createLogger(env, rid);
+  const startedAt = Date.now();
+
   try {
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -86,6 +93,7 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
         headers: {
           Allow: 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
           'Access-Control-Max-Age': '86400',
+          'X-Request-Id': rid,
         },
       });
     }
@@ -125,9 +133,19 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
     const headers = new Headers(response.headers);
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'same-origin');
+    headers.set('X-Request-Id', rid);
     for (const [k, v] of Object.entries(securityHeaders())) {
       headers.set(k, v);
     }
+
+    logger.info('request', {
+      method: request.method,
+      path,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      userId: data.userId ?? null,
+      apiKeyId: data.apiKeyId ?? null,
+    });
 
     return new Response(response.body, {
       status: response.status,
@@ -135,6 +153,11 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
       headers,
     });
   } catch (e) {
+    logger.error('request_error', e, {
+      method: request.method,
+      path,
+      userId: data.userId ?? null,
+    });
     return errorResponse(e);
   }
 };

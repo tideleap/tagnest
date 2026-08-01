@@ -11,6 +11,7 @@ import { ApiException, conflict, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
 import { assertNotThrottled, recordFailure } from '../../_lib/throttle';
 import { assertEmailAllowed } from '../../_lib/signup';
+import { createLogger } from '../../_lib/logger';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ request, env }) => {
   if (env.DISABLE_SIGNUP === 'true') {
@@ -59,6 +60,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ r
   ]);
 
   const refresh = await createSession(env, id, request.headers.get('User-Agent'));
+
+  createLogger(env).info('user.signup', {
+    userId: id,
+    emailDomain: email.split('@')[1] ?? 'unknown',
+  });
 
   return json(
     {

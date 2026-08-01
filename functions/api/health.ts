@@ -1,13 +1,15 @@
 import type { Env, RequestData } from '../_lib/env';
 import { json } from '../_lib/http';
+import { probeHealth } from '../_lib/health';
 
-/** Liveness probe: confirms the Function booted and the D1 binding responds. */
+/**
+ * Readiness probe. Always returns HTTP 200 so naive uptime monitors see the
+ * process as up; degraded wiring (e.g. KV unbound, JWT secret absent, DB
+ * unreachable) is reported in the `status`/`checks` fields for smarter
+ * monitors to alert on. HTTP status is unchanged from the prior liveness
+ * contract to avoid breaking existing probes.
+ */
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async ({ env }) => {
-  let database = 'ok';
-  try {
-    await env.DB.prepare('SELECT 1').first();
-  } catch (e) {
-    database = e instanceof Error ? `error: ${e.message}` : 'error';
-  }
-  return json({ status: database === 'ok' ? 'ok' : 'degraded', database });
+  const report = await probeHealth(env);
+  return json(report);
 };

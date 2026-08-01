@@ -138,6 +138,20 @@ For a middle ground, leave registration open but gate it with
 domain wildcards (`*@example.com`). Empty/unset means anyone may sign up; the
 setting is ignored when `DISABLE_SIGNUP=true`.
 
+### Observability
+
+Every request is logged as a single JSON line prefixed `[tagnest]` (consumed by
+Cloudflare Logs / Logpush), carrying `ts`, `level`, `event`, `rid` (the
+correlating request id echoed in the `X-Request-Id` response header), and
+`props`. Key business events are also emitted — `user.signup`,
+`bookmark.create`, `share.create` — so conversion funnels are queryable without
+extra tooling. Minimum severity is controlled by `LOG_LEVEL` (`debug` → `info`
+→ `warn` → `error`, default `info`).
+
+`GET /api/health` is a readiness probe returning
+`{ status, checks: { database, shareCache, auth }, timestamp }`; wire it to your
+uptime monitor and alert on `status !== "ok"`.
+
 > This project is already deployed to **https://tagnest.pages.dev**. To ship an
 > update, just run `npm run deploy` (it builds `dist/` and runs
 > `wrangler pages deploy`). The D1 schema and `JWT_SECRET` are already provisioned;

@@ -68,9 +68,9 @@ export function errorResponse(e: unknown): Response {
     return json(body, { status: e.status });
   }
 
-  // Anything unexpected is logged with detail but reported opaquely; database
-  // errors routinely contain table and column names.
-  console.error('[tagnest] unhandled error', e);
+  // Anything unexpected is reported opaquely; database errors routinely contain
+  // table and column names. The API middleware logs it as a structured
+  // `request_error` event, so no raw console.error belongs here.
   const body: ApiError = {
     error: { code: 'internal_error', message: '服务器内部错误，请稍后重试' },
   };

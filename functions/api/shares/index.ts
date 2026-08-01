@@ -4,6 +4,7 @@ import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, readJson } from '../../_lib/http';
 import { isoFromNow, newId, nowIso } from '../../_lib/ids';
 import { THEMES, assertValidSlug, mapShare, normalizeSlug, slugFromTitle } from '../../_lib/shares';
+import { createLogger } from '../../_lib/logger';
 
 const MAX_SHARES = 50;
 
@@ -88,5 +89,6 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     .bind(id)
     .first<Record<string, unknown>>();
 
+  createLogger(ctx.env).info('share.create', { userId, slug });
   return json(mapShare(row as Record<string, unknown>), { status: 201 });
 };

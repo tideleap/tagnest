@@ -19,6 +19,8 @@ export interface Env {
    * deployments that skip the binding; every read path degrades to D1.
    */
   SHARE_CACHE?: KVNamespace;
+  /** Minimum severity emitted by the structured logger (default 'info'). */
+  LOG_LEVEL?: string;
 }
 
 /** Populated by the API middleware once a request is authenticated. */
