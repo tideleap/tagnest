@@ -38,6 +38,7 @@ export function mapBookmark(row: Row, tags: Tag[]): Bookmark {
     isArchived: bool(row.is_archived),
     visitCount: Number(row.visit_count ?? 0),
     lastVisitedAt: (row.last_visited_at as string | null) ?? null,
+    manualOrder: Number(row.manual_order ?? 0),
     tags,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -48,8 +49,23 @@ export function mapBookmark(row: Row, tags: Tag[]): Bookmark {
 const BOOKMARK_COLUMNS = `
   b.id, b.url, b.title, b.description, b.favicon_url, b.cover_url, b.note,
   b.ai_summary, b.is_favorite, b.is_archived, b.visit_count, b.last_visited_at,
-  b.created_at, b.updated_at, b.deleted_at
+  b.manual_order, b.created_at, b.updated_at, b.deleted_at
 `;
+
+/**
+ * Extracts the value the keyset cursor must carry for a given sort column.
+ *
+ * Driven off the column expression rather than the sort name so the mapping
+ * cannot drift from SORTS: adding a sort without extending this function
+ * yields a wrong cursor, which the ordering test catches.
+ */
+function cursorValue(column: string, row: Row): string | number {
+  if (column.includes('manual_order')) return Number(row.manual_order ?? 0);
+  if (column.includes('created_at')) return row.created_at as string;
+  if (column.includes('updated_at')) return row.updated_at as string;
+  if (column.includes('visit_count')) return Number(row.visit_count ?? 0);
+  return (row.title as string) ?? '';
+}
 
 /* ------------------------------------------------------------------ *
  * Tag attachment
@@ -211,6 +227,10 @@ export const SORTS: Record<BookmarkSort, SortSpec> = {
   updated_desc: { column: 'b.updated_at', direction: 'DESC' },
   title_asc: { column: 'b.title COLLATE NOCASE', direction: 'ASC' },
   visits_desc: { column: 'b.visit_count', direction: 'DESC' },
+  // Drag order. Positioned rows carry a large sparse value and sort first;
+  // everything still at the 0 default falls to the bottom, where the id
+  // tiebreaker (time-prefixed) keeps it in newest-first order.
+  manual: { column: 'b.manual_order', direction: 'DESC' },
 };
 
 interface Cursor {
@@ -411,14 +431,7 @@ export async function listBookmarks(env: Env, p: ListParams) {
   let nextCursor: string | null = null;
   if (hasMore && page.length > 0) {
     const last = page[page.length - 1];
-    const raw = spec.column.includes('created_at')
-      ? last.created_at
-      : spec.column.includes('updated_at')
-        ? last.updated_at
-        : spec.column.includes('visit_count')
-          ? Number(last.visit_count)
-          : (last.title as string);
-    nextCursor = encodeCursor({ v: raw as string | number, id: last.id as string });
+    nextCursor = encodeCursor({ v: cursorValue(spec.column, last), id: last.id as string });
   }
 
   return { items, nextCursor, total };

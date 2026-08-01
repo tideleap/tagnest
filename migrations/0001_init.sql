@@ -14,7 +14,7 @@ PRAGMA foreign_keys = ON;
  * Users & sessions
  * ------------------------------------------------------------------ */
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
   email         TEXT NOT NULL,
   display_name  TEXT NOT NULL,
@@ -27,9 +27,9 @@ CREATE TABLE users (
 );
 
 -- Case-insensitive uniqueness: Foo@x.com and foo@x.com are the same account.
-CREATE UNIQUE INDEX idx_users_email ON users (email COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE);
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   -- SHA-256 of the refresh token. A database leak must not yield usable
@@ -40,15 +40,15 @@ CREATE TABLE sessions (
   expires_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX idx_sessions_token ON sessions (token_hash);
-CREATE INDEX idx_sessions_user ON sessions (user_id);
-CREATE INDEX idx_sessions_expires ON sessions (expires_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_token ON sessions (token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);
 
 /* ------------------------------------------------------------------ *
  * Tags
  * ------------------------------------------------------------------ */
 
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
   id          TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
@@ -59,14 +59,14 @@ CREATE TABLE tags (
 );
 
 -- Prevents the "work" / "Work" duplicate pair that plagues tag systems.
-CREATE UNIQUE INDEX idx_tags_user_name ON tags (user_id, name COLLATE NOCASE);
-CREATE INDEX idx_tags_parent ON tags (parent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name ON tags (user_id, name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_tags_parent ON tags (parent_id);
 
 /* ------------------------------------------------------------------ *
  * Bookmarks
  * ------------------------------------------------------------------ */
 
-CREATE TABLE bookmarks (
+CREATE TABLE IF NOT EXISTS bookmarks (
   id              TEXT PRIMARY KEY,
   user_id         TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   url             TEXT NOT NULL,
@@ -91,14 +91,14 @@ CREATE TABLE bookmarks (
 );
 
 -- Covers the default library view: one user, not deleted, newest first.
-CREATE INDEX idx_bm_user_live_created ON bookmarks (user_id, deleted_at, created_at DESC);
-CREATE INDEX idx_bm_user_live_updated ON bookmarks (user_id, deleted_at, updated_at DESC);
-CREATE INDEX idx_bm_user_live_visits ON bookmarks (user_id, deleted_at, visit_count DESC);
-CREATE INDEX idx_bm_user_urlkey ON bookmarks (user_id, url_key);
-CREATE INDEX idx_bm_user_favorite ON bookmarks (user_id, is_favorite, deleted_at);
-CREATE INDEX idx_bm_user_archived ON bookmarks (user_id, is_archived, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_bm_user_live_created ON bookmarks (user_id, deleted_at, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bm_user_live_updated ON bookmarks (user_id, deleted_at, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bm_user_live_visits ON bookmarks (user_id, deleted_at, visit_count DESC);
+CREATE INDEX IF NOT EXISTS idx_bm_user_urlkey ON bookmarks (user_id, url_key);
+CREATE INDEX IF NOT EXISTS idx_bm_user_favorite ON bookmarks (user_id, is_favorite, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_bm_user_archived ON bookmarks (user_id, is_archived, deleted_at);
 
-CREATE TABLE bookmark_tags (
+CREATE TABLE IF NOT EXISTS bookmark_tags (
   bookmark_id TEXT NOT NULL REFERENCES bookmarks (id) ON DELETE CASCADE,
   tag_id      TEXT NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
   PRIMARY KEY (bookmark_id, tag_id)
@@ -106,7 +106,7 @@ CREATE TABLE bookmark_tags (
 
 -- The reverse lookup (all bookmarks carrying a tag) needs its own index;
 -- the composite primary key only serves bookmark_id lookups.
-CREATE INDEX idx_bt_tag ON bookmark_tags (tag_id);
+CREATE INDEX IF NOT EXISTS idx_bt_tag ON bookmark_tags (tag_id);
 
 /* ------------------------------------------------------------------ *
  * Full-text search
@@ -120,7 +120,7 @@ CREATE INDEX idx_bt_tag ON bookmark_tags (tag_id);
  * back to LIKE for those, and also if MATCH raises at runtime.
  * ------------------------------------------------------------------ */
 
-CREATE VIRTUAL TABLE bookmarks_fts USING fts5 (
+CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5 (
   title,
   description,
   note,
@@ -130,17 +130,17 @@ CREATE VIRTUAL TABLE bookmarks_fts USING fts5 (
   tokenize = 'trigram'
 );
 
-CREATE TRIGGER bookmarks_fts_ai AFTER INSERT ON bookmarks BEGIN
+CREATE TRIGGER IF NOT EXISTS bookmarks_fts_ai AFTER INSERT ON bookmarks BEGIN
   INSERT INTO bookmarks_fts (rowid, title, description, note, url)
   VALUES (new.rowid, new.title, COALESCE(new.description, ''), COALESCE(new.note, ''), new.url);
 END;
 
-CREATE TRIGGER bookmarks_fts_ad AFTER DELETE ON bookmarks BEGIN
+CREATE TRIGGER IF NOT EXISTS bookmarks_fts_ad AFTER DELETE ON bookmarks BEGIN
   INSERT INTO bookmarks_fts (bookmarks_fts, rowid, title, description, note, url)
   VALUES ('delete', old.rowid, old.title, COALESCE(old.description, ''), COALESCE(old.note, ''), old.url);
 END;
 
-CREATE TRIGGER bookmarks_fts_au AFTER UPDATE ON bookmarks BEGIN
+CREATE TRIGGER IF NOT EXISTS bookmarks_fts_au AFTER UPDATE ON bookmarks BEGIN
   INSERT INTO bookmarks_fts (bookmarks_fts, rowid, title, description, note, url)
   VALUES ('delete', old.rowid, old.title, COALESCE(old.description, ''), COALESCE(old.note, ''), old.url);
   INSERT INTO bookmarks_fts (rowid, title, description, note, url)
@@ -153,7 +153,7 @@ END;
  * The UI writes here and reads back. No request is ever made to a provider.
  * ------------------------------------------------------------------ */
 
-CREATE TABLE ai_settings (
+CREATE TABLE IF NOT EXISTS ai_settings (
   user_id           TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
   provider          TEXT NOT NULL DEFAULT 'none',
   base_url          TEXT,
@@ -174,7 +174,7 @@ CREATE TABLE ai_settings (
  * in the preview could differ from what actually gets written.
  * ------------------------------------------------------------------ */
 
-CREATE TABLE import_staging (
+CREATE TABLE IF NOT EXISTS import_staging (
   token      TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   source     TEXT NOT NULL,
@@ -183,4 +183,4 @@ CREATE TABLE import_staging (
   expires_at TEXT NOT NULL
 );
 
-CREATE INDEX idx_import_expires ON import_staging (expires_at);
+CREATE INDEX IF NOT EXISTS idx_import_expires ON import_staging (expires_at);

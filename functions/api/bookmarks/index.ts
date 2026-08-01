@@ -13,6 +13,7 @@ const SORTS: BookmarkSort[] = [
   'updated_desc',
   'title_asc',
   'visits_desc',
+  'manual',
 ];
 
 const MAX_LIMIT = 100;

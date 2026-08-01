@@ -3,6 +3,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
+import { encryptField } from '../../_lib/crypto';
 
 /**
  * AI configuration storage.
@@ -74,10 +75,13 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
 
   // An empty string clears the key; omitting the field leaves it in place, so
   // saving other settings does not silently wipe the credential.
+  //
+  // The value is sealed with AES-256-GCM before it touches the database, so a
+  // D1 export is not a list of live provider credentials.
   let apiKey: string | null | undefined;
   if ('apiKey' in body) {
     const raw = body.apiKey === null ? '' : String(body.apiKey).trim();
-    apiKey = raw ? raw.slice(0, 500) : null;
+    apiKey = raw ? await encryptField(raw.slice(0, 500), ctx.env) : null;
   }
 
   const ts = nowIso();

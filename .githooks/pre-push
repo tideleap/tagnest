@@ -1,0 +1,16 @@
+#!/bin/sh
+#
+# Blocks a push that would break CI.
+#
+# Enable with:  npm run hooks:install
+# Bypass once:  git push --no-verify
+#
+set -e
+
+echo "[tagnest] pre-push: typecheck"
+npm run typecheck
+
+echo "[tagnest] pre-push: tests"
+npm test
+
+echo "[tagnest] pre-push: ok"

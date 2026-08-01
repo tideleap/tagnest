@@ -1,6 +1,7 @@
 import type { Env, RequestData } from '../_lib/env';
 import { authenticate } from '../_lib/auth';
-import { errorResponse, unauthorized } from '../_lib/http';
+import { looksLikeApiKey, resolveApiKey } from '../_lib/apikeys';
+import { errorResponse, forbidden, unauthorized } from '../_lib/http';
 
 /**
  * Routes reachable without an access token.
@@ -15,6 +16,20 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/logout',
   '/api/health',
 ]);
+
+/** Anonymous read surface for published share pages. */
+const PUBLIC_PREFIXES = ['/api/public/'];
+
+/**
+ * Routes a personal access key may never reach.
+ *
+ * A leaked extension key must not be able to mint more keys, read the session
+ * list, or change the password — otherwise revocation becomes a race the
+ * attacker can win.
+ */
+const KEY_DENIED_PREFIXES = ['/api/keys', '/api/auth/'];
+
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
  * Hardening headers applied to every response the Functions layer touches.
@@ -44,6 +59,22 @@ function securityHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * Reads the presented credential.
+ *
+ * `X-API-Key` exists because some extension and CLI plumbing mangles or
+ * strips `Authorization`; both headers carry the same value space, and the
+ * `tnk_` prefix is what actually decides how the token is interpreted.
+ */
+function bearerToken(request: Request): string | null {
+  const header = request.headers.get('Authorization');
+  if (header?.startsWith('Bearer ')) {
+    const token = header.slice(7).trim();
+    if (token) return token;
+  }
+  return request.headers.get('X-API-Key')?.trim() || null;
+}
+
 export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const { request, env, next, data } = ctx;
   const path = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
@@ -63,10 +94,30 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
       throw new Error('D1 binding "DB" is missing; check wrangler.toml');
     }
 
-    const userId = await authenticate(request, env);
-    if (userId) data.userId = userId;
+    const presented = bearerToken(request);
 
-    if (!PUBLIC_PATHS.has(path) && !userId) throw unauthorized();
+    if (presented && looksLikeApiKey(presented)) {
+      if (KEY_DENIED_PREFIXES.some((p) => path.startsWith(p))) {
+        throw forbidden('该接口不支持 API 密钥调用，请使用登录会话');
+      }
+
+      const resolved = await resolveApiKey(env, presented, (p) => ctx.waitUntil(p));
+      if (!resolved) throw unauthorized('API 密钥无效或已过期');
+
+      if (!READ_METHODS.has(request.method) && !resolved.scopes.includes('write')) {
+        throw forbidden('该 API 密钥没有写入权限');
+      }
+
+      data.userId = resolved.userId;
+      data.apiKeyId = resolved.keyId;
+      data.apiKeyScopes = resolved.scopes;
+    } else {
+      const userId = await authenticate(request, env);
+      if (userId) data.userId = userId;
+    }
+
+    const isPublic = PUBLIC_PATHS.has(path) || PUBLIC_PREFIXES.some((p) => path.startsWith(p));
+    if (!isPublic && !data.userId) throw unauthorized();
 
     const response = await next();
 

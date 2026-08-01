@@ -38,6 +38,8 @@ export interface Bookmark {
   isArchived: boolean;
   visitCount: number;
   lastVisitedAt: string | null;
+  /** Drag-order weight; 0 means the item has never been positioned. */
+  manualOrder: number;
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
@@ -51,7 +53,9 @@ export type BookmarkSort =
   | 'created_asc'
   | 'updated_desc'
   | 'title_asc'
-  | 'visits_desc';
+  | 'visits_desc'
+  /** User-defined drag order; unpositioned items fall back to newest-first. */
+  | 'manual';
 
 export interface BookmarkQuery {
   scope?: BookmarkScope;
@@ -150,6 +154,96 @@ export interface AiSettings {
   autoSummarize: boolean;
   autoTag: boolean;
   enabled: boolean;
+}
+
+/* ------------------------------------------------------------------ *
+ * Personal access keys
+ * ------------------------------------------------------------------ */
+
+export type ApiKeyScope = 'read' | 'write';
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  /** First 12 characters of the token, e.g. `tnk_A1b2C3d4`. */
+  prefix: string;
+  scopes: ApiKeyScope[];
+  lastUsedAt: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+export interface ApiKeyInput {
+  name: string;
+  scopes?: ApiKeyScope[];
+  /** Days until expiry; omit or 0 for a key that never expires. */
+  expiresInDays?: number;
+}
+
+/** The only response that ever contains the plaintext token. */
+export interface ApiKeyCreated {
+  key: ApiKey;
+  token: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Public shares
+ * ------------------------------------------------------------------ */
+
+export type ShareTheme = 'default' | 'compact' | 'cards';
+
+export interface Share {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  tagIds: string[];
+  matchAllTags: boolean;
+  includeNotes: boolean;
+  theme: ShareTheme;
+  isActive: boolean;
+  viewCount: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string | null;
+  /** Absolute path of the public page, e.g. `/s/reading-list`. */
+  url: string;
+}
+
+export interface ShareInput {
+  title: string;
+  slug?: string;
+  description?: string | null;
+  tagIds?: string[];
+  matchAllTags?: boolean;
+  includeNotes?: boolean;
+  theme?: ShareTheme;
+  isActive?: boolean;
+  /** Days until the link stops resolving; omit or 0 for no expiry. */
+  expiresInDays?: number;
+}
+
+/** Trimmed bookmark shape served to anonymous visitors. */
+export interface PublicBookmark {
+  id: string;
+  url: string;
+  title: string;
+  description: string | null;
+  faviconUrl: string | null;
+  note: string | null;
+  tags: { name: string; colorIndex: number }[];
+  createdAt: string;
+}
+
+export interface PublicShare {
+  title: string;
+  description: string | null;
+  theme: ShareTheme;
+  owner: string;
+  tags: { name: string; colorIndex: number }[];
+  items: PublicBookmark[];
+  total: number;
+  updatedAt: string;
 }
 
 export interface ApiError {

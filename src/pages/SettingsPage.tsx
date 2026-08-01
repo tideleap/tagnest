@@ -1,26 +1,69 @@
 import { useState } from 'react';
 import { NavLink, useParams } from 'react-router-dom';
-import { Info, Keyboard, Palette, Sparkles, User } from 'lucide-react';
-import type { AiProvider } from '@shared/types';
+import {
+  Copy,
+  ExternalLink,
+  Info,
+  KeyRound,
+  Keyboard,
+  Pencil,
+  Palette,
+  Share2,
+  Sparkles,
+  Trash2,
+  User,
+} from 'lucide-react';
+import type {
+  AiProvider,
+  ApiKeyCreated,
+  ApiKeyInput,
+  ApiKeyScope,
+  Share,
+  ShareInput,
+  ShareTheme,
+} from '@shared/types';
 import {
   Badge,
   Button,
+  Checkbox,
+  ConfirmDialog,
+  EmptyState,
+  IconButton,
   Input,
   Kbd,
+  Modal,
   SegmentedControl,
   Select,
   Skeleton,
   Switch,
+  TagChip,
+  Textarea,
+  toast,
 } from '@/components/ui';
 import { useAuth } from '@/stores/auth';
 import { useTheme } from '@/stores/ui';
 import type { ThemeMode } from '@/stores/ui';
-import { useAiSettings, useStats, useUpdateAiSettings } from '@/hooks/queries';
+import {
+  useAiSettings,
+  useApiKeys,
+  useCreateApiKey,
+  useCreateShare,
+  useDeleteApiKey,
+  useDeleteShare,
+  useShares,
+  useStats,
+  useTags,
+  useUpdateAiSettings,
+  useUpdateShare,
+} from '@/hooks/queries';
 import { SHORTCUTS } from '@/hooks/useGlobalHotkeys';
+import { relativeTime } from '@/lib/url';
 import { cx } from '@/lib/cx';
 
 const SECTIONS = [
   { id: 'account', label: '账户', icon: User },
+  { id: 'keys', label: '密钥', icon: KeyRound },
+  { id: 'shares', label: '分享', icon: Share2 },
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'shortcuts', label: '快捷键', icon: Keyboard },
@@ -61,6 +104,8 @@ export function SettingsPage() {
 
       <div className="min-w-0 flex-1">
         {active === 'account' && <AccountSection />}
+        {active === 'keys' && <ApiKeysSection />}
+        {active === 'shares' && <SharesSection />}
         {active === 'appearance' && <AppearanceSection />}
         {active === 'ai' && <AiSection />}
         {active === 'shortcuts' && <ShortcutsSection />}
@@ -126,6 +171,520 @@ function AccountSection() {
           </dl>
         )}
       </Card>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Personal access keys (O5)
+ * ------------------------------------------------------------------ */
+
+const SCOPE_OPTIONS: { value: ApiKeyScope; label: string; hint: string }[] = [
+  { value: 'read', label: '读取', hint: '查看书签、标签与统计' },
+  { value: 'write', label: '写入', hint: '新增、修改、删除书签' },
+];
+
+const KEY_EXPIRY_OPTIONS = [
+  { value: '0', label: '永不过期' },
+  { value: '30', label: '30 天' },
+  { value: '90', label: '90 天' },
+  { value: '365', label: '1 年' },
+];
+
+function ApiKeysSection() {
+  const { data: keys, isLoading } = useApiKeys();
+  const create = useCreateApiKey();
+  const del = useDeleteApiKey();
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [created, setCreated] = useState<ApiKeyCreated | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const [name, setName] = useState('');
+  const [scopes, setScopes] = useState<ApiKeyScope[]>(['read', 'write']);
+  const [expiresInDays, setExpiresInDays] = useState(0);
+
+  const toggleScope = (scope: ApiKeyScope) =>
+    setScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+
+  const submitCreate = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const input: ApiKeyInput = { name: trimmed, scopes, expiresInDays };
+    create.mutate(input, {
+      onSuccess: (res) => {
+        setCreated(res);
+        setShowCreate(false);
+        setName('');
+        setScopes(['read', 'write']);
+        setExpiresInDays(0);
+      },
+    });
+  };
+
+  const copyToken = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      toast.success('密钥已复制');
+    } catch {
+      toast.error('复制失败', '浏览器拒绝了剪贴板访问');
+    }
+  };
+
+  return (
+    <>
+      <Card
+        title="个人访问密钥"
+        description="用密钥代替账号访问你的书签，方便脚本或第三方工具调用。密钥无法访问登录、注册与密钥管理接口。"
+      >
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : keys && keys.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {keys.map((k) => (
+              <li
+                key={k.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-ink">{k.name}</span>
+                    <code className="rounded bg-sunken px-1.5 py-0.5 text-2xs text-ink-soft">
+                      {k.prefix}…
+                    </code>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-faint">
+                    {k.scopes.map((s) => (
+                      <Badge key={s} tone="brand">
+                        {s}
+                      </Badge>
+                    ))}
+                    <span>创建于 {relativeTime(k.createdAt)}</span>
+                    {k.lastUsedAt && <span>· 最近使用 {relativeTime(k.lastUsedAt)}</span>}
+                    {k.expiresAt && <span>· {relativeTime(k.expiresAt)}过期</span>}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeleteId(k.id)}
+                  className="shrink-0 text-critical hover:bg-critical-soft"
+                >
+                  删除
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            compact
+            icon={<KeyRound size={20} />}
+            title="还没有密钥"
+            description="创建一个密钥，用它从命令行或脚本访问你的书签库。"
+          />
+        )}
+
+        <div className="mt-3">
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
+            新建密钥
+          </Button>
+        </div>
+      </Card>
+
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="新建密钥"
+        description="密钥只显示这一次，关闭后无法再次查看。"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              onClick={submitCreate}
+              loading={create.isPending}
+              disabled={!name.trim()}
+            >
+              创建
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Input
+            label="名称"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例如：终端脚本"
+            required
+            autoFocus
+          />
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">权限范围</span>
+            {SCOPE_OPTIONS.map((opt) => (
+              <Checkbox
+                key={opt.value}
+                label={opt.label}
+                hint={opt.hint}
+                checked={scopes.includes(opt.value)}
+                onChange={() => toggleScope(opt.value)}
+              />
+            ))}
+          </div>
+          <Select
+            label="有效期"
+            value={String(expiresInDays)}
+            onChange={(e) => setExpiresInDays(Number(e.target.value))}
+            options={KEY_EXPIRY_OPTIONS}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={created !== null}
+        onClose={() => setCreated(null)}
+        title="密钥已创建"
+        description="这是唯一一次看到完整密钥的机会，请立即复制保存。"
+      >
+        {created && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={created.token}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full truncate rounded-md border border-line bg-sunken px-3 py-2 font-mono text-xs text-ink"
+                aria-label="密钥令牌"
+              />
+              <Button variant="primary" size="sm" onClick={() => copyToken(created.token)}>
+                复制
+              </Button>
+            </div>
+            <p className="text-xs text-ink-faint">
+              名称：{created.key.name} · 权限：{created.key.scopes.join('、')}
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) del.mutate(deleteId);
+          setDeleteId(null);
+        }}
+        title="删除密钥"
+        message="删除后，使用该密钥的脚本会立即失效。此操作无法撤销。"
+        confirmLabel="删除"
+        tone="danger"
+        loading={del.isPending}
+      />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Public shares (O7)
+ * ------------------------------------------------------------------ */
+
+const SHARE_THEME_OPTIONS: { value: ShareTheme; label: string }[] = [
+  { value: 'default', label: '默认列表' },
+  { value: 'compact', label: '紧凑列表' },
+  { value: 'cards', label: '卡片网格' },
+];
+
+const SHARE_EXPIRY_OPTIONS = [
+  { value: '0', label: '永不过期' },
+  { value: '7', label: '7 天' },
+  { value: '30', label: '30 天' },
+  { value: '90', label: '90 天' },
+];
+
+const SHARE_THEME_LABEL: Record<ShareTheme, string> = {
+  default: '默认',
+  compact: '紧凑',
+  cards: '卡片',
+};
+
+function SharesSection() {
+  const { data: shares, isLoading } = useShares();
+  const { data: tags } = useTags();
+  const create = useCreateShare();
+  const update = useUpdateShare();
+  const del = useDeleteShare();
+
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Share | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const [title, setTitle] = useState('');
+  const [slug, setSlug] = useState('');
+  const [description, setDescription] = useState('');
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [matchAllTags, setMatchAllTags] = useState(false);
+  const [includeNotes, setIncludeNotes] = useState(true);
+  const [theme, setTheme] = useState<ShareTheme>('default');
+  const [isActive, setIsActive] = useState(true);
+  const [expiresInDays, setExpiresInDays] = useState(0);
+
+  const openCreate = () => {
+    setEditing(null);
+    setTitle('');
+    setSlug('');
+    setDescription('');
+    setTagIds([]);
+    setMatchAllTags(false);
+    setIncludeNotes(true);
+    setTheme('default');
+    setIsActive(true);
+    setExpiresInDays(0);
+    setShowForm(true);
+  };
+
+  const openEdit = (s: Share) => {
+    setEditing(s);
+    setTitle(s.title);
+    setSlug(s.slug);
+    setDescription(s.description ?? '');
+    setTagIds(s.tagIds);
+    setMatchAllTags(s.matchAllTags);
+    setIncludeNotes(s.includeNotes);
+    setTheme(s.theme);
+    setIsActive(s.isActive);
+    setExpiresInDays(0);
+    setShowForm(true);
+  };
+
+  const toggleTag = (id: string) =>
+    setTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const submitting = create.isPending || update.isPending;
+
+  const submit = () => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const input: ShareInput = {
+      title: trimmed,
+      slug: slug.trim() || undefined,
+      description: description.trim() || null,
+      tagIds,
+      matchAllTags,
+      includeNotes,
+      theme,
+      isActive,
+      expiresInDays,
+    };
+    if (editing) {
+      update.mutate(
+        { id: editing.id, patch: input },
+        { onSuccess: () => setShowForm(false) },
+      );
+    } else {
+      create.mutate(input, { onSuccess: () => setShowForm(false) });
+    }
+  };
+
+  const copyLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${url}`);
+      toast.success('链接已复制');
+    } catch {
+      toast.error('复制失败', '浏览器拒绝了剪贴板访问');
+    }
+  };
+
+  return (
+    <>
+      <Card
+        title="公开分享"
+        description="把指定标签下的书签整理成一个只读页面，任何人都能通过链接访问。分享的是实时查询结果，不是快照。"
+      >
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : shares && shares.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {shares.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-sm font-medium text-ink">{s.title}</span>
+                    <Badge tone={s.isActive ? 'positive' : 'neutral'}>
+                      {s.isActive ? '已启用' : '已停用'}
+                    </Badge>
+                    <Badge>{SHARE_THEME_LABEL[s.theme]}</Badge>
+                    {s.tagIds.length > 0 && (
+                      <span className="text-2xs text-ink-faint">
+                        {s.tagIds.length} 个标签筛选
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-faint">
+                    <code className="rounded bg-sunken px-1.5 py-0.5">{s.url}</code>
+                    <span>· {s.viewCount} 次浏览</span>
+                    <span>· 创建于 {relativeTime(s.createdAt)}</span>
+                    {s.expiresAt && <span>· {relativeTime(s.expiresAt)}过期</span>}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <IconButton label="复制链接" size="sm" onClick={() => copyLink(s.url)} icon={<Copy size={15} />} />
+                  <IconButton
+                    label="打开"
+                    size="sm"
+                    onClick={() => window.open(s.url, '_blank', 'noopener,noreferrer')}
+                    icon={<ExternalLink size={15} />}
+                  />
+                  <IconButton label="编辑" size="sm" onClick={() => openEdit(s)} icon={<Pencil size={15} />} />
+                  <IconButton
+                    label="删除"
+                    size="sm"
+                    onClick={() => setDeleteId(s.id)}
+                    icon={<Trash2 size={15} />}
+                    className="text-critical hover:bg-critical-soft"
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            compact
+            icon={<Share2 size={20} />}
+            title="还没有分享页"
+            description="挑一些标签，生成一个可以发给任何人的只读书签页。"
+          />
+        )}
+
+        <div className="mt-3">
+          <Button variant="primary" onClick={openCreate}>
+            新建分享
+          </Button>
+        </div>
+      </Card>
+
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title={editing ? '编辑分享' : '新建分享'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowForm(false)}>
+              取消
+            </Button>
+            <Button variant="primary" onClick={submit} loading={submitting} disabled={!title.trim()}>
+              {editing ? '保存' : '创建'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Input
+            label="标题"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="例如：每周阅读清单"
+            required
+            autoFocus
+          />
+          <Input
+            label="自定义路径"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder="留空则根据标题自动生成"
+            hint="链接会显示为 /s/你的路径"
+          />
+          <Textarea
+            label="描述"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="一句话介绍这个分享页（可留空）"
+            rows={2}
+          />
+
+          {tags && tags.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-medium text-ink-soft">
+                包含标签（不选则分享全部书签）
+              </span>
+              <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto scrollbar-slim">
+                {tags.map((t) => {
+                  const active = tagIds.includes(t.id);
+                  return (
+                    <TagChip
+                      key={t.id}
+                      name={t.name}
+                      colorIndex={t.colorIndex}
+                      active={active}
+                      onClick={() => toggleTag(t.id)}
+                    />
+                  );
+                })}
+              </div>
+              {tagIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTagIds([])}
+                  className="self-start text-2xs text-ink-faint underline-offset-2 hover:text-ink-soft hover:underline"
+                >
+                  清除筛选
+                </button>
+              )}
+            </div>
+          )}
+
+          <Switch
+            checked={matchAllTags}
+            onChange={setMatchAllTags}
+            label="需同时满足所有标签"
+            hint="开启后，只有带全部所选标签的书签才会出现"
+          />
+          <Switch
+            checked={includeNotes}
+            onChange={setIncludeNotes}
+            label="展示笔记内容"
+            hint="关闭则分享页只显示标题、链接与标签"
+          />
+          <Switch
+            checked={isActive}
+            onChange={setIsActive}
+            label="立即启用"
+            hint="关闭后链接将暂时返回 404"
+          />
+          <Select
+            label="主题"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value as ShareTheme)}
+            options={SHARE_THEME_OPTIONS}
+          />
+          <Select
+            label="有效期"
+            value={String(expiresInDays)}
+            onChange={(e) => setExpiresInDays(Number(e.target.value))}
+            options={SHARE_EXPIRY_OPTIONS}
+          />
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) del.mutate(deleteId);
+          setDeleteId(null);
+        }}
+        title="删除分享"
+        message="删除后，这个公开链接会立即失效。此操作无法撤销。"
+        confirmLabel="删除"
+        tone="danger"
+        loading={del.isPending}
+      />
     </>
   );
 }

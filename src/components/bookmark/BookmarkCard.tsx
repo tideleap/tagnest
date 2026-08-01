@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   Copy,
   ExternalLink,
+  GripVertical,
   MoreHorizontal,
   Pencil,
   RotateCcw,
@@ -31,6 +32,12 @@ export interface BookmarkCardProps {
   onPurge: (id: string) => void;
   onVisit: (id: string) => void;
   onTagClick: (tagId: string) => void;
+  /** When true, a grip handle appears and the card is part of a manual order. */
+  draggable?: boolean;
+  /** Fired when the grip starts a drag; carries the bookmark id. */
+  onDragStartCard?: (id: string) => void;
+  /** True while another card is being dragged over this one — drives the ring. */
+  isDragOver?: boolean;
 }
 
 function Favicon({ bookmark, size }: { bookmark: Bookmark; size: number }) {
@@ -85,6 +92,9 @@ function BookmarkCardBase({
   onPurge,
   onVisit,
   onTagClick,
+  draggable = false,
+  onDragStartCard,
+  isDragOver = false,
 }: BookmarkCardProps) {
   const inTrash = b.deletedAt !== null;
 
@@ -92,6 +102,27 @@ function BookmarkCardBase({
     onVisit(b.id);
     window.open(b.url, '_blank', 'noopener,noreferrer');
   };
+
+  /**
+   * The handle is the only draggable element on the card — the rest stays
+   * clickable for selection and opening. `touch-none` keeps mobile from
+   * scrolling when the user means to grab it.
+   */
+  const grip = draggable ? (
+    <button
+      type="button"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', b.id);
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStartCard?.(b.id);
+      }}
+      aria-label="拖动以重新排序"
+      className="flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-ink-faint transition-colors hover:bg-sunken hover:text-ink-soft active:cursor-grabbing"
+    >
+      <GripVertical size={15} aria-hidden />
+    </button>
+  ) : null;
 
   const copyUrl = async () => {
     try {
@@ -150,6 +181,7 @@ function BookmarkCardBase({
         isGrid ? 'h-full flex-col rounded-md p-3.5' : 'items-start rounded-md',
         isCompact ? 'gap-2.5 px-3 py-2' : !isGrid && 'gap-3 p-3.5',
         selected && 'border-brand bg-brand-soft/35',
+        isDragOver && 'border-brand ring-2 ring-brand/50',
       )}
     >
       {/* Checkbox only materialises on hover or once a selection exists —
@@ -172,7 +204,8 @@ function BookmarkCardBase({
       </label>
 
       {!isGrid && (
-        <div className="shrink-0 pt-0.5">
+        <div className="flex shrink-0 items-center gap-1 pt-0.5">
+          {grip}
           <Favicon bookmark={b} size={isCompact ? 16 : 20} />
         </div>
       )}
@@ -242,6 +275,7 @@ function BookmarkCardBase({
           isGrid && 'mt-2 justify-end border-t border-line pt-2',
         )}
       >
+        {isGrid && grip}
         {!inTrash && (
           <IconButton
             label={b.isFavorite ? '取消收藏' : '收藏'}

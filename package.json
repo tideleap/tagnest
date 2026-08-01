@@ -18,7 +18,11 @@
     "db:create": "wrangler d1 create tagnest-db",
     "db:migrate": "wrangler d1 migrations apply tagnest-db --remote",
     "db:migrate:local": "wrangler d1 migrations apply tagnest-db --local",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name=tagnest"
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:preview": "node scripts/deploy.mjs --branch=preview",
+    "deploy:check": "node scripts/deploy.mjs --dry-run",
+    "release": "node scripts/deploy.mjs --push",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",

@@ -23,9 +23,20 @@ export class HttpError extends Error {
 /** Set by the auth store; kept in memory only. */
 let accessToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
+/**
+ * Optional personal access key. When set, it is sent as `X-API-Key` so the
+ * backend's key-auth path (scopes + non-session buckets) is usable from the
+ * browser. The session bearer still wins when both are present, which is the
+ * case on the management screens — there the key is irrelevant.
+ */
+let apiKey: string | null = null;
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+}
+
+export function setApiKey(token: string | null) {
+  apiKey = token;
 }
 
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -49,6 +60,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
   if (accessToken) {
     finalHeaders.set('Authorization', `Bearer ${accessToken}`);
+  } else if (apiKey) {
+    finalHeaders.set('X-API-Key', apiKey);
   }
 
   let response: Response;
@@ -115,6 +128,7 @@ export async function downloadBlob(
 ): Promise<{ blob: Blob; filename: string | null }> {
   const headers = new Headers();
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  else if (apiKey) headers.set('X-API-Key', apiKey);
 
   let response: Response;
   try {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -21,6 +21,7 @@ import type { ViewMode } from '@/stores/ui';
 import {
   useBookmarks,
   useRecordVisit,
+  useReorderBookmarks,
   useRestoreBookmarks,
   useTags,
   useToggleFavorite,
@@ -74,6 +75,7 @@ const SORT_OPTIONS: { value: BookmarkSort; label: string }[] = [
   { value: 'updated_desc', label: '最近更新' },
   { value: 'title_asc', label: '标题 A→Z' },
   { value: 'visits_desc', label: '访问最多' },
+  { value: 'manual', label: '手动排序' },
 ];
 
 const VIEW_SEGMENTS = [
@@ -123,6 +125,47 @@ export function LibraryPage() {
   const restoreBookmarks = useRestoreBookmarks();
   const deleteForever = useDeleteForever();
   const recordVisit = useRecordVisit();
+  const reorder = useReorderBookmarks();
+
+  // Drag-to-reorder only makes sense when the backend is honouring the manual
+  // order, i.e. this sort is active and we are not reshuffling the trash.
+  const isManualSort = sort === 'manual';
+  const dragEnabled = isManualSort && scope !== 'trash';
+
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
+  // Any change of context invalidates an in-flight drag.
+  useEffect(() => {
+    setDragId(null);
+    setOverId(null);
+  }, [sort, scope, tagId, query]);
+
+  const handleReorder = useCallback(
+    (targetId: string) => {
+      if (!dragId || dragId === targetId) {
+        setDragId(null);
+        setOverId(null);
+        return;
+      }
+      const from = items.findIndex((i) => i.id === dragId);
+      const to = items.findIndex((i) => i.id === targetId);
+      if (from < 0 || to < 0) {
+        setDragId(null);
+        setOverId(null);
+        return;
+      }
+      // Rebuild the visible id order with the dragged card relocated to the
+      // drop target's slot; the API re-weights exactly these ids.
+      const next = items.map((i) => i.id);
+      next.splice(from, 1);
+      next.splice(to, 0, dragId);
+      reorder.mutate(next);
+      setDragId(null);
+      setOverId(null);
+    },
+    [dragId, items, reorder],
+  );
 
   const lastClickedRef = useRef<string | null>(null);
 
@@ -214,6 +257,9 @@ export function LibraryPage() {
             onChange={setViewMode}
             segments={VIEW_SEGMENTS}
           />
+          {dragEnabled && (
+            <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
+          )}
         </div>
       </header>
 
@@ -278,12 +324,33 @@ export function LibraryPage() {
             // grid buys little and breaks keyboard order.
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items.map((b) => (
-                <li key={b.id}>
+                <li
+                  key={b.id}
+                  onDragOver={
+                    dragEnabled
+                      ? (e) => {
+                          e.preventDefault();
+                          if (overId !== b.id) setOverId(b.id);
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    dragEnabled
+                      ? (e) => {
+                          e.preventDefault();
+                          handleReorder(b.id);
+                        }
+                      : undefined
+                  }
+                >
                   <BookmarkCard
                     bookmark={b}
                     view={viewMode}
                     selected={selected.has(b.id)}
                     selectionActive={selected.size > 0}
+                    draggable={dragEnabled}
+                    onDragStartCard={setDragId}
+                    isDragOver={dragEnabled && overId === b.id}
                     {...cardHandlers}
                   />
                 </li>
@@ -306,12 +373,31 @@ export function LibraryPage() {
                     data-index={row.index}
                     className="absolute left-0 top-0 w-full"
                     style={{ transform: `translateY(${row.start}px)` }}
+                    onDragOver={
+                      dragEnabled
+                        ? (e) => {
+                            e.preventDefault();
+                            if (overId !== b.id) setOverId(b.id);
+                          }
+                        : undefined
+                    }
+                    onDrop={
+                      dragEnabled
+                        ? (e) => {
+                            e.preventDefault();
+                            handleReorder(b.id);
+                          }
+                        : undefined
+                    }
                   >
                     <BookmarkCard
                       bookmark={b}
                       view={viewMode}
                       selected={selected.has(b.id)}
                       selectionActive={selected.size > 0}
+                      draggable={dragEnabled}
+                      onDragStartCard={setDragId}
+                      isDragOver={dragEnabled && overId === b.id}
                       {...cardHandlers}
                     />
                   </div>

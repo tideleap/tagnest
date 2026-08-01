@@ -9,6 +9,7 @@ import {
 } from '../../_lib/auth';
 import { ApiException, conflict, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
+import { assertNotThrottled, recordFailure } from '../../_lib/throttle';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ request, env }) => {
   if (env.DISABLE_SIGNUP === 'true') {
@@ -17,6 +18,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ r
 
   const body = await readJson<{ email?: string; password?: string; displayName?: string }>(request);
   const { email, password } = validateCredentials(body.email, body.password);
+
+  // Registration is open on this instance, so the same IP bucket that guards
+  // login also caps automated account creation.
+  await assertNotThrottled(env, request, email);
 
   const displayName =
     typeof body.displayName === 'string' && body.displayName.trim()
@@ -29,7 +34,12 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ r
     .bind(email)
     .first<{ id: string }>();
 
-  if (existing) throw conflict('该邮箱已注册', { email: '该邮箱已注册' });
+  if (existing) {
+    // Counts against the IP bucket: probing which addresses are taken is the
+    // reconnaissance step before a credential-stuffing run.
+    await recordFailure(env, request, email);
+    throw conflict('该邮箱已注册', { email: '该邮箱已注册' });
+  }
 
   const id = newId();
   const ts = nowIso();

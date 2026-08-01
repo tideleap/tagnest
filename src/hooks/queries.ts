@@ -6,6 +6,9 @@ import {
 } from '@tanstack/react-query';
 import type {
   AiSettings,
+  ApiKey,
+  ApiKeyCreated,
+  ApiKeyInput,
   Bookmark,
   BookmarkInput,
   BookmarkPatch,
@@ -14,6 +17,8 @@ import type {
   ImportPreview,
   ImportResult,
   Page,
+  Share,
+  ShareInput,
   Stats,
   Tag,
   TagInput,
@@ -35,6 +40,8 @@ export const keys = {
   tags: ['tags'] as const,
   stats: ['stats'] as const,
   aiSettings: ['ai-settings'] as const,
+  apiKeys: ['api-keys'] as const,
+  shares: ['shares'] as const,
 };
 
 const PAGE_SIZE = 40;
@@ -211,6 +218,63 @@ export function useBulkTag() {
   });
 }
 
+/**
+ * Persists a drag arrangement.
+ *
+ * Optimistic by necessity: the card is already under the user's cursor in its
+ * new position, so waiting for the round trip would make it snap back and
+ * forward again. The cached pages are rewritten to the new order, and the
+ * snapshot restores them if the write fails.
+ */
+export function useReorderBookmarks() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (ids: string[]) => api.post<{ reordered: number }>('/bookmarks/reorder', { ids }),
+
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: keys.bookmarksRoot });
+      const snapshot = qc.getQueriesData<{ pages: Page<Bookmark>[] }>({
+        queryKey: keys.bookmarksRoot,
+      });
+
+      const rank = new Map(ids.map((id, index) => [id, index]));
+
+      qc.setQueriesData<{ pages: Page<Bookmark>[]; pageParams: unknown[] }>(
+        { queryKey: keys.bookmarksRoot },
+        (old) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              // Only rows named in the request move; anything else keeps its
+              // relative position, which matters when a later page is loaded.
+              items: [...page.items].sort((a, b) => {
+                const ra = rank.get(a.id);
+                const rb = rank.get(b.id);
+                if (ra === undefined || rb === undefined) return 0;
+                return ra - rb;
+              }),
+            })),
+          };
+        },
+      );
+
+      return { snapshot };
+    },
+
+    onError: (e: Error, _ids, ctx) => {
+      ctx?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
+      toast.error('排序保存失败', e.message);
+    },
+
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+    },
+  });
+}
+
 /** Fire-and-forget visit counter; a failure here should never surface. */
 export function useRecordVisit() {
   return useMutation({
@@ -348,5 +412,95 @@ export function useUpdateAiSettings() {
       toast.success('设置已保存');
     },
     onError: (e: Error) => toast.error('保存失败', e.message),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Personal access keys
+ * ------------------------------------------------------------------ */
+
+export function useApiKeys() {
+  return useQuery({
+    queryKey: keys.apiKeys,
+    queryFn: () => api.get<{ items: ApiKey[] }>('/keys').then((r) => r.items),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Creates a key.
+ *
+ * The plaintext token comes back once and is handed to the caller rather than
+ * cached — the settings page holds it in component state until the dialog is
+ * dismissed, and nothing writes it to storage.
+ */
+export function useCreateApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ApiKeyInput) => api.post<ApiKeyCreated>('/keys', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apiKeys });
+    },
+    onError: (e: Error) => toast.error('创建失败', e.message),
+  });
+}
+
+export function useDeleteApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/keys/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.apiKeys });
+      toast.success('密钥已删除');
+    },
+    onError: (e: Error) => toast.error('删除失败', e.message),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Public shares
+ * ------------------------------------------------------------------ */
+
+export function useShares() {
+  return useQuery({
+    queryKey: keys.shares,
+    queryFn: () => api.get<{ items: Share[] }>('/shares').then((r) => r.items),
+    staleTime: 60_000,
+  });
+}
+
+export function useCreateShare() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ShareInput) => api.post<Share>('/shares', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.shares });
+      toast.success('分享页已创建');
+    },
+    onError: (e: Error) => toast.error('创建失败', e.message),
+  });
+}
+
+export function useUpdateShare() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<ShareInput> }) =>
+      api.patch<Share>(`/shares/${id}`, patch),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.shares });
+    },
+    onError: (e: Error) => toast.error('更新失败', e.message),
+  });
+}
+
+export function useDeleteShare() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/shares/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.shares });
+      toast.success('分享页已删除');
+    },
+    onError: (e: Error) => toast.error('删除失败', e.message),
   });
 }

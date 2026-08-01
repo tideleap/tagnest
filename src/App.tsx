@@ -19,6 +19,9 @@ const ImportPage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
+const SharePage = lazy(() =>
+  import('@/pages/SharePage').then((m) => ({ default: m.SharePage })),
+);
 
 function RouteFallback() {
   return (
@@ -67,6 +70,8 @@ export function App() {
         <Routes>
           <Route path="/signin" element={<AuthPage mode="signin" />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
+          {/* Public, unauthenticated share pages. */}
+          <Route path="/s/:slug" element={<SharePage />} />
 
           <Route
             element={
