@@ -7,11 +7,17 @@ TagNest 跑在 **Cloudflare Pages + D1** 上。本文档说明当前可用的部
 
 - **脚本化手动部署（随时可用）**：`scripts/deploy.mjs` 作为不依赖 Actions 的等效流水线，
   在本机依次运行与 CI 完全相同的质量门禁，再部署到 Cloudflare Pages。生产站点
-  https://tagnest.pages.dev 即由此路径上线。
-- **GitHub Actions（已就绪，待激活）**：工作流文件 `.github/workflows/ci.yml` 与
-  `deploy.yml` 已写入本地 `main`（提交 `c71186d`），但**尚未推送到远端**——因为推送所用的
-  Personal Access Token（PAT）缺少 `workflow` 作用域，GitHub 拒绝接收触碰
-  `.github/workflows/*` 的提交。修复 PAT 后即可 `git push origin main` 激活。
+  https://tagnest.pages.dev 即由此路径上线（本地 OAuth 登录）。
+- **GitHub Actions（已激活）**：工作流文件 `.github/workflows/ci.yml` 与 `deploy.yml` 已推送到
+  `main`（2026-08-01，提交 `fbc41d1`），GitHub 侧均显示 `state: active`。
+  - **CI（`ci.yml`）已验证通过**：首次推送触发 run #1，`Typecheck / Lint / Test` 结论 `success`
+    —— 证明 `npm run build`（`tsc -b && vite build`）在 CI runner 上也能正常产出 `dist`。
+  - **部署（`deploy.yml`）当前失败**：run #1 结论 `failure`，wrangler-action 发布的
+    “Cloudflare Pages” 检查显示 “🚫 Build failed”。说明部署作业**已执行**（即
+    `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 两个 Secret 已存在），但在 Cloudflare
+    部署步骤鉴权/授权失败。根因几乎确定是 `CLOUDFLARE_API_TOKEN` 无效、过期或缺少
+    `Cloudflare Pages: Edit` 权限（账户 ID Secret 指向的正是正确账户
+    `335886786d5a9656e7aba4692bc85b14`）。修复该 Token 后重新运行工作流即可。
 
 ### 可用命令（`package.json`）
 
@@ -46,49 +52,48 @@ npx wrangler d1 migrations apply tagnest-db --remote
 > `npx wrangler d1 execute tagnest-db --remote --file=migrations/0001_init.sql`，
 > 幂等写法保证已存在的对象被跳过。已应用的迁移记录在 `d1_migrations` 表中，重复执行为无操作。
 
-## 启用 GitHub Actions 自动部署
+## GitHub Actions 启用状态与剩余修复
 
-工作流文件已经合并进本地 `main`（提交 `c71186d`），只需补齐账号侧配置即可激活。
+工作流已推送到 `main`（提交 `fbc41d1`）并激活；PAT（带 `repo`+`workflow`）与 GCM 凭据
+均已就绪。下面记录已完成项与当前唯一阻塞。
 
-### 步骤 1 —— 换发带 `workflow` 作用域的 PAT
+### 已完成
 
-1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-   → Generate new token（经典令牌）。
-2. 勾选 **`repo`**（完整仓库控制）与 **`workflow`**（更新 GitHub Actions 工作流）。
-3. 生成后复制新 PAT。**旧 PAT 明文曾出现在对话中，建议先在 GitHub 撤销。**
+- **PAT 换发（带 `workflow` scope）**：新 PAT 已通过 GitHub API 验证，具备
+  `repo` / `workflow` 等权限；本地 GCM 凭据已更新为令牌 `tideleap`，并成功
+  `git push origin main`（首次推送即触发 CI 与 Deploy 两个 run）。
+- **工作流激活**：GitHub 侧 `ci.yml` / `deploy.yml` 均 `state: active`。
 
-### 步骤 2 —— 更新本机 Git 凭据（Git Credential Manager）
+### 当前阻塞 —— `CLOUDFLARE_API_TOKEN` 部署鉴权失败
 
-本机 git 使用 **Git Credential Manager（`manager`）** 缓存凭据，旧 PAT 仍会被自动使用，
-导致即使换新 PAT，push 仍会以旧令牌失败。需替换缓存：
+部署作业已运行（run #1 `failure`），wrangler-action 发布 “Cloudflare Pages / Build failed”。
+说明两个 Cloudflare Secret 已存在，但 **`CLOUDFLARE_API_TOKEN` 无效、过期或缺少
+`Cloudflare Pages: Edit` 权限**。账户 ID Secret 指向正确账户 `335886786d5a9656e7aba4692bc85b14`。
+注意：`cloudflare/wrangler-action@v3` 接收的 `CLOUDFLARE_API_TOKEN` 必须是 **Cloudflare API Token**
+（非 GitHub PAT，也非 Global API Key）。
 
-- **方式 A（推荐，Windows）**：打开「控制面板 → 凭据管理器 → Windows 凭据」，找到
-  `git:https://github.com`，编辑并把「密码」替换为**新 PAT**。
-- **方式 B（命令行）**：先清除旧凭据，下一次 push 时由 GCM 交互式提示输入新 PAT：
-  ```bash
-  printf 'protocol=https\nhost=github.com\n' | git credential reject
-  ```
-- 凭据更新后，重新执行 `git push origin main` 即可通过，工作流随即激活。
-  （也可由你在自己的机器上完成此 push。）
+### 修复步骤（Cloudflare 侧，需在 Cloudflare 后台操作）
 
-### 步骤 3 —— 配置仓库 Secrets
+1. Cloudflare 后台 → My Profile → API Tokens → Create Token。
+2. 使用模板 **Cloudflare Pages**（或自定义：权限 `Account > Cloudflare Pages > Edit`），
+   账户选 `god in 劲仔`（`335886786d5a9656e7aba4692bc85b14`）。
+3. 复制新 Token，到 GitHub 仓库 → Settings → Secrets and variables → Actions，
+   将 `CLOUDFLARE_API_TOKEN` 的值更新为该 Token（如尚未创建则新建）。
+4. 回到仓库 → Actions → 选 “Deploy” 工作流 → Re-run jobs（或推送任意改动触发）。
+   成功后每次 push 到 `main` 即自动部署生产，PR 部署到 `pr-<编号>` 预览。
 
-GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret：
+> 排查提示：若 GitHub Actions 日志中仍报错，常见为
+> `Invalid API token` / `token does not have access to account` / `Missing permission
+> pages:edit`。把红色报错贴回对话即可精准定位。另：若此前在 Cloudflare Pages 后台把仓库
+> 直接连过 GitHub（Cloudflare 原生构建），会与本 Actions 双触发，建议停用其一以免重复构建。
 
-- **`CLOUDFLARE_API_TOKEN`**：在 Cloudflare 后台生成的 API Token，权限模板选
-  **Cloudflare Pages**（需含 `Account > Cloudflare Pages > Edit`）。
-- **`CLOUDFLARE_ACCOUNT_ID`**：`335886786d5a9656e7aba4692bc85b14`
-  （即当前 `wrangler whoami` 登录的账户「god in 劲仔」，tagnest 项目归属该账户）。
+### 激活后行为（修复 Token 后即生效）
 
-### 激活后行为
-
-- **CI（`ci.yml`）**：push 成功即生效，每次 PR 与 push 到 `main` 运行
-  `typecheck` / `lint` / `test`。无需任何 Secret。
+- **CI（`ci.yml`）**：每次 PR 与 push 到 `main` 运行 `typecheck` / `lint` / `test`（已验证通过）。
 - **部署（`deploy.yml`）**：作业在**同时检测到 `CLOUDFLARE_API_TOKEN` 与
   `CLOUDFLARE_ACCOUNT_ID` 两个 Secret 时**才运行；否则自动跳过（不报错）。
-  配置好 Secrets 后，push 到 `main` 即自动 `npm run build` 并
-  `wrangler pages deploy dist --project-name=tagnest --branch=main` 部署到生产；
-  PR 则部署到 `pr-<编号>` 预览分支。
+  push 到 `main` 时自动 `npm run build` 并 `wrangler pages deploy dist
+  --project-name=tagnest --branch=main` 部署到生产；PR 部署到 `pr-<编号>` 预览分支。
 - **迁移不自动跑**：工作流不执行 D1 迁移（沿用 `migrations apply` 手动流程），与现有
   运维约定一致。
 
