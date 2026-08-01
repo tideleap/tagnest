@@ -13,6 +13,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run --config vitest.backend.config.ts",
+    "backlog:check": "node scripts/backlog-check.mjs",
+    "backlog:write": "node scripts/backlog-check.mjs --write",
     "test:watch": "vitest --config vitest.backend.config.ts",
     "test:coverage": "vitest run --config vitest.backend.config.ts --coverage",
     "db:create": "wrangler d1 create tagnest-db",

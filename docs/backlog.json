@@ -1,0 +1,775 @@
+{
+  "$comment": "TagNest 需求台账 — 单一事实源。人读版本 docs/BACKLOG.md 由 `npm run backlog:write` 生成，请勿手改表格。状态与证据的一致性由 scripts/backlog-check.mjs 在 CI 中强制校验。",
+  "statuses": {
+    "done": "全部证据探针通过，且依赖项均已 done",
+    "open": "未完成，进入执行队列",
+    "superseded": "已被净室重写取代或不适用，必须给出 note",
+    "blocked-external": "代码侧无可做之事，等待人工/外部动作，必须给出 note"
+  },
+  "items": [
+    {
+      "id": "F-P0-1",
+      "title": "设计令牌链路（Tailwind v4 CSS-first）",
+      "source": "docs/03-TagNest优化清单.md P0-1",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/styles/theme.css",
+          "pattern": "@theme"
+        }
+      ]
+    },
+    {
+      "id": "F-P0-2",
+      "title": "原子组件层与设计规范",
+      "source": "docs/03-TagNest优化清单.md P0-2",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/components/ui/index.ts"
+        },
+        {
+          "type": "grep",
+          "path": "src/components/ui/Button.tsx",
+          "pattern": "variant"
+        }
+      ]
+    },
+    {
+      "id": "F-P0-3",
+      "title": "统一应用外壳与容器",
+      "source": "docs/03-TagNest优化清单.md P0-3",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/components/layout/AppLayout.tsx"
+        }
+      ]
+    },
+    {
+      "id": "F-P0-4",
+      "title": "导入功能（Netscape / JSON / CSV）",
+      "source": "docs/03-TagNest优化清单.md P0-4",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/api/import/commit.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/_lib/import-parsers.ts"
+        },
+        {
+          "type": "test",
+          "name": "import-parsers"
+        }
+      ]
+    },
+    {
+      "id": "F-P0-5",
+      "title": "修复后端 group_id / 软删除过滤 Bug",
+      "source": "docs/03-TagNest优化清单.md P0-5",
+      "priority": "P0",
+      "status": "superseded",
+      "note": "净室重写未继承该代码；列表查询自建时即带 deleted_at IS NULL，无 group_id 列引用。",
+      "evidence": []
+    },
+    {
+      "id": "F-P0-6",
+      "title": "登出清理本地缓存（跨账号数据隔离）",
+      "source": "docs/03-TagNest优化清单.md P0-6",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/stores/auth.ts",
+          "pattern": "removeItem"
+        }
+      ]
+    },
+    {
+      "id": "F-P0-7",
+      "title": "清理死代码约 6000 行",
+      "source": "docs/03-TagNest优化清单.md P0-7",
+      "priority": "P0",
+      "status": "superseded",
+      "note": "净室重写不存在原项目死代码；本仓库无 functions/api/tab/**、无孤儿页面、无混淆依赖。",
+      "evidence": []
+    },
+    {
+      "id": "F-P0-8",
+      "title": "品牌统一为 TagNest",
+      "source": "docs/03-TagNest优化清单.md P0-8",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "package.json",
+          "pattern": "\"name\": \"tagnest\""
+        },
+        {
+          "type": "nogrep",
+          "path": "README.md",
+          "pattern": "TMarks"
+        }
+      ]
+    },
+    {
+      "id": "F-P1-1",
+      "title": "响应式断点体系",
+      "source": "docs/03-TagNest优化清单.md P1-1",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/pages/LibraryPage.tsx",
+          "pattern": "lg:"
+        },
+        {
+          "type": "file",
+          "path": "src/components/layout/MobileTabBar.tsx"
+        }
+      ]
+    },
+    {
+      "id": "F-P1-2",
+      "title": "信息架构：单层导航 + 统一回收站 + 404",
+      "source": "docs/03-TagNest优化清单.md P1-2",
+      "priority": "P1",
+      "status": "done",
+      "note": "概览页单独拆为 B8 跟踪。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/pages/NotFoundPage.tsx"
+        },
+        {
+          "type": "grep",
+          "path": "src/App.tsx",
+          "pattern": "NotFoundPage"
+        }
+      ]
+    },
+    {
+      "id": "F-P1-3",
+      "title": "全局搜索与命令面板（Ctrl/Cmd+K）",
+      "source": "docs/03-TagNest优化清单.md P1-3",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/components/command/CommandPalette.tsx"
+        }
+      ]
+    },
+    {
+      "id": "F-P1-4",
+      "title": "无障碍与键盘可达性",
+      "source": "docs/03-TagNest优化清单.md P1-4",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/components/ui/Modal.tsx",
+          "pattern": "aria-"
+        },
+        {
+          "type": "grep",
+          "path": "src/components/ui/IconButton.tsx",
+          "pattern": "aria-label"
+        }
+      ]
+    },
+    {
+      "id": "F-P1-5",
+      "title": "数据层健壮性（超时 / 重试分流 / 无状态镜像）",
+      "source": "docs/03-TagNest优化清单.md P1-5",
+      "priority": "P1",
+      "status": "open",
+      "aliasOf": "B7",
+      "note": "React Query 缓存与偏好单写已具备；剩余的请求超时与重试分流由 B7 承载。"
+    },
+    {
+      "id": "F-P1-6",
+      "title": "AI 能力：接线或明确下线",
+      "source": "docs/03-TagNest优化清单.md P1-6",
+      "priority": "P1",
+      "status": "open",
+      "aliasOf": "O11",
+      "note": "配置层与加密已就绪但推理未接；执行单元见 O11。"
+    },
+    {
+      "id": "F-P2-1",
+      "title": "性能优化（虚拟滚动 / 分包）",
+      "source": "docs/03-TagNest优化清单.md P2-1",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/pages/LibraryPage.tsx",
+          "pattern": "react-virtual"
+        },
+        {
+          "type": "grep",
+          "path": "vite.config.ts",
+          "pattern": "manualChunks"
+        }
+      ]
+    },
+    {
+      "id": "F-P2-2",
+      "title": "FTS5 全文检索",
+      "source": "docs/03-TagNest优化清单.md P2-2",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "migrations/0001_init.sql",
+          "pattern": "fts5"
+        }
+      ]
+    },
+    {
+      "id": "F-P2-3",
+      "title": "测试基线",
+      "source": "docs/03-TagNest优化清单.md P2-3",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "vitest.backend.config.ts"
+        },
+        {
+          "type": "file",
+          "path": "scripts/smoke.sh"
+        },
+        {
+          "type": "mincount",
+          "glob": "tests/*.test.ts",
+          "min": 8
+        }
+      ]
+    },
+    {
+      "id": "F-P2-4",
+      "title": "数据库治理与可演进迁移",
+      "source": "docs/03-TagNest优化清单.md P2-4",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "migrations/0002_keys_order_shares.sql",
+          "pattern": "ALTER TABLE"
+        },
+        {
+          "type": "grep",
+          "path": "migrations/0003_tab_groups.sql",
+          "pattern": "ON DELETE CASCADE"
+        }
+      ]
+    },
+    {
+      "id": "F-P2-5",
+      "title": "内容型体验（空/错/骨架三件套 + 标签治理）",
+      "source": "docs/03-TagNest优化清单.md P2-5",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/api/tags/merge.ts"
+        },
+        {
+          "type": "grep",
+          "path": "src/components/ui/Display.tsx",
+          "pattern": "EmptyState|Skeleton"
+        }
+      ]
+    },
+    {
+      "id": "O1",
+      "title": "CI 质量门禁",
+      "source": "PM-REVIEW O1",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": ".github/workflows/ci.yml"
+        }
+      ]
+    },
+    {
+      "id": "O2",
+      "title": "自动部署 + PR 预览",
+      "source": "PM-REVIEW O2",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": ".github/workflows/deploy.yml"
+        }
+      ]
+    },
+    {
+      "id": "O3",
+      "title": "安全响应头",
+      "source": "PM-REVIEW O3",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "public/_headers",
+          "pattern": "Strict-Transport-Security"
+        }
+      ]
+    },
+    {
+      "id": "O4",
+      "title": "注册策略（开放 + 邮箱白名单）",
+      "source": "PM-REVIEW O4 / Q4",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/signup.ts"
+        },
+        {
+          "type": "test",
+          "name": "signup"
+        }
+      ]
+    },
+    {
+      "id": "O5",
+      "title": "应用级 API 密钥管理",
+      "source": "PM-REVIEW O5",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/apikeys.ts"
+        },
+        {
+          "type": "test",
+          "name": "apikeys"
+        }
+      ]
+    },
+    {
+      "id": "O6",
+      "title": "书签拖拽手动排序",
+      "source": "PM-REVIEW O6",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/api/bookmarks/reorder.ts"
+        }
+      ]
+    },
+    {
+      "id": "O7",
+      "title": "公开分享（含 KV 边缘缓存）",
+      "source": "PM-REVIEW O7 / Q5",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/api/public/[slug].ts"
+        },
+        {
+          "type": "grep",
+          "path": "wrangler.toml",
+          "pattern": "SHARE_CACHE"
+        },
+        {
+          "type": "test",
+          "name": "shares"
+        }
+      ]
+    },
+    {
+      "id": "O8",
+      "title": "字段级加密",
+      "source": "PM-REVIEW O8",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/crypto.ts",
+          "pattern": "AES-GCM"
+        }
+      ]
+    },
+    {
+      "id": "O9",
+      "title": "登录限流 / 防爆破",
+      "source": "PM-REVIEW O9",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/throttle.ts"
+        },
+        {
+          "type": "test",
+          "name": "throttle"
+        }
+      ]
+    },
+    {
+      "id": "O10",
+      "title": "浏览器扩展（MV3）",
+      "source": "PM-REVIEW O10",
+      "priority": "P2",
+      "status": "open",
+      "note": "完成后同时补齐 O12 的『一键收纳当前窗口』。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "extension/manifest.json"
+        }
+      ],
+      "dependsOn": [
+        "O5"
+      ]
+    },
+    {
+      "id": "O11",
+      "title": "AI 自动标签 / 摘要",
+      "source": "PM-REVIEW O11",
+      "priority": "P1",
+      "status": "open",
+      "note": "未配置 provider key 时静默降级为 no-op，不阻塞保存主流程。",
+      "dependsOn": [
+        "O8",
+        "B1"
+      ],
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/ai.ts"
+        },
+        {
+          "type": "test",
+          "name": "ai"
+        }
+      ]
+    },
+    {
+      "id": "O12",
+      "title": "标签页组管理",
+      "source": "PM-REVIEW O12",
+      "priority": "P2",
+      "status": "done",
+      "note": "手动整理已交付；整窗收纳随 O10/B5 到位。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/tabgroups.ts"
+        },
+        {
+          "type": "file",
+          "path": "src/pages/TabGroupsPage.tsx"
+        },
+        {
+          "type": "test",
+          "name": "tabgroups"
+        }
+      ]
+    },
+    {
+      "id": "Q1",
+      "title": "新功能自动化测试补齐",
+      "source": "PM-REVIEW Q1",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "test",
+          "name": "apikeys"
+        },
+        {
+          "type": "test",
+          "name": "shares"
+        },
+        {
+          "type": "test",
+          "name": "throttle"
+        }
+      ]
+    },
+    {
+      "id": "Q2",
+      "title": "文档刷新（README 口径对齐）",
+      "source": "PM-REVIEW Q2",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "README.md",
+          "pattern": "Public share pages"
+        },
+        {
+          "type": "grep",
+          "path": "README.md",
+          "pattern": "Personal API keys"
+        }
+      ]
+    },
+    {
+      "id": "Q3",
+      "title": "生产验证数据清理",
+      "source": "PM-REVIEW Q3",
+      "priority": "P0",
+      "status": "done",
+      "note": "生产 D1 中 users/bookmarks/shares/api_keys/sessions 计数已复核为 0。",
+      "evidence": []
+    },
+    {
+      "id": "Q6",
+      "title": "可观测性基线",
+      "source": "PM-REVIEW Q6",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/logger.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/_lib/health.ts"
+        },
+        {
+          "type": "test",
+          "name": "logger"
+        }
+      ]
+    },
+    {
+      "id": "Q7",
+      "title": "wrangler 升级至 v4",
+      "source": "PM-REVIEW Q7 / R7",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "package.json",
+          "pattern": "\"wrangler\": \"\\^4"
+        }
+      ]
+    },
+    {
+      "id": "Q8a",
+      "title": "书签访问统计",
+      "source": "PM-REVIEW Q8",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/api/bookmarks/[id]/visit.ts"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/db.ts",
+          "pattern": "visit_count"
+        }
+      ]
+    },
+    {
+      "id": "Q8b",
+      "title": "标签颜色",
+      "source": "PM-REVIEW Q8",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/db.ts",
+          "pattern": "colorForName"
+        }
+      ]
+    },
+    {
+      "id": "Q8c",
+      "title": "深色模式",
+      "source": "PM-REVIEW Q8",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/stores/ui.ts",
+          "pattern": "theme"
+        }
+      ]
+    },
+    {
+      "id": "Q8d",
+      "title": "封面图展示",
+      "source": "PM-REVIEW Q8",
+      "priority": "P3",
+      "status": "open",
+      "note": "后端 cover_url 已存储，前端未渲染。",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/components/bookmark/BookmarkCard.tsx",
+          "pattern": "coverUrl"
+        }
+      ]
+    },
+    {
+      "id": "Q8e",
+      "title": "PWA 离线",
+      "source": "PM-REVIEW Q8",
+      "priority": "P2",
+      "status": "open",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "public/manifest.webmanifest"
+        },
+        {
+          "type": "file",
+          "path": "public/sw.js"
+        }
+      ]
+    },
+    {
+      "id": "Q8f",
+      "title": "导入进度可视化",
+      "source": "PM-REVIEW Q8",
+      "priority": "P2",
+      "status": "open",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/pages/ImportPage.tsx",
+          "pattern": "progress"
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "title": "文档漂移治理",
+      "source": "PM-REVIEW R1",
+      "priority": "P0",
+      "status": "done",
+      "note": "已建立 docs/BACKLOG.md + backlog-check CI 门禁；README 失实描述已由 B1 纠正。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "scripts/backlog-check.mjs"
+        },
+        {
+          "type": "file",
+          "path": "docs/BACKLOG.md"
+        },
+        {
+          "type": "nogrep",
+          "path": "README.md",
+          "pattern": "wired to call the configured provider"
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "title": "测试覆盖缺口",
+      "source": "PM-REVIEW R2",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "mincount",
+          "glob": "tests/*.test.ts",
+          "min": 10
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "title": "凭证卫生：吊销已泄露 PAT",
+      "source": "PM-REVIEW R5",
+      "priority": "P0",
+      "status": "blocked-external",
+      "note": "需用户在 GitHub 手动吊销 ghp_OrnyH… 与 ghp_y2Uw…；Agent 无法代为吊销。",
+      "evidence": []
+    },
+    {
+      "id": "B1",
+      "title": "纠正 README 中 AI 已接线的失实描述",
+      "source": "本轮审计",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "nogrep",
+          "path": "README.md",
+          "pattern": "wired to call the configured provider"
+        }
+      ]
+    },
+    {
+      "id": "B7",
+      "title": "api 客户端请求超时与重试分流",
+      "source": "本轮审计 / F-P1-5",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/lib/api.ts",
+          "pattern": "AbortSignal"
+        },
+        {
+          "type": "test",
+          "name": "retry"
+        }
+      ]
+    },
+    {
+      "id": "B8",
+      "title": "概览页 /dashboard",
+      "source": "docs/03 P1-2 ④",
+      "priority": "P3",
+      "status": "open",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "src/pages/DashboardPage.tsx"
+        }
+      ]
+    }
+  ]
+}

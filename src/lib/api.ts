@@ -43,14 +43,59 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn;
 }
 
+/**
+ * Default request deadline.
+ *
+ * Without one, a stalled connection leaves the promise pending forever: React
+ * Query never sees a failure, so it never retries and the spinner never stops.
+ * A bounded wait turns "hung" into "failed", which the UI already knows how to
+ * render.
+ */
+export const DEFAULT_TIMEOUT_MS = 15_000;
+/** Exports stream the whole library; they get a longer leash. */
+export const DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/**
+ * Distinguishes an expired deadline from a genuine network fault.
+ *
+ * `AbortSignal.timeout()` rejects with a `TimeoutError` DOMException, while a
+ * caller-initiated abort raises `AbortError`. Both surface here as exceptions
+ * from `fetch`, and the user-facing wording should not be the same.
+ */
+export function classifyFetchFailure(error: unknown): HttpError {
+  const name = (error as { name?: string } | null)?.name;
+  if (name === 'TimeoutError') {
+    return new HttpError(0, 'timeout', '请求超时，请稍后重试');
+  }
+  if (name === 'AbortError') {
+    return new HttpError(0, 'aborted', '请求已取消');
+  }
+  return new HttpError(0, 'network_error', '网络连接失败，请检查网络后重试');
+}
+
+/**
+ * Merges the caller's abort signal (if any) with the deadline.
+ *
+ * `AbortSignal.any` is the modern spelling; older engines fall back to the
+ * timeout alone rather than losing the deadline entirely.
+ */
+function withDeadline(signal: AbortSignal | null | undefined, ms: number): AbortSignal {
+  const deadline = AbortSignal.timeout(ms);
+  if (!signal) return deadline;
+  const any = (AbortSignal as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+  return any ? any([signal, deadline]) : deadline;
+}
+
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   /** Bypass the 401 -> logout hook, used by the refresh call itself. */
   skipAuthRedirect?: boolean;
+  /** Override the request deadline; defaults to `DEFAULT_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuthRedirect, headers, ...rest } = options;
+  const { body, skipAuthRedirect, headers, timeoutMs, signal, ...rest } = options;
 
   const isFormData = body instanceof FormData;
   const finalHeaders = new Headers(headers);
@@ -70,10 +115,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       ...rest,
       headers: finalHeaders,
       credentials: 'include',
+      signal: withDeadline(signal, timeoutMs ?? DEFAULT_TIMEOUT_MS),
       body: isFormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
-  } catch {
-    throw new HttpError(0, 'network_error', '网络连接失败，请检查网络后重试');
+  } catch (error) {
+    throw classifyFetchFailure(error);
   }
 
   if (response.status === 204) return undefined as T;
@@ -132,9 +178,13 @@ export async function downloadBlob(
 
   let response: Response;
   try {
-    response = await fetch(`${BASE}${path}`, { headers, credentials: 'include' });
-  } catch {
-    throw new HttpError(0, 'network_error', '网络连接失败，请检查网络后重试');
+    response = await fetch(`${BASE}${path}`, {
+      headers,
+      credentials: 'include',
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw classifyFetchFailure(error);
   }
 
   if (!response.ok) {

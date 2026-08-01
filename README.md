@@ -56,10 +56,11 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
 - **Tab groups (O12).** Curate an ordered set of your existing bookmarks into named,
   color-coded groups and reopen the whole set in one click — the manual half of
   "save my open tabs as a session" (live-window capture lands with the extension).
-- **AI-ready.** The settings UI and API persist an AI provider configuration (and
-  only a `hasApiKey` flag is returned to the client); the provider key is stored
-  encrypted. Auto-tag / auto-summarize is wired to call the configured provider
-  when a key and model are set.
+- **AI-ready (configuration only).** The settings UI and API persist an AI
+  provider configuration (and only a `hasApiKey` flag is returned to the client);
+  the provider key is sealed with AES-256-GCM. **No inference call is made yet** —
+  the `autoTag` / `autoSummarize` switches are stored but currently inert.
+  Tracked as `O11` in [docs/BACKLOG.md](./docs/BACKLOG.md).
 
 ## Tech stack
 
@@ -103,8 +104,11 @@ npm run dev:api
 # Apply the D1 schema to the local database (idempotent)
 npm run db:migrate:local
 
-# Front-end unit tests
+# Unit tests (backend logic)
 npm test
+
+# Requirement ledger: verify every claimed status against the repository
+npm run backlog:check
 
 # End-to-end smoke test (expects `npm run dev:api` running on :8788)
 bash scripts/smoke.sh
@@ -159,6 +163,18 @@ uptime monitor and alert on `status !== "ok"`.
 > update, just run `npm run deploy` (it builds `dist/` and runs
 > `wrangler pages deploy`). The D1 schema and `JWT_SECRET` are already provisioned;
 > only code changes need redeploying.
+
+## Roadmap and requirement tracking
+
+Every requirement — shipped, open, dropped, or blocked on someone else — lives in
+a single machine-checked ledger:
+
+- [`docs/BACKLOG.md`](./docs/BACKLOG.md) — the definition of done, the ordering
+  rules, and the generated status table.
+- `docs/backlog.json` — the source of truth.
+- `npm run backlog:check` — re-derives each status from the repository and fails
+  if a claim is unsupported **or** if finished work was never logged. It runs in
+  CI, so the roadmap cannot silently drift from the code.
 
 ## License
 
