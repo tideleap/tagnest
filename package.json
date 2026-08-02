@@ -16,6 +16,7 @@
     "test:ui": "vitest run --config vitest.ui.config.ts",
     "backlog:check": "node scripts/backlog-check.mjs",
     "backlog:write": "node scripts/backlog-check.mjs --write",
+    "themes:check": "node scripts/check-theme-consistency.mjs",
     "test:watch": "vitest --config vitest.backend.config.ts",
     "test:coverage": "vitest run --config vitest.backend.config.ts --coverage",
     "test:ui:coverage": "vitest run --config vitest.ui.config.ts --coverage",

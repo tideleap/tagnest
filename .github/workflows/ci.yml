@@ -36,6 +36,11 @@ jobs:
         # the backend suite cannot see.
         run: npm run test:ui
 
+      - name: Theme consistency
+        # Fails if the extension's hand-mirrored palette blocks drift from the
+        # SPA's theme.css.
+        run: npm run themes:check
+
       - name: Backlog consistency
         # Fails when docs/backlog.json claims a status the repository does not
         # support, in either direction. Keeps the requirement ledger honest.
