@@ -66,8 +66,10 @@ export function App() {
 
   useEffect(() => {
     // Re-assert on mount in case the inline head script and the store disagree.
+    // Runs once: we intentionally want the initial theme, not every future
+    // change — per-render updates are handled by setMode's own persistence.
     useTheme.getState().setMode(themeMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once bootstrap
   }, []);
 
   return (

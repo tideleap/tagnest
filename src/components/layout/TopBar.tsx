@@ -32,7 +32,7 @@ export function TopBar() {
     if (debounced) next.set('q', debounced);
     else next.delete('q');
     setParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- react only to the debounced query, not to each URL param change
   }, [debounced]);
 
   const isDark = document.documentElement.dataset.theme === 'dark';

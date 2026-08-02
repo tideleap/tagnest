@@ -115,8 +115,10 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
   }, [open, items, activeIndex, enabledIndexes]);
 
   useEffect(() => {
+    // Reset the highlighted item each time the menu opens, regardless of how
+    // the enabled list changed while closed.
     if (open) setActiveIndex(enabledIndexes[0] ?? -1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset-on-open only
   }, [open]);
 
   return (
