@@ -112,6 +112,25 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  /* Data tables / wide grids — wrap in a rounded, scrollable shell on small
+   * screens so they never blow out the layout with horizontal overflow.
+   * The page-level container stays free of horizontal scroll. */
+  .table-wrap {
+    @apply overflow-x-auto rounded-lg border border-line;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-wrap table {
+    @apply w-full text-left text-sm;
+    border-collapse: collapse;
+  }
+
+  /* Homepage-style interactive card lift, factored into one reusable utility
+   * so backend panels get the same hover feel as dashboard data cards. */
+  .card-interactive {
+    @apply transition-all duration-150;
+    @apply hover:-translate-y-0.5 hover:shadow-raised hover:border-line-strong;
+  }
 }
 
 @keyframes tn-fade-in {

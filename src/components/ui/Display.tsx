@@ -17,23 +17,43 @@ const BADGE_TONE: Record<BadgeTone, string> = {
   critical: 'bg-critical-soft text-critical-ink',
 };
 
+/** The tone-matching dot colour, surfaced as a CSS var so the Badge can show a
+ *  leading status dot without hardcoding a palette per tone. */
+const BADGE_DOT: Record<BadgeTone, string> = {
+  neutral: 'var(--color-ink-faint)',
+  brand: 'var(--color-brand-accent)',
+  positive: 'var(--color-positive)',
+  caution: 'var(--color-caution)',
+  critical: 'var(--color-critical)',
+};
+
 export function Badge({
   children,
   tone = 'neutral',
+  dot = false,
   className,
 }: {
   children: ReactNode;
   tone?: BadgeTone;
+  /** Show a small leading status dot (used for status labels in management views). */
+  dot?: boolean;
   className?: string;
 }) {
   return (
     <span
       className={cx(
-        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-medium',
         BADGE_TONE[tone],
         className,
       )}
     >
+      {dot && (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: BADGE_DOT[tone] }}
+        />
+      )}
       {children}
     </span>
   );
@@ -207,15 +227,17 @@ export function EmptyState({ icon, title, description, action, compact }: EmptyS
     <div
       className={cx(
         'flex flex-col items-center justify-center text-center',
-        compact ? 'gap-2 px-4 py-8' : 'gap-3 px-6 py-16',
+        compact ? 'gap-2.5 px-4 py-8' : 'gap-3 px-6 py-16',
       )}
     >
       {icon && (
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-sunken text-ink-faint">
-          {icon}
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-soft text-brand-accent shadow-raised">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface text-brand-ink shadow-raised">
+            {icon}
+          </span>
         </span>
       )}
-      <h3 className="text-base font-semibold text-ink">{title}</h3>
+      <h3 className="text-lg font-semibold text-ink">{title}</h3>
       {description && (
         <p className="max-w-sm text-sm leading-relaxed text-ink-soft">{description}</p>
       )}

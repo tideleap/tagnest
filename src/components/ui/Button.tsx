@@ -12,12 +12,16 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
  * variant should feel deliberate.
  */
 const VARIANT: Record<ButtonVariant, string> = {
+  // `btn-ripple` adds the homepage-style click feedback (CSS ::after pulse) on
+  // the two "weight-bearing" variants, so destructive/primary actions respond
+  // tactilely while ghost/secondary stay quiet.
   primary:
-    'bg-brand text-on-brand hover:bg-brand-hover active:bg-brand-hover shadow-raised disabled:bg-brand/55',
+    'btn-ripple bg-brand text-on-brand hover:bg-brand-hover active:bg-brand-hover shadow-raised disabled:bg-brand/55',
   secondary:
     'bg-surface text-ink border border-line hover:bg-surface-hover active:bg-sunken shadow-raised',
   ghost: 'bg-transparent text-ink-soft hover:bg-surface-hover hover:text-ink active:bg-sunken',
-  danger: 'bg-critical text-white hover:bg-critical-hover active:bg-critical-hover shadow-raised',
+  danger:
+    'btn-ripple bg-critical text-white hover:bg-critical-hover active:bg-critical-hover shadow-raised',
   link: 'bg-transparent text-brand-ink underline-offset-4 hover:underline p-0 h-auto',
 };
 

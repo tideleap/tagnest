@@ -97,7 +97,7 @@ function NavRow({
       title={item.label}
       className={({ isActive }) =>
         cx(
-          'flex h-9 items-center gap-2.5 rounded-md text-sm font-medium transition-colors',
+          'group relative flex h-9 items-center gap-2.5 rounded-md text-sm font-medium transition-colors duration-150',
           ROW_LAYOUT[mode],
           isActive
             ? 'bg-brand-soft text-brand-ink'
@@ -105,19 +105,37 @@ function NavRow({
         )
       }
     >
-      <Icon size={17} className="shrink-0" aria-hidden />
-      <span className={cx('min-w-0 flex-1 items-center truncate', LABEL_VISIBILITY[mode])}>
-        {item.label}
-      </span>
-      {count !== undefined && count > 0 && (
-        <span
-          className={cx(
-            'shrink-0 items-center text-2xs tabular-nums text-ink-faint',
-            LABEL_VISIBILITY[mode],
+      {({ isActive }) => (
+        <>
+          {/* Active indicator — a warm accent bar hugging the left edge, echoing
+              the homepage's brand-accent stamp. Fades in softly, appears faintly
+              on hover so the affordance is discoverable before activation. */}
+          <span
+            aria-hidden
+            className={cx(
+              'absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-brand-accent transition-all duration-150',
+              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-40',
+            )}
+          />
+          <Icon
+            size={17}
+            className="shrink-0 transition-transform duration-150 group-hover:scale-110"
+            aria-hidden
+          />
+          <span className={cx('min-w-0 flex-1 items-center truncate', LABEL_VISIBILITY[mode])}>
+            {item.label}
+          </span>
+          {count !== undefined && count > 0 && (
+            <span
+              className={cx(
+                'shrink-0 items-center text-2xs tabular-nums text-ink-faint',
+                LABEL_VISIBILITY[mode],
+              )}
+            >
+              {count > 999 ? '999+' : count}
+            </span>
           )}
-        >
-          {count > 999 ? '999+' : count}
-        </span>
+        </>
       )}
     </NavLink>
   );
@@ -272,7 +290,7 @@ export function Sidebar() {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div
-            className="anim-fade absolute inset-0 bg-black/35"
+            className="anim-fade absolute inset-0 bg-black/35 backdrop-blur-[1px]"
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
