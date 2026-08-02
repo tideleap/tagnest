@@ -146,6 +146,36 @@
     background-image: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-accent) 100%);
   }
 
+  /* Interactive bookmark card: rises with a soft shadow on hover. Kept
+   * transform/shadow only (no layout props) so virtualized rows stay cheap. */
+  .card-lift {
+    transition:
+      transform 0.16s var(--ease-out-soft),
+      box-shadow 0.16s var(--ease-out-soft),
+      border-color 0.16s ease,
+      background-color 0.16s ease;
+  }
+  .card-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-float);
+  }
+
+  /* Favicon badge — the consistent visual anchor across list/grid/compact.
+   * A warm brand-tinted tile that reads calmly under any favicon. */
+  .favicon-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
+    background: var(--color-brand-soft);
+    color: var(--color-brand-ink);
+  }
+  [data-theme='dark'] .favicon-badge,
+  [data-theme='aurora'] .favicon-badge {
+    background: var(--color-brand-soft);
+  }
+
   /* Glass panel — translucent surface + blur. Dark themes keep a higher
    * opacity (glass token stays readable) and skip blur where the browser
    * does not support it. */

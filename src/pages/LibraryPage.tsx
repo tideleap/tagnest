@@ -235,9 +235,11 @@ export function LibraryPage() {
       <header className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <HeaderIcon size={19} className="shrink-0 text-ink-faint" aria-hidden />
-          <h1 className="min-w-0 truncate text-lg font-semibold text-ink">{title}</h1>
+          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-ink">{title}</h1>
           {!isLoading && (
-            <span className="shrink-0 text-xs tabular-nums text-ink-faint">{total}</span>
+            <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-xs tabular-nums text-ink-faint">
+              {total}
+            </span>
           )}
         </div>
 
@@ -273,20 +275,18 @@ export function LibraryPage() {
       )}
 
       {isLoading ? (
-        <ul className="flex flex-col gap-2" aria-busy>
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5" aria-busy>
           {Array.from({ length: 6 }).map((_, i) => (
-            <li key={i} className="rounded-md border border-line bg-surface p-3.5">
-              <div className="flex gap-3">
-                <Skeleton className="h-5 w-5 shrink-0 rounded-sm" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="h-3 w-full" />
-                  <Skeleton className="h-3 w-1/3" />
-                </div>
+            <div key={i} className="flex items-center gap-3.5 rounded-lg border border-line bg-surface p-3.5">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-lg" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : items.length === 0 ? (
         query ? (
           <EmptyState
@@ -322,7 +322,7 @@ export function LibraryPage() {
           {isGrid ? (
             // Grid density defers to CSS columns — virtualizing a responsive
             // grid buys little and breaks keyboard order.
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {items.map((b) => (
                 <li
                   key={b.id}
