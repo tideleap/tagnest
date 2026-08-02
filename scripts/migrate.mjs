@@ -33,6 +33,19 @@ const flag = (name) => process.argv.slice(2).includes(`--${name}`);
 const local = flag('local');
 const dryRun = flag('dry-run');
 
+// Pre-flight probes for migrations whose net effect is a possibly-already-
+// present schema mutation (SQLite cannot `ADD COLUMN IF NOT EXISTS`). When the
+// probe returns a row, the migration is treated as already applied and
+// recorded as such without re-running its SQL.
+const MIGRATION_PROBES = {
+  // 0002 adds bookmarks.manual_order via ALTER TABLE (not idempotent).
+  '0002_keys_order_shares.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='manual_order'`,
+  // 0003 creates tab_groups (idempotent, but harmless to confirm and record).
+  '0003_tab_groups.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='table' AND name='tab_groups'`,
+};
+
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
   name TEXT PRIMARY KEY,
   applied_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -111,6 +124,30 @@ for (const file of files) {
     console.log(`skip   ${file}（已应用）`);
     continue;
   }
+
+  // Pre-flight: some migrations mutate rather than create (notably
+  // `ALTER TABLE ... ADD COLUMN`, which SQLite cannot guard with IF NOT
+  // EXISTS). If a migration was applied historically by a tool that did not
+  // write `_d1_migrations` (e.g. a manual `wrangler d1 execute --file`), its
+  // side effects already exist in the schema but the file is not recorded.
+  // Probe for those side effects; if present, record the file as applied and
+  // skip it (re-running the ALTER would fail with 'duplicate column').
+  const probe = MIGRATION_PROBES[file];
+  if (probe) {
+    // Present if the probe SQL returns present > 0. Parsed from wrangler's JSON
+    // output (robust to the exact column/format wrangler emits).
+    const out = run(['--command', probe]) ?? '';
+    const present = [...out.matchAll(/"present"\s*:\s*(\d+)/g)].reduce(
+      (max, m) => Math.max(max, Number(m[1]) || 0),
+      0,
+    );
+    if (present > 0) {
+      run(['--command', `INSERT OR IGNORE INTO _d1_migrations (name) VALUES ('${file.replace(/'/g, "''")}')`]);
+      console.log(`skip   ${file}（schema 已就绪，登记为已应用）`);
+      continue;
+    }
+  }
+
   if (!existsSync(path)) {
     console.error(`missing ${file}`);
     process.exitCode = 1;
