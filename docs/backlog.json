@@ -477,12 +477,12 @@
       ]
     },
     {
-  "id": "O11",
-  "title": "AI 自动标签 / 摘要",
-  "source": "PM-REVIEW O11",
-  "priority": "P1",
-  "status": "done",
-  "note": "未配置 provider key 时静默降级为 no-op，不阻塞保存主流程。",
+      "id": "O11",
+      "title": "AI 自动标签 / 摘要",
+      "source": "PM-REVIEW O11",
+      "priority": "P1",
+      "status": "done",
+      "note": "未配置 provider key 时静默降级为 no-op，不阻塞保存主流程。",
       "dependsOn": [
         "O8",
         "B1"
@@ -490,7 +490,8 @@
       "evidence": [
         {
           "type": "file",
-          "path": "functions/_lib/ai.ts"
+          "path": "functions/_lib/ai/index.ts",
+          "note": "AI 重构拆包目录入口"
         },
         {
           "type": "test",

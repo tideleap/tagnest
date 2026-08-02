@@ -52,6 +52,13 @@ const MIGRATION_PROBES = {
   // but unrecorded" risk as 0002.
   '0005_share_palette.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('shares') WHERE name='palette'`,
+  // 0006 is the two-track AI tagging refactor. Its most consequential side
+  // effect is bookmark_tags.source (provenance); if that column already exists
+  // the migration was applied (the `d1 execute --file` runner would otherwise
+  // fail with "duplicate column name: source"). Probe bookmarks_tags.source as
+  // the representative marker and treat its presence as "already applied".
+  '0006_ai_tagging.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('bookmark_tags') WHERE name='source'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
