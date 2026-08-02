@@ -1,4 +1,10 @@
-import type { PublicBookmark, PublicShare, Share, ShareTheme } from '../../shared/types';
+import type {
+  PublicBookmark,
+  PublicShare,
+  Share,
+  SharePalette,
+  ShareTheme,
+} from '../../shared/types';
 import type { Env } from './env';
 import { badRequest } from './http';
 import { newId } from './ids';
@@ -16,6 +22,9 @@ import { newId } from './ids';
  */
 
 export const THEMES: ShareTheme[] = ['default', 'compact', 'cards'];
+
+/** The color palettes a share page may render with. */
+export const PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 'starlight'];
 
 /** Hard ceiling on a public page; also bounds the KV value size. */
 export const MAX_PUBLIC_ITEMS = 300;
@@ -86,6 +95,9 @@ export function mapShare(row: Record<string, unknown>): Share {
     matchAllTags: row.match_all_tags === 1,
     includeNotes: row.include_notes === 1,
     theme: (row.theme as ShareTheme) ?? 'default',
+    palette: PALETTES.includes(row.palette as SharePalette)
+      ? (row.palette as SharePalette)
+      : 'light',
     isActive: row.is_active === 1,
     viewCount: Number(row.view_count ?? 0),
     createdAt: row.created_at as string,
@@ -193,6 +205,7 @@ export async function renderShare(
     title: share.title,
     description: share.description,
     theme: share.theme,
+    palette: share.palette,
     owner: ownerRow?.display_name ?? '',
     tags: [...headline.entries()].slice(0, 12).map(([name, colorIndex]) => ({ name, colorIndex })),
     items,

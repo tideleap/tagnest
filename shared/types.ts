@@ -192,6 +192,9 @@ export interface ApiKeyCreated {
 
 export type ShareTheme = 'default' | 'compact' | 'cards';
 
+/** A color palette a share page renders with (a ResolvedTheme key). */
+export type SharePalette = 'light' | 'dark' | 'aurora' | 'blossom' | 'starlight';
+
 export interface Share {
   id: string;
   slug: string;
@@ -201,6 +204,7 @@ export interface Share {
   matchAllTags: boolean;
   includeNotes: boolean;
   theme: ShareTheme;
+  palette: SharePalette;
   isActive: boolean;
   viewCount: number;
   createdAt: string;
@@ -218,6 +222,7 @@ export interface ShareInput {
   matchAllTags?: boolean;
   includeNotes?: boolean;
   theme?: ShareTheme;
+  palette?: SharePalette;
   isActive?: boolean;
   /** Days until the link stops resolving; omit or 0 for no expiry. */
   expiresInDays?: number;
@@ -239,6 +244,7 @@ export interface PublicShare {
   title: string;
   description: string | null;
   theme: ShareTheme;
+  palette: SharePalette;
   owner: string;
   tags: { name: string; colorIndex: number }[];
   items: PublicBookmark[];

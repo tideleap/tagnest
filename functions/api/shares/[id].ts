@@ -1,9 +1,9 @@
-import type { ShareTheme } from '../../../shared/types';
+import type { SharePalette, ShareTheme } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../_lib/http';
 import { isoFromNow, nowIso } from '../../_lib/ids';
-import { THEMES, assertValidSlug, mapShare, normalizeSlug, purgeCache } from '../../_lib/shares';
+import { PALETTES, THEMES, assertValidSlug, mapShare, normalizeSlug, purgeCache } from '../../_lib/shares';
 
 async function loadOwned(ctx: EventContext<Env, string, RequestData>, userId: string) {
   const row = await ctx.env.DB.prepare(
@@ -75,6 +75,12 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
     if (!THEMES.includes(body.theme as ShareTheme)) throw badRequest('未知的展示样式');
     sets.push('theme = ?');
     params.push(body.theme);
+  }
+
+  if ('palette' in body) {
+    if (!PALETTES.includes(body.palette as SharePalette)) throw badRequest('未知的主题配色');
+    sets.push('palette = ?');
+    params.push(body.palette);
   }
 
   if ('isActive' in body) {

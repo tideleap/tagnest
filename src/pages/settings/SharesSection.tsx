@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Copy, ExternalLink, Pencil, Share2, Trash2 } from 'lucide-react';
-import type { Share, ShareInput, ShareTheme } from '@shared/types';
+import type { Share, ShareInput, SharePalette, ShareTheme } from '@shared/types';
 import {
   Badge,
   Button,
@@ -36,6 +36,22 @@ const SHARE_THEME_OPTIONS: { value: ShareTheme; label: string }[] = [
   { value: 'cards', label: '卡片网格' },
 ];
 
+const SHARE_PALETTE_OPTIONS: { value: SharePalette; label: string }[] = [
+  { value: 'light', label: '暖白经典' },
+  { value: 'starlight', label: '星空白昼' },
+  { value: 'blossom', label: '暖白樱粉' },
+  { value: 'dark', label: '深空午夜' },
+  { value: 'aurora', label: '极夜青蓝' },
+];
+
+const SHARE_PALETTE_LABEL: Record<SharePalette, string> = {
+  light: '暖白',
+  starlight: '星空白昼',
+  blossom: '樱粉',
+  dark: '深空',
+  aurora: '极夜青蓝',
+};
+
 const SHARE_EXPIRY_OPTIONS = [
   { value: '0', label: '永不过期' },
   { value: '7', label: '7 天' },
@@ -67,6 +83,7 @@ export function SharesSection() {
   const [matchAllTags, setMatchAllTags] = useState(false);
   const [includeNotes, setIncludeNotes] = useState(true);
   const [theme, setTheme] = useState<ShareTheme>('default');
+  const [palette, setPalette] = useState<SharePalette>('light');
   const [isActive, setIsActive] = useState(true);
   const [expiresInDays, setExpiresInDays] = useState(0);
 
@@ -79,6 +96,7 @@ export function SharesSection() {
     setMatchAllTags(false);
     setIncludeNotes(true);
     setTheme('default');
+    setPalette('light');
     setIsActive(true);
     setExpiresInDays(0);
     setShowForm(true);
@@ -93,6 +111,7 @@ export function SharesSection() {
     setMatchAllTags(s.matchAllTags);
     setIncludeNotes(s.includeNotes);
     setTheme(s.theme);
+    setPalette(s.palette);
     setIsActive(s.isActive);
     setExpiresInDays(0);
     setShowForm(true);
@@ -114,6 +133,7 @@ export function SharesSection() {
       matchAllTags,
       includeNotes,
       theme,
+      palette,
       isActive,
       expiresInDays,
     };
@@ -158,6 +178,7 @@ export function SharesSection() {
                       {s.isActive ? '已启用' : '已停用'}
                     </Badge>
                     <Badge>{SHARE_THEME_LABEL[s.theme]}</Badge>
+                    <Badge tone="neutral">{SHARE_PALETTE_LABEL[s.palette]}</Badge>
                     {s.tagIds.length > 0 && (
                       <span className="text-2xs text-ink-faint">
                         {s.tagIds.length} 个标签筛选
@@ -300,6 +321,12 @@ export function SharesSection() {
             value={theme}
             onChange={(e) => setTheme(e.target.value as ShareTheme)}
             options={SHARE_THEME_OPTIONS}
+          />
+          <Select
+            label="配色"
+            value={palette}
+            onChange={(e) => setPalette(e.target.value as SharePalette)}
+            options={SHARE_PALETTE_OPTIONS}
           />
           <Select
             label="有效期"

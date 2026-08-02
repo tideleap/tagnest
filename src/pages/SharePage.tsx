@@ -1,19 +1,23 @@
 import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ExternalLink, Link2, Search } from 'lucide-react';
-import type { PublicBookmark, PublicShare, ShareTheme } from '@shared/types';
+import type { PublicBookmark, PublicShare, SharePalette, ShareTheme } from '@shared/types';
 import { Button, EmptyState, Spinner, TagChip } from '@/components/ui';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
+
+/** The palettes a share page can render with (subset of the app themes). */
+const VALID_PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 'starlight'];
 
 /**
  * Read-only public share page.
  *
  * Renders entirely from the anonymous `/api/public/:slug` endpoint — no auth,
  * no app chrome beyond a minimal header. Theming (default / compact / cards)
- * is stored on the share and applied here so a reader sees what the author
- * set, not the viewer's own preferences.
+ * is stored on the share and applied here, and the color palette is set on
+ * <html data-theme> so the page matches the author's chosen look rather than
+ * following the viewer's own OS preference.
  */
 export function SharePage() {
   const { slug = '' } = useParams();
@@ -29,6 +33,20 @@ export function SharePage() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [slug]);
+
+  // Apply the share author's chosen palette while this page is visible.
+  // Restored to the shell default on unmount / palette change so other routes
+  // (e.g. a deep link back into the app) are not left tinted.
+  useEffect(() => {
+    const palette =
+      data && VALID_PALETTES.includes(data.palette) ? data.palette : ('light' as SharePalette);
+    const host = document.documentElement;
+    const prev = host.dataset.theme;
+    host.dataset.theme = palette;
+    return () => {
+      if (prev) host.dataset.theme = prev;
+    };
+  }, [data]);
 
   if (isLoading) {
     return (

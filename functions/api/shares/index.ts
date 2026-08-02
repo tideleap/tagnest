@@ -1,9 +1,9 @@
-import type { ShareTheme } from '../../../shared/types';
+import type { SharePalette, ShareTheme } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, readJson } from '../../_lib/http';
 import { isoFromNow, newId, nowIso } from '../../_lib/ids';
-import { THEMES, assertValidSlug, mapShare, normalizeSlug, slugFromTitle } from '../../_lib/shares';
+import { PALETTES, THEMES, assertValidSlug, mapShare, normalizeSlug, slugFromTitle } from '../../_lib/shares';
 import { createLogger } from '../../_lib/logger';
 
 const MAX_SHARES = 50;
@@ -51,6 +51,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     ? (body.theme as ShareTheme)
     : 'default';
 
+  const palette = PALETTES.includes(body.palette as SharePalette)
+    ? (body.palette as SharePalette)
+    : 'light';
+
   let expiresAt: string | null = null;
   if (body.expiresInDays !== undefined && body.expiresInDays !== null) {
     const days = Number(body.expiresInDays);
@@ -66,8 +70,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   await ctx.env.DB.prepare(
     `INSERT INTO shares
        (id, user_id, slug, title, description, tag_ids, match_all_tags,
-        include_notes, theme, is_active, view_count, created_at, updated_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
+        include_notes, theme, palette, is_active, view_count, created_at, updated_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -79,6 +83,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       body.matchAllTags ? 1 : 0,
       body.includeNotes ? 1 : 0,
       theme,
+      palette,
       ts,
       ts,
       expiresAt,

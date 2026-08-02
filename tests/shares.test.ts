@@ -1,59 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import {
-  normalizeSlug,
-  slugFromTitle,
-  assertValidSlug,
-  THEMES,
-  MAX_PUBLIC_ITEMS,
-} from '../functions/_lib/shares';
-import { badRequest } from '../functions/_lib/http';
+import { mapShare, PALETTES } from '../functions/_lib/shares';
+import type { Share } from '../shared/types';
 
-describe('normalizeSlug', () => {
-  it('lowercases and replaces non-alphanumerics with a single hyphen', () => {
-    expect(normalizeSlug('My Cool Page!')).toBe('my-cool-page');
-    expect(normalizeSlug('  leading-and-trailing--  ')).toBe('leading-and-trailing');
+function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 's1',
+    slug: 'reading-list',
+    title: '阅读清单',
+    description: null,
+    tag_ids: '[]',
+    match_all_tags: 0,
+    include_notes: 1,
+    theme: 'default',
+    palette: 'light',
+    is_active: 1,
+    view_count: 3,
+    created_at: '2026-01-01',
+    updated_at: '2026-01-02',
+    expires_at: null,
+    ...overrides,
+  };
+}
+
+describe('mapShare (share row → client shape)', () => {
+  it('exposes the palette from the row', () => {
+    const share = mapShare(row({ palette: 'aurora' }));
+    expect(share.palette).toBe('aurora');
   });
 
-  it('strips everything for a CJK title', () => {
-    expect(normalizeSlug('我的收藏')).toBe('');
-  });
-});
-
-describe('slugFromTitle', () => {
-  it('uses the normalised title when it is long enough', () => {
-    expect(slugFromTitle('Frontend Links')).toBe('frontend-links');
+  it('falls back to light for an unknown palette', () => {
+    const share = mapShare(row({ palette: 'ultra-violet' }));
+    expect(share.palette).toBe('light');
   });
 
-  it('falls back to a random list- slug for CJK or too-short titles', () => {
-    const cjk = slugFromTitle('设计资源');
-    expect(cjk.startsWith('list-')).toBe(true);
-    const short = slugFromTitle('ab');
-    expect(short.startsWith('list-')).toBe(true);
+  it('falls back to light when the column is absent', () => {
+    const share = mapShare({ ...row(), palette: undefined });
+    expect(share.palette).toBe('light');
   });
 
-  it('avoids reserved slugs', () => {
-    expect(slugFromTitle('settings')).toMatch(/^list-/);
-  });
-});
-
-describe('assertValidSlug', () => {
-  it('accepts a well-formed slug', () => {
-    expect(() => assertValidSlug('my-cool-page')).not.toThrow();
-  });
-
-  it('rejects reserved words', () => {
-    expect(() => assertValidSlug('admin')).toThrow(badRequest('').constructor);
-  });
-
-  it('rejects bad characters and wrong length', () => {
-    expect(() => assertValidSlug('AB')).toThrow();
-    expect(() => assertValidSlug('has space')).toThrow();
+  it('defaults theme to default', () => {
+    const share = mapShare({ ...row(), theme: undefined });
+    expect(share.theme).toBe('default');
   });
 });
 
-describe('share constants', () => {
-  it('exposes sane themes and a public cap', () => {
-    expect(THEMES).toContain('default');
-    expect(MAX_PUBLIC_ITEMS).toBeGreaterThan(0);
+describe('PALETTES', () => {
+  it('lists the 5 renderable color palettes', () => {
+    expect(PALETTES).toEqual(['light', 'dark', 'aurora', 'blossom', 'starlight']);
   });
 });
