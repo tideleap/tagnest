@@ -128,12 +128,14 @@ git push origin main
    │
    ▼  (GitHub Actions: Deploy)
 [checkout] → [setup-node 22] → [npm ci]
-   → [typecheck] → [lint] → [build: tsc && vite build]
+   → [build: tsc && vite build]
    → [validate dist: index.html + _headers/CSP/HSTS]
    → [Check Cloudflare credentials]  (无凭据则跳过部署，不报错)
-   → [Apply D1 migrations (production)]  → scripts/migrate.mjs（幂等、逐文件）
+   → [Apply D1 migrations (production)]  → scripts/migrate.mjs（幂等、逐文件，非阻塞）
    → [wrangler pages deploy dist --branch=main]  → live on https://tagnest.pages.dev
 ```
+
+质量门禁（typecheck / lint / test / backlog）由 **`ci.yml` 独立 job** 把关，deploy job 专注构建与发布，互不拖慢。
 
 同时 `ci.yml` 也作为独立守卫对每次 PR/push 跑 **typecheck/lint/test/backlog:check**，二重保险。
 
@@ -172,6 +174,7 @@ npx wrangler pages secret put JWT_SECRET          # 线上运行时密钥
 | `npm run build` 在 Actions 失败 | 类型错误 / 依赖 | 看日志中 `tsc`/`vite` 具体报错后修复 |
 | 线上 `_headers` 生效但 CSP 报错 | `public/_headers` 与内联脚本 | 保留 `script-src 'unsafe-inline'`（首屏主题脚本需要） |
 | 双触发重复构建 | 同时连了 Cloudflare 原生构建 + Actions | 在 Cloudflare Pages 停用其一（建议保留 Actions） |
+| 迁移步骤失败但部署继续 | Cloudflare token 缺 `Account > D1 > Edit` | 给 token 加 D1 权限后 Re-run 迁移/部署；迁移步骤是**非阻塞**的（`continue-on-error`），失败会写入 Deploy 的 summary 提示 |
 | 预览分支 `pr-x` 访问不了 | PR 已关 / 分支被清 | 用新的 PR 重新触发 |
 
 **通用做法**：看 **Actions → Deploy → 失败 job → 日志**，把红色报错贴回对话即可精准定位。
