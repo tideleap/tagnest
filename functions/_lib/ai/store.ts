@@ -314,7 +314,15 @@ export async function saveSuggestions(
     }
   }
 
-  if (statements.length > 0) await env.DB.batch(statements);
+  if (statements.length > 0) {
+    // D1 caps a single batch at 100 statements. A full chunk of 20 bookmarks
+    // with 4 tags + delete + summary each can reach 120 statements, so split
+    // into safe slices rather than letting D1 reject the whole chunk.
+    const BATCH_STATEMENT_LIMIT = 100;
+    for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
+      await env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+    }
+  }
   return written;
 }
 

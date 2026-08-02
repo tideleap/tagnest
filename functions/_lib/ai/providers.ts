@@ -26,7 +26,16 @@ export const DEFAULT_ENDPOINTS: Record<Exclude<AiProvider, 'none' | 'custom'>, s
 /** Batch responses are long; too small a ceiling truncates them into nothing. */
 const MAX_OUTPUT_TOKENS = 2048;
 
-const REQUEST_TIMEOUT_MS = 45_000;
+/**
+ * Model request deadline.
+ *
+ * Must stay *shorter* than the client's chunk deadline (90s in
+ * `useOrganizeRun`) so the server fails first and returns a useful error
+ * instead of the client aborting mid-flight and showing a generic timeout.
+ * 25s is generous for a 10-bookmark batch while keeping total chunk time
+ * (2 batches + D1 writes) well under a minute.
+ */
+const REQUEST_TIMEOUT_MS = 25_000;
 
 export interface ProviderRequest {
   url: string;

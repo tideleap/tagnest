@@ -215,7 +215,13 @@ export function useOrganizeRun() {
 
         let result: AiJobRunResult;
         try {
-          result = await api.post<AiJobRunResult>(`/ai/jobs/${job.id}/run`);
+          // Each chunk may call the model (up to 25s) plus D1 writes. The
+          // default 15s client deadline is far too short and aborts the
+          // request before the server can respond, leaving the user with a
+          // false "timeout" while the chunk actually completed.
+          result = await api.post<AiJobRunResult>(`/ai/jobs/${job.id}/run`, undefined, {
+            timeoutMs: 90_000,
+          });
         } catch (e) {
           const message = e instanceof Error ? e.message : '整理过程中断';
           setState((s) => ({ ...s, running: false, error: message }));
