@@ -150,6 +150,109 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return payload as T;
 }
 
+/** Live progress pushed by a NDJSON stream (e.g. the import commit). */
+export interface ImportProgress {
+  done: number;
+  total: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * POSTs to a NDJSON-streaming endpoint and parses it line by line.
+ *
+ * The import commit spills progress as batches land; buffering to `.text()`
+ * would hide that entirely. This reads the body incrementally, fires
+ * `onProgress` for each `{"type":"progress",...}` line, and resolves with the
+ * final `{"type":"result",...}` object. Auth and the deadline mirror `request()`.
+ */
+export async function requestNdjson<T>(
+  path: string,
+  body: unknown,
+  onProgress: (p: ImportProgress) => void,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<T> {
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+  else if (apiKey) headers.set('X-API-Key', apiKey);
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      signal: withDeadline(options.signal, options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    throw classifyFetchFailure(error);
+  }
+
+  if (!response.ok) {
+    // Error bodies are plain JSON; surface the `error.message` when present.
+    let message = `请求失败（${response.status}）`;
+    try {
+      const text = await response.text();
+      const parsed: { error?: { message?: string } } | null = JSON.parse(text);
+      if (parsed?.error?.message) message = parsed.error.message;
+    } catch {
+      /* keep the fallback message */
+    }
+    if (response.status === 401) onUnauthorized?.();
+    throw new HttpError(response.status, 'import_failed', message);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new HttpError(0, 'network_error', '流式读取出错');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: T | null = null;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        let msg: { type?: string } & Record<string, unknown>;
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue; // partial / non-JSON chip — ignore
+        }
+        if (msg.type === 'progress' && typeof msg.done === 'number') {
+          onProgress({
+            done: msg.done,
+            total: typeof msg.total === 'number' ? msg.total : 0,
+            skipped: typeof msg.skipped === 'number' ? msg.skipped : 0,
+            failed: typeof msg.failed === 'number' ? msg.failed : 0,
+          });
+        } else if (msg.type === 'result') {
+          // Drop our transport-only `type` field so the resolved value matches
+          // the declared result shape exactly.
+          const { type: _omit, ...payload } = msg;
+          result = payload as T;
+        }
+      }
+
+      if (done) break;
+    }
+  } catch (error) {
+    throw classifyFetchFailure(error);
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (result === null) throw new HttpError(0, 'import_failed', '导入未返回结果');
+  return result;
+}
+
 export const api = {
   get: <T>(path: string, init?: RequestOptions) => request<T>(path, { ...init, method: 'GET' }),
   post: <T>(path: string, body?: unknown, init?: RequestOptions) =>

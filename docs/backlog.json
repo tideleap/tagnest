@@ -691,12 +691,21 @@
       "title": "导入进度可视化",
       "source": "PM-REVIEW Q8",
       "priority": "P2",
-      "status": "open",
+      "status": "done",
       "evidence": [
         {
           "type": "grep",
           "path": "src/pages/ImportPage.tsx",
           "pattern": "progress"
+        },
+        {
+          "type": "grep",
+          "path": "functions/api/import/commit.ts",
+          "pattern": "application/x-ndjson"
+        },
+        {
+          "type": "test",
+          "name": "import-progress"
         }
       ]
     },

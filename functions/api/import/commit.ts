@@ -1,7 +1,6 @@
-import type { ImportResult } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
-import { badRequest, json, notFound, readJson } from '../../_lib/http';
+import { badRequest, notFound, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
 import { ensureTags } from '../../_lib/db';
 import type { ParsedItem } from '../../_lib/import-parsers';
@@ -83,92 +82,115 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const existing = await loadExistingKeys(ctx.env, userId, items.map((i) => urlKey(i.url)));
 
-  /* ---- Write ----------------------------------------------------- */
+  /* ---- Write (streams progress as batches commit) --------------- */
 
+  const total = items.length;
   const ts = nowIso();
-  let imported = 0;
-  let skipped = 0;
-  let failed = 0;
+  const encoder = new TextEncoder();
+  const progress = (done: number, skipped: number, failed: number) =>
+    `${JSON.stringify({ type: 'progress', done, total, skipped, failed })}\n`;
 
-  for (let i = 0; i < items.length; i += WRITE_BATCH) {
-    const chunk = items.slice(i, i + WRITE_BATCH);
-    const statements: D1PreparedStatement[] = [];
+  // Build the NDJSON body as a stream so a large import reports live progress
+  // instead of holding the client questioningly at 0% until the last batch.
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let imported = 0;
+      let skipped = 0;
+      let failed = 0;
 
-    for (const item of chunk) {
-      const key = urlKey(item.url);
-      if (skipDuplicates && existing.has(key)) {
-        skipped += 1;
-        continue;
+      for (let i = 0; i < items.length; i += WRITE_BATCH) {
+        const chunk = items.slice(i, i + WRITE_BATCH);
+        const statements: D1PreparedStatement[] = [];
+
+        for (const item of chunk) {
+          const key = urlKey(item.url);
+          if (skipDuplicates && existing.has(key)) {
+            skipped += 1;
+            continue;
+          }
+          existing.add(key);
+
+          const id = newId();
+          const createdAt = item.addedAt ?? ts;
+
+          statements.push(
+            ctx.env.DB.prepare(
+              `INSERT INTO bookmarks
+                 (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
+                  ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
+                  created_at, updated_at, deleted_at)
+               VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 0, 0, 0, NULL, ?, ?, NULL)`,
+            ).bind(
+              id,
+              userId,
+              item.url,
+              key,
+              (item.title || titleFallback(item.url)).slice(0, 300),
+              faviconFor(item.url),
+              createdAt,
+              ts,
+            ),
+          );
+
+          const tagIds = new Set(extraIds);
+          for (const name of item.tagNames) {
+            const tagId = tagIdByLower.get(name.trim().toLowerCase());
+            if (tagId) tagIds.add(tagId);
+          }
+          if (foldersAsTags) {
+            const leaf = item.folderPath[item.folderPath.length - 1];
+            const tagId = leaf ? tagIdByLower.get(leaf.trim().toLowerCase()) : undefined;
+            if (tagId) tagIds.add(tagId);
+          }
+
+          for (const tagId of tagIds) {
+            statements.push(
+              ctx.env.DB.prepare(
+                `INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)`,
+              ).bind(id, tagId),
+            );
+          }
+
+          imported += 1;
+        }
+
+        if (statements.length > 0) {
+          try {
+            await ctx.env.DB.batch(statements);
+          } catch (e) {
+            // One bad batch must not abort the whole import; the user gets a count
+            // of what failed and can retry the file.
+            console.error('[tagnest] import batch failed', e);
+            failed += chunk.length;
+            imported -= chunk.length;
+          }
+        }
+
+        const done = Math.min(i + chunk.length, total);
+        controller.enqueue(encoder.encode(progress(done, skipped, failed)));
       }
-      existing.add(key);
 
-      const id = newId();
-      const createdAt = item.addedAt ?? ts;
+      await ctx.env.DB.prepare(`DELETE FROM import_staging WHERE token = ?`).bind(token).run();
 
-      statements.push(
-        ctx.env.DB.prepare(
-          `INSERT INTO bookmarks
-             (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
-              ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
-              created_at, updated_at, deleted_at)
-           VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 0, 0, 0, NULL, ?, ?, NULL)`,
-        ).bind(
-          id,
-          userId,
-          item.url,
-          key,
-          (item.title || titleFallback(item.url)).slice(0, 300),
-          faviconFor(item.url),
-          createdAt,
-          ts,
-        ),
-      );
+      const result = {
+        type: 'result',
+        imported: Math.max(imported, 0),
+        skipped,
+        failed: Math.max(failed, 0),
+        tagsCreated: Math.max(after - before, 0),
+      };
+      controller.enqueue(encoder.encode(`${JSON.stringify(result)}\n`));
+      controller.close();
+    },
+  });
 
-      const tagIds = new Set(extraIds);
-      for (const name of item.tagNames) {
-        const tagId = tagIdByLower.get(name.trim().toLowerCase());
-        if (tagId) tagIds.add(tagId);
-      }
-      if (foldersAsTags) {
-        const leaf = item.folderPath[item.folderPath.length - 1];
-        const tagId = leaf ? tagIdByLower.get(leaf.trim().toLowerCase()) : undefined;
-        if (tagId) tagIds.add(tagId);
-      }
-
-      for (const tagId of tagIds) {
-        statements.push(
-          ctx.env.DB.prepare(
-            `INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)`,
-          ).bind(id, tagId),
-        );
-      }
-
-      imported += 1;
-    }
-
-    if (statements.length === 0) continue;
-
-    try {
-      await ctx.env.DB.batch(statements);
-    } catch (e) {
-      // One bad batch must not abort the whole import; the user gets a count
-      // of what failed and can retry the file.
-      console.error('[tagnest] import batch failed', e);
-      failed += chunk.length;
-      imported -= chunk.length;
-    }
-  }
-
-  await ctx.env.DB.prepare(`DELETE FROM import_staging WHERE token = ?`).bind(token).run();
-
-  const result: ImportResult = {
-    imported: Math.max(imported, 0),
-    skipped,
-    failed: Math.max(failed, 0),
-    tagsCreated: Math.max(after - before, 0),
-  };
-
-  return json(result);
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
 };
 
 async function countTags(env: Env, userId: string): Promise<number> {

@@ -26,8 +26,9 @@ import type {
   Tag,
   TagInput,
 } from '@shared/types';
-import { api, qs } from '@/lib/api';
+import { api, qs, requestNdjson, type ImportProgress } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { useState } from 'react';
 
 /**
  * Central key registry.
@@ -387,16 +388,24 @@ export function useImportPreview() {
 
 export function useImportCommit() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: ImportCommit) => api.post<ImportResult>('/import/commit', input),
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const mutation = useMutation({
+    mutationFn: (input: ImportCommit) =>
+      requestNdjson<ImportResult>('/import/commit', input, setProgress, { timeoutMs: 120_000 }),
     onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
       void qc.invalidateQueries({ queryKey: keys.tags });
       void qc.invalidateQueries({ queryKey: keys.stats });
       toast.success(`导入完成：${res.imported} 项`, `跳过 ${res.skipped}，失败 ${res.failed}`);
+      setProgress(null);
     },
-    onError: (e: Error) => toast.error('导入失败', e.message),
+    onError: (e: Error) => {
+      toast.error('导入失败', e.message);
+      setProgress(null);
+    },
+    onMutate: () => setProgress({ done: 0, total: 0, skipped: 0, failed: 0 }),
   });
+  return { ...mutation, progress };
 }
 
 export function useAiSettings() {

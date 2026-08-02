@@ -36,6 +36,9 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
   strips `utm_*`/`gclid`/`fbclid` and other tracking parameters.
 - **Multi-source import.** Netscape HTML, JSON (TagNest / array / `{bookmarks}`
   / `{items}`), and CSV — all staged for a preview before anything is written.
+- **Live import progress.** Large imports stream their progress as batches
+  commit (NDJSON), so the page shows a real progress bar instead of sitting at
+  0% until the last record lands.
 - **Scopes & bulk ops.** Inbox / all / favorites / archive / trash, plus bulk
   tag, soft-delete, restore, and purge.
 - **Tenant isolation.** Every query is scoped by `user_id`; cross-account access

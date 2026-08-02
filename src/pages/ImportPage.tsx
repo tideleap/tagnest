@@ -230,11 +230,47 @@ export function ImportPage() {
             </ul>
           </div>
 
+          {commitMutation.isPending && commitMutation.progress && (
+            <div className="rounded-md border border-line bg-surface p-4">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <h2 className="text-sm font-semibold text-ink">正在导入…</h2>
+                <span className="text-xs tabular-nums text-ink-soft">
+                  {commitMutation.progress.done} / {commitMutation.progress.total || '…'}
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={commitMutation.progress.total || 100}
+                aria-valuenow={Math.min(commitMutation.progress.done, commitMutation.progress.total || 100)}
+                aria-label="导入进度"
+                className="h-2 w-full overflow-hidden rounded-full bg-sunken"
+              >
+                <div
+                  className="h-full rounded-full bg-brand transition-[width] duration-200 ease-out"
+                  style={{
+                    width: `${
+                      commitMutation.progress.total > 0
+                        ? Math.min(100, (commitMutation.progress.done / commitMutation.progress.total) * 100)
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex gap-3 text-2xs text-ink-faint">
+                {commitMutation.progress.skipped > 0 && <span>跳过 {commitMutation.progress.skipped}</span>}
+                {commitMutation.progress.failed > 0 && (
+                  <span className="text-critical">失败 {commitMutation.progress.failed}</span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="pad-safe-b sticky bottom-0 flex items-center gap-2 border-t border-line bg-canvas py-3">
             <p className="flex-1 text-xs text-ink-soft">
               将导入 <strong className="tabular-nums text-ink">{willImport}</strong> 条书签
             </p>
-            <Button variant="ghost" onClick={() => setPreview(null)}>
+            <Button variant="ghost" onClick={() => setPreview(null)} disabled={commitMutation.isPending}>
               取消
             </Button>
             <Button

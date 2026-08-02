@@ -24,7 +24,10 @@ check() { # check <label> <actual> <expected>
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected [$3], got [$2]"; fi
 }
 
-jget() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);const v=process.argv[1].split(".").reduce((a,k)=>a==null?a:a[k],o);console.log(v===undefined||v===null?"":typeof v==="object"?JSON.stringify(v):v)}catch(e){console.log("")}})' "$1"; }
+# Reads a JSON value from a response. Handles both plain JSON and NDJSON
+# (the import commit streams progress lines, so the meaningful payload is the
+# last non-empty line). Falls back to "" on any parse error.
+jget() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const lines=s.split("\n").map(x=>x.trim()).filter(Boolean);const last=lines[lines.length-1]||s;try{const o=JSON.parse(last);const v=process.argv[1].split(".").reduce((a,k)=>a==null?a:a[k],o);console.log(v===undefined||v===null?"":typeof v==="object"?JSON.stringify(v):v)}catch(e){console.log("")}})' "$1"; }
 
 EMAIL="smoke-$(date +%s)@example.com"
 
