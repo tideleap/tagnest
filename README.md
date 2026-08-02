@@ -17,6 +17,8 @@ front end.
 TagNest is deployed and verified end-to-end on Cloudflare Pages:
 
 - **Production URL:** https://tagnest.pages.dev
+- **CI/CD:** push to `main` auto-builds and deploys via GitHub Actions; see
+  [docs/CICD.md](./docs/CICD.md). (This branch is a preview build of the PR.)
 - **Back end:** Cloudflare Pages Functions + D1 (`tagnest-db`, region APAC) with an
   `fts5` trigram full-text index.
 - **Auth:** PBKDF2-HMAC-SHA256 + HS256 JWT access tokens with rotating httpOnly
