@@ -25,6 +25,9 @@ const SharePage = lazy(() =>
 const TabGroupsPage = lazy(() =>
   import('@/pages/TabGroupsPage').then((m) => ({ default: m.TabGroupsPage })),
 );
+const DashboardPage = lazy(() =>
+  import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
 
 function RouteFallback() {
   return (
@@ -83,7 +86,8 @@ export function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<Navigate to="/library/inbox" replace />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/library/:scope" element={<LibraryPage />} />
             <Route path="/tags" element={<TagsPage />} />
             <Route path="/tags/:tagId" element={<LibraryPage />} />

@@ -74,6 +74,12 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
   assets refresh in the background (stale-while-revalidate). Bookmark API calls
   are deliberately never cached, so you never see stale data for another
   session.
+- **Dashboard (B8).** The signed-in landing page shows your library at a glance —
+  bookmarks, tags, recent additions and favourites up top, plus maintenance
+  counts (untagged / archived / trashed) and quick links to keep things tidy.
+- **Cover thumbnails (Q8d).** Bookmarks that carry a `cover_url` render a
+  16:9 thumb in grid view (lazy-loaded); covers that fail fall back silently to
+  the compact favicon row, and list/compact layouts stay lean.
 
 ## Tech stack
 

@@ -7,6 +7,7 @@ import {
   Download,
   FolderOpen,
   Inbox,
+  LayoutDashboard,
   Layers,
   Settings,
   Star,
@@ -55,6 +56,7 @@ interface NavItem {
 }
 
 const PRIMARY: NavItem[] = [
+  { to: '/dashboard', label: '概览', icon: LayoutDashboard },
   { to: '/library/inbox', label: '收件箱', icon: Inbox, countKey: 'inbox' },
   { to: '/library/all', label: '全部书签', icon: Layers, countKey: 'bookmarks' },
   { to: '/library/favorites', label: '收藏', icon: Star, countKey: 'favorites' },

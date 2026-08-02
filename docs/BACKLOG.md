@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 41 ／ ➖ superseded 2 ／ ⬜ open 2 ／ ⏸ blocked-external 1
+> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 43 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -163,7 +163,7 @@ npm run backlog:write   # 重新生成下方状态表
 | `Q8a` | 书签访问统计 | P2 | ✅ done | 2/2 |  |
 | `Q8b` | 标签颜色 | P2 | ✅ done | 1/1 |  |
 | `Q8c` | 深色模式 | P2 | ✅ done | 1/1 |  |
-| `Q8d` | 封面图展示 | P3 | ⬜ open | 0/1 | 后端 cover_url 已存储，前端未渲染。 |
+| `Q8d` | 封面图展示 | P3 | ✅ done | 1/1 | grid 视图渲染 coverUrl 封面（16:9，懒加载，失败静默回退 favicon）；list/compact 保持紧凑不渲染。 |
 | `Q8e` | PWA 离线 | P2 | ✅ done | 3/3 |  |
 | `Q8f` | 导入进度可视化 | P2 | ✅ done | 3/3 |  |
 | `R1` | 文档漂移治理 | P0 | ✅ done | 3/3 | 已建立 docs/BACKLOG.md + backlog-check CI 门禁；README 失实描述已由 B1 纠正。 |
@@ -171,12 +171,9 @@ npm run backlog:write   # 重新生成下方状态表
 | `R5` | 凭证卫生：吊销已泄露 PAT | P0 | ⏸ blocked-external | 人工核验 | 需用户在 GitHub 手动吊销 ghp_OrnyH… 与 ghp_y2Uw…；Agent 无法代为吊销。 |
 | `B1` | 纠正 README 中 AI 已接线的失实描述 | P0 | ✅ done | 1/1 |  |
 | `B7` | api 客户端请求超时与重试分流 | P1 | ✅ done | 2/2 |  |
-| `B8` | 概览页 /dashboard | P3 | ⬜ open | 0/1 |  |
+| `B8` | 概览页 /dashboard | P3 | ✅ done | 3/3 | 登录落地首页：核心指标（书签/近7天/标签/收藏）+ 维护（未打标/归档/回收站）+ 快捷入口；数据源自 /stats。 |
 
-**当前执行队列**（按优先级与依赖拓扑排序）：
-
-1. `B8` 概览页 /dashboard（P3）
-2. `Q8d` 封面图展示（P3）
+**当前执行队列**：空 —— 所有需求已进入终态。
 
 <!-- END:BACKLOG-TABLE -->
 

@@ -72,6 +72,31 @@ function Favicon({ bookmark, size }: { bookmark: Bookmark; size: number }) {
 }
 
 /**
+ * Grid-card cover image (Q8d).
+ *
+ * Only rendered when a `coverUrl` exists — a bookmark without one keeps the
+ * title-first layout rather than exposing a blank tiles wall. The fixed ratio
+ * reserves space up front so rows don't jump as images stream in; a broken
+ * cover falls back silently to the favicon row below it.
+ */
+function Cover({ bookmark }: { bookmark: Bookmark }) {
+  const [failed, setFailed] = useState(false);
+  if (!bookmark.coverUrl || failed) return null;
+  return (
+    <div className="mb-2.5 -mx-3.5 -mt-3.5 overflow-hidden rounded-t-md bg-sunken">
+      <img
+        src={bookmark.coverUrl}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="aspect-[16/9] w-full object-cover"
+      />
+    </div>
+  );
+}
+
+/**
  * One card, three densities.
  *
  * Keeping list/grid/compact in a single component is deliberate: three
@@ -212,10 +237,13 @@ function BookmarkCardBase({
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         {isGrid && (
-          <div className="mb-1 flex items-center gap-2">
-            <Favicon bookmark={b} size={18} />
-            <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
-          </div>
+          <>
+            <Cover bookmark={b} />
+            <div className="mb-1 flex items-center gap-2">
+              <Favicon bookmark={b} size={18} />
+              <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
+            </div>
+          </>
         )}
 
         <h3 className={cx('min-w-0 font-medium leading-snug text-ink', isCompact ? 'truncate text-sm' : 'line-clamp-2 text-sm')}>

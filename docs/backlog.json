@@ -655,8 +655,8 @@
       "title": "封面图展示",
       "source": "PM-REVIEW Q8",
       "priority": "P3",
-      "status": "open",
-      "note": "后端 cover_url 已存储，前端未渲染。",
+      "status": "done",
+      "note": "grid 视图渲染 coverUrl 封面（16:9，懒加载，失败静默回退 favicon）；list/compact 保持紧凑不渲染。",
       "evidence": [
         {
           "type": "grep",
@@ -792,11 +792,22 @@
       "title": "概览页 /dashboard",
       "source": "docs/03 P1-2 ④",
       "priority": "P3",
-      "status": "open",
+      "status": "done",
+      "note": "登录落地首页：核心指标（书签/近7天/标签/收藏）+ 维护（未打标/归档/回收站）+ 快捷入口；数据源自 /stats。",
       "evidence": [
         {
           "type": "file",
           "path": "src/pages/DashboardPage.tsx"
+        },
+        {
+          "type": "grep",
+          "path": "src/App.tsx",
+          "pattern": "/dashboard"
+        },
+        {
+          "type": "grep",
+          "path": "src/components/layout/Sidebar.tsx",
+          "pattern": "LayoutDashboard"
         }
       ]
     }
