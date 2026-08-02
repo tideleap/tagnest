@@ -183,6 +183,12 @@ uptime monitor and alert on `status !== "ok"`.
 > update, just run `npm run deploy` (it builds `dist/` and runs
 > `wrangler pages deploy`). The D1 schema and `JWT_SECRET` are already provisioned;
 > only code changes need redeploying.
+>
+> **Preferred path — Cloudflare Git integration (push-to-deploy):** the project
+> is connected to GitHub so every push to `main` can auto-build and deploy. See
+> `docs/CF-GIT-DEPLOY.md` for the one dashboard setting (build command
+> `npm run build`, output `dist`) and how D1 migrations are handled under Git
+> integration.
 
 ## Roadmap and requirement tracking
 
