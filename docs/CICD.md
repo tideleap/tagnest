@@ -1,106 +1,199 @@
-# CI/CD & 部署
+# TagNest CI/CD 与自动化部署手册
 
-TagNest 跑在 **Cloudflare Pages + D1** 上。本文档说明当前可用的部署路径，以及如何在
-拥有正确权限后启用 GitHub Actions 自动部署。
+> 目标：**代码推送到 `main` → 自动构建 → 自动应用 D1 迁移 → 自动部署到 Cloudflare Pages → 无需人工干预**。本文档从零到可长期维护地描述整条链路。最后更新：2026-08-02。
 
-## 当前状态：两套部署路径并存
+---
 
-- **脚本化手动部署（随时可用）**：`scripts/deploy.mjs` 作为不依赖 Actions 的等效流水线，
-  在本机依次运行与 CI 完全相同的质量门禁，再部署到 Cloudflare Pages。生产站点
-  https://tagnest.pages.dev 即由此路径上线（本地 OAuth 登录）。
-- **GitHub Actions（已激活）**：工作流文件 `.github/workflows/ci.yml` 与 `deploy.yml` 已推送到
-  `main`（2026-08-01，提交 `fbc41d1`），GitHub 侧均显示 `state: active`。
-  - **CI（`ci.yml`）已验证通过**：首次推送触发 run #1，`Typecheck / Lint / Test` 结论 `success`
-    —— 证明 `npm run build`（`tsc -b && vite build`）在 CI runner 上也能正常产出 `dist`。
-  - **部署（`deploy.yml`）当前失败**：run #1 结论 `failure`，wrangler-action 发布的
-    “Cloudflare Pages” 检查显示 “🚫 Build failed”。说明部署作业**已执行**（即
-    `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 两个 Secret 已存在），但在 Cloudflare
-    部署步骤鉴权/授权失败。根因几乎确定是 `CLOUDFLARE_API_TOKEN` 无效、过期或缺少
-    `Cloudflare Pages: Edit` 权限（账户 ID Secret 指向的正是正确账户
-    `335886786d5a9656e7aba4692bc85b14`）。修复该 Token 后重新运行工作流即可。
+## 1. 项目结构 & 配置文件清单
 
-### 可用命令（`package.json`）
+流水线相关的文件，一图看清：
 
-| 命令 | 作用 |
-| --- | --- |
-| `npm run deploy` | 门禁 → 构建 → 部署到 `main`（生产） |
-| `npm run deploy:preview` | 部署到 `preview` 分支 |
-| `npm run deploy:check` | 仅门禁 + 构建，不上传（`--dry-run`） |
-| `npm run release` | `git push` + 部署到 `main` |
-| `npm run hooks:install` | 启用 `pre-push` 钩子（推送前跑 typecheck + test） |
-
-门禁顺序：`typecheck` → `lint` → `test` → `build`（`TN_KEEP_DIST=1` 规避本地递归删除拦截）→
-产物校验（`index.html` + `_headers` 含 CSP/HSTS）→ `wrangler pages deploy`。
-
-### 部署前置
-
-- 已通过 `wrangler` OAuth 登录（`wrangler whoami` 可见账号）。
-- `JWT_SECRET` 已通过 `wrangler pages secret put JWT_SECRET` 设置（否则运行时回退到开发密钥）。
-- KV 命名空间 `SHARE_CACHE`（可选，公开分享缓存）如已绑定则自动启用，缺失时静默降级。
-
-### 数据库迁移
-
-迁移文件位于 `migrations/`，已写成幂等形式（`CREATE ... IF NOT EXISTS`、`CREATE TRIGGER
-IF NOT EXISTS`）。常规迁移命令：
-
-```bash
-npx wrangler d1 migrations apply tagnest-db --remote
+```
+tagnest/                              ← GitHub 仓库根
+├─ .github/
+│  └─ workflows/
+│     ├─ ci.yml                       CI：typecheck / lint / test / backlog
+│     └─ deploy.yml                   CD：build → 迁移 → Pages 部署（主要交付物）
+├─ src/                               React 前端源码
+├─ functions/                         Cloudflare Pages Functions（API 后端）
+│  ├─ _lib/                           auth / db / urlkey / import-parsers / ids …
+│  └─ api/                            路由（auth、bookmarks、tags、import、stats…）
+├─ public/                            favicon.svg、_headers、manifest.webmanifest、sw.js、PWA 图标
+├─ migrations/
+│  ├─ 0001_init.sql                   表结构（幂等）
+│  ├─ 0002_keys_order_shares.sql      密钥 / 排序 / 分享（幂等）
+│  └─ 0003_tab_groups.sql             标签页组（幂等）
+├─ scripts/
+│  ├─ deploy.mjs                      手动部署流水线（门禁+构建+上传）
+│  └─ migrate.mjs                     D1 逐文件幂等迁移（新增，供 CI/手动复用）
+├─ shared/types.ts                    前后端共享类型
+├─ package.json                       依赖清单 & scripts（下方列出）
+├─ wrangler.toml                      Pages + D1 + KV 绑定、构建输出目录、兼容性
+├─ vitest.backend.config.ts           测试配置（node 环境）
+├─ .gitignore                         dist/、node_modules/、.wrangler/、.workbuddy/ 等
+└─ docs/
+   ├─ CICD.md                         （本文档）
+   └─ backlog.json / BACKLOG.md       需求台账（被 CI 校验）
 ```
 
-> 注意：`wrangler` 3.x 的 `migrations apply` 对含 FTS5 虚表 / 触发器的文件存在语句切分
-> 解析缺陷（报 “SQL code did not contain a statement”）。若遇到，可改用按文件执行：
-> `npx wrangler d1 execute tagnest-db --remote --file=migrations/0001_init.sql`，
-> 幂等写法保证已存在的对象被跳过。已应用的迁移记录在 `d1_migrations` 表中，重复执行为无操作。
+### 依赖清单（package.json scripts，与流水线相关）
 
-## GitHub Actions 启用状态与剩余修复
+| 命令 | 作用 | 谁在用 |
+| --- | --- | --- |
+| `npm run typecheck` / `lint` / `test` | 质量门禁 | CI + deploy.mjs |
+| `npm run build` | `tsc -b && vite build`，产出 `dist/` | CI + deploy.mjs |
+| `npm run backlog:check` | 需求台账一致性校验 | CI |
+| `npm run db:migrate:all` | **逐文件幂等迁移（推荐）** | deploy.yml + 手动 |
+| `npm run deploy` / `deploy:preview` / `deploy:check` | 手动部署流水线 | 手动 |
+| `npm run hooks:install` | 启用推送前门禁钩子 | 本地 |
 
-工作流已推送到 `main`（提交 `fbc41d1`）并激活；PAT（带 `repo`+`workflow`）与 GCM 凭据
-均已就绪。下面记录已完成项与当前唯一阻塞。
+`wrangler.toml` 关键配置：`pages_build_output_dir = "dist"`、D1 `DB`（`tagnest-db`）、KV `SHARE_CACHE`、`compatibility_date`、变量 `DISABLE_SIGNUP` / `ALLOWED_EMAILS`。`JWT_SECRET` 属敏感信息，**用 Secret 注入，不进仓库**。
 
-### 已完成
+---
 
-- **PAT 换发（带 `workflow` scope）**：新 PAT 已通过 GitHub API 验证，具备
-  `repo` / `workflow` 等权限；本地 GCM 凭据已更新为令牌 `tideleap`，并成功
-  `git push origin main`（首次推送即触发 CI 与 Deploy 两个 run）。
-- **工作流激活**：GitHub 侧 `ci.yml` / `deploy.yml` 均 `state: active`。
+## 2. GitHub 仓库初始化、上传与提交规范
 
-### 当前阻塞 —— `CLOUDFLARE_API_TOKEN` 部署鉴权失败
+### 2.1 分支模型
 
-部署作业已运行（run #1 `failure`），wrangler-action 发布 “Cloudflare Pages / Build failed”。
-说明两个 Cloudflare Secret 已存在，但 **`CLOUDFLARE_API_TOKEN` 无效、过期或缺少
-`Cloudflare Pages: Edit` 权限**。账户 ID Secret 指向正确账户 `335886786d5a9656e7aba4692bc85b14`。
-注意：`cloudflare/wrangler-action@v3` 接收的 `CLOUDFLARE_API_TOKEN` 必须是 **Cloudflare API Token**
-（非 GitHub PAT，也非 Global API Key）。
+- **`main`**：唯一生产分支。**提交合并到 `main` 触发生产部署**。
+- 功能开发在 `feature/*` 或 `fix/*` 分支，通过 **Pull Request** 进 `main`；PR 同时触发 CI 与 Pages **预览部署**（`pr-<编号>.tagnest.pages.dev`），可在合并前预览。
 
-### 修复步骤（Cloudflare 侧，需在 Cloudflare 后台操作）
+### 2.2 提交规范
 
-1. Cloudflare 后台 → My Profile → API Tokens → Create Token。
-2. 使用模板 **Cloudflare Pages**（或自定义：权限 `Account > Cloudflare Pages > Edit`），
-   账户选 `god in 劲仔`（`335886786d5a9656e7aba4692bc85b14`）。
-3. 复制新 Token，到 GitHub 仓库 → Settings → Secrets and variables → Actions，
-   将 `CLOUDFLARE_API_TOKEN` 的值更新为该 Token（如尚未创建则新建）。
-4. 回到仓库 → Actions → 选 “Deploy” 工作流 → Re-run jobs（或推送任意改动触发）。
-   成功后每次 push 到 `main` 即自动部署生产，PR 部署到 `pr-<编号>` 预览。
+- **消息格式**（约定式提交，保持可追溯）：
+  `type(scope): 描述`，如 `feat(import): live progress`、`fix(auth): …`、`chore(deps): …`。
+- **每个提交应通过本地门禁**（推荐装钩子：`npm run hooks:install` 会在 push 前跑 typecheck+test）。
+- **不要提交** `dist/`、`node_modules/`、`.wrangler/`、`.dev.vars`、`.workbuddy/`（已在 `.gitignore`）。
+- **不要提交任何密钥**：`JWT_SECRET` 用 `wrangler pages secret put`；`CLOUDFLARE_*` 只放 GitHub Secrets。
 
-> 排查提示：若 GitHub Actions 日志中仍报错，常见为
-> `Invalid API token` / `token does not have access to account` / `Missing permission
-> pages:edit`。把红色报错贴回对话即可精准定位。另：若此前在 Cloudflare Pages 后台把仓库
-> 直接连过 GitHub（Cloudflare 原生构建），会与本 Actions 双触发，建议停用其一以免重复构建。
+### 2.3 新仓库初始化（首次）
 
-### 激活后行为（修复 Token 后即生效）
+```bash
+git init
+git remote add origin https://github.com/<org>/tagnest.git
+git add -A && git commit -m "feat: initial import"
+git branch -M main
+git push -u origin main
+```
 
-- **CI（`ci.yml`）**：每次 PR 与 push 到 `main` 运行 `typecheck` / `lint` / `test`（已验证通过）。
-- **部署（`deploy.yml`）**：作业在**同时检测到 `CLOUDFLARE_API_TOKEN` 与
-  `CLOUDFLARE_ACCOUNT_ID` 两个 Secret 时**才运行；否则自动跳过（不报错）。
-  push 到 `main` 时自动 `npm run build` 并 `wrangler pages deploy dist
-  --project-name=tagnest --branch=main` 部署到生产；PR 部署到 `pr-<编号>` 预览分支。
-- **迁移不自动跑**：工作流不执行 D1 迁移（沿用 `migrations apply` 手动流程），与现有
-  运维约定一致。
+### 2.4 将工作流推送后启用
 
-## 安全提醒
+推送到 `main` 后，GitHub Actions 会自动识别 `.github/workflows/*.yml`。到仓库 **Actions** 页确认 `CI` 与 `Deploy` 均 `state: active`。
 
-- **公开注册**：`wrangler.toml` 中 `DISABLE_SIGNUP` 当前为 `false`。如需关闭开放注册，
-  改为 `true` 并重新部署。
-- **密钥不下发**：`api_keys` 仅存储令牌摘要，明文令牌仅创建时返回一次；`ai_settings.api_key`
-  经 AES-256-GCM 加密存储，后端绝不回传明文。
-- **PAT 轮换**：任何曾暴露于对话 / 日志的 PAT 都应视为已泄露并立即撤销。
+---
+
+## 3. Cloudflare 与 GitHub 的自动关联
+
+### 3.1 一次性配置（Cloudflare 后台）
+
+1. Cloudflare → **My Profile → API Tokens → Create Token**。
+2. 用模板 **Cloudflare Pages**（或自定义：`Account > Cloudflare Pages > Edit`），账户选定本项目所属账户。
+3. 复制 token。
+
+### 3.2 配置 GitHub Secrets
+
+仓库 → **Settings → Secrets and variables → Actions → New repository secret**，添加：
+
+| Secret 名 | 是否必需 | 值 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | 推荐 | 第 3.1 步的 Cloudflare API Token（注意：是 CF 的 Token，非 GitHub PAT） |
+| `CLOUDFLARE_ACCOUNT_ID` | 可选（多账户时必需） | 账户 ID `335886786d5a9656e7aba4692bc85b14` |
+| `CLOUDFLARE_API_KEY` + `CLOUDFLARE_EMAIL` | 备选认证方式 | 用 Global API Key 时的替代（与上面二选一） |
+
+> 只有一个账户时，`CLOUDFLARE_API_TOKEN` 即可，wrangler 自动推断账户。
+
+### 3.3 关联后的行为（`deploy.yml`）
+
+- **push 到 `main`**：装依赖 → typecheck → lint → build → 校验 `dist/index.html` + `_headers` → **应用 D1 迁移** → `wrangler pages deploy dist --branch=main` → 生产 `https://tagnest.pages.dev`。
+- **PR**：同样构建，但跳过生产迁移与生产部署，改为部署预览 `pr-<编号>`。
+- **手动**：Actions → Deploy → Run workflow，可用开关 `run_db_migrations` 控制是否顺带抢跑迁移（默认 `true`，仅影响生产）。
+
+### 3.4 触发条件（`deploy.yml` 的 `on:`）
+
+```
+on:
+  push:      { branches: [main] }        # 推送到 main → 生产
+  pull_request: { branches: [main] }     # PR → 预览
+  workflow_dispatch:                      # 手动触发（带迁移开关）
+concurrency:
+  group: deploy-${{ github.ref }}         # 同 ref 串行，防止快速连续推送竞态
+```
+
+---
+
+## 4. 端到端无人工部署流程
+
+```
+git push origin main
+   │
+   ▼  (GitHub Actions: Deploy)
+[checkout] → [setup-node 22] → [npm ci]
+   → [typecheck] → [lint] → [build: tsc && vite build]
+   → [validate dist: index.html + _headers/CSP/HSTS]
+   → [Check Cloudflare credentials]  (无凭据则跳过部署，不报错)
+   → [Apply D1 migrations (production)]  → scripts/migrate.mjs（幂等、逐文件）
+   → [wrangler pages deploy dist --branch=main]  → live on https://tagnest.pages.dev
+```
+
+同时 `ci.yml` 也作为独立守卫对每次 PR/push 跑 **typecheck/lint/test/backlog:check**，二重保险。
+
+**首次部署前还需**（一次性）：
+```bash
+npx wrangler d1 create tagnest-db                 # 若无此库
+npx wrangler pages secret put JWT_SECRET          # 线上运行时密钥
+```
+（项目已具备 `tagnest-db`，见 `wrangler.toml` 的 `database_id`。）
+
+---
+
+## 5. 数据库迁移如何自动化
+
+`migrations/` 里的文件**全部幂等**（`CREATE ... IF NOT EXISTS`、`CREATE TRIGGER IF NOT EXISTS`）。`scripts/migrate.mjs` 会：
+
+1. 建幂等登记表 `_d1_migrations(name, applied_at)`；
+2. 读取 `migrations/` 全部 `0NN_*.sql`；
+3. 对每个**未登记**的文件执行 `wrangler d1 execute tagnest-db --remote --file=<file>`，成功后 `INSERT OR IGNORE` 登记；
+4. 已登记的跳过 → **重跑安全、中途失败可续跑**。
+
+> 为什么不用 `wrangler d1 migrations apply`？它对含注释/FTS5 虚表/触发器的多语句文件存在切分解析缺陷（“SQL code did not contain a statement”）。逐文件执行 + 幂等写法规避之。
+
+本地预览：`npm run db:migrate:all:local`；强制执行前预览：`npm run db:migrate:all:dry`。
+
+---
+
+## 6. 部署失败排查（按概率排序）
+
+| 现象 / 日志 | 根因 | 解决 |
+| --- | --- | --- |
+| `Invalid API token` / `token does not have access to account` | `CLOUDFLARE_API_TOKEN` 无效/过期/权限不足 | 后台重建 Cloudflare API Token（`Cloudflare Pages: Edit`），替换 Secret |
+| `Missing permission: pages:edit` | Token 缺少 Pages 编辑权限 | Token 增加 `Account > Cloudflare Pages > Edit` |
+| 生产没部署但有 CI 成功 | `CLOUDFLARE_API_TOKEN`/`ACCOUNT_ID` 未设 | 补 Secret；或单账户只需 `API_TOKEN` |
+| 迁移步骤失败 / 「SQL code did not contain a statement」 | 直接调 `migrations apply` | 用 `scripts/migrate.mjs`（逐文件）；含非幂等改动的迁移需人工核对 |
+| `npm run build` 在 Actions 失败 | 类型错误 / 依赖 | 看日志中 `tsc`/`vite` 具体报错后修复 |
+| 线上 `_headers` 生效但 CSP 报错 | `public/_headers` 与内联脚本 | 保留 `script-src 'unsafe-inline'`（首屏主题脚本需要） |
+| 双触发重复构建 | 同时连了 Cloudflare 原生构建 + Actions | 在 Cloudflare Pages 停用其一（建议保留 Actions） |
+| 预览分支 `pr-x` 访问不了 | PR 已关 / 分支被清 | 用新的 PR 重新触发 |
+
+**通用做法**：看 **Actions → Deploy → 失败 job → 日志**，把红色报错贴回对话即可精准定位。
+
+---
+
+## 7. 回滚方案
+
+Cloudflare Pages 保留每次部署的快照，回滚无需改代码、秒级生效：
+
+1. Cloudflare 后台 → **Workers & Pages → 选择 `tagnest` → Deployments**。
+2. 找到要退回的上一个**成功**部署，点其右侧 **• • • → Rollback to this deployment**（新版本归档，生产 URL 立即回退）。
+3. 代码层面若需连带回退，再 `git revert <bad-sha>` 并 push（会自动再触发一次部署）。
+
+**数据（D1）回滚**：D1 有自动备份与时间点恢复（Cloudflare 控制台 → D1 → Backup/Restore）。迁移若已执行且业务异常，优先用 `scripts/migrate.mjs` 修正后重跑，或按需从备份恢复——**迁移文件须保持幂等，避免依赖顺序回滚**。
+
+---
+
+## 8. 长期可维护性约定
+
+- **升级 Node/wrangler 版本**：改 `deploy.yml` 的 `NODE_VERSION` 与 `package.json` 的 engines，合并进 PR，CI 验证后再合入 `main`。
+- **新增迁移**：新建 `migrations/000N_描述.sql`（幂等写法）→ 本地 `npm run db:migrate:all:local` 自测 → 随代码一起 push，CI 自动应用到生产。
+- **密钥轮换**：任何暴露过的 PAT / Token 立即在 GitHub / Cloudflare 撤销并重建，更新 Secret 后 Re-run 一次部署验证。
+- **门禁不放松**：CI 的四项（typecheck/lint/test/backlog）都是部署前的硬门禁；`dist/_headers` 的 CSP/HSTS 校验兜底安全头不回退。
+- **改文档即更新**：本文档随流水线改动同步维护，保持「从零可复现」。

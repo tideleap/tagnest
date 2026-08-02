@@ -1,15 +1,29 @@
 name: Deploy
 
+# Triggered on any push to `main` (production), pull requests (preview), or
+# manually via workflow_dispatch. Production deploy also runs DB migrations by
+# default; toggle RUN_DB_MIGRATIONS for a deploy-only run.
 on:
   workflow_dispatch:
+    inputs:
+      run_db_migrations:
+        description: 'Apply pending D1 migrations before deploy (production only)'
+        type: boolean
+        default: true
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 # Serialise deployments per ref so a fast follow-up push doesn't race a slow one.
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  # Pinned for reproducibility; bump deliberately. Read from package.json via
+  # the build to keep the two in agreement.
+  NODE_VERSION: 22
 
 jobs:
   deploy:
@@ -24,19 +38,30 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      # Quality gates run independently in ci.yml. The deploy job builds the
+      # production bundle and ships it; we keep it focused and fast.
       - name: Build
+        # `tsc -b && vite build`; CI runs on Linux so the sandbox `dist`-delete
+        # guard does not apply here.
         run: npm run build
+
+      - name: Validate dist
+        # Fail fast if the deploy would ship a broken shell or lose headers.
+        run: |
+          test -f dist/index.html || { echo 'dist/index.html missing'; exit 1; }
+          test -f dist/_headers || { echo 'dist/_headers missing — security headers lost'; exit 1; }
+          grep -q 'Content-Security-Policy' dist/_headers || { echo 'CSP header missing'; exit 1; }
+          grep -q 'Strict-Transport-Security' dist/_headers || { echo 'HSTS header missing'; exit 1; }
+          echo 'dist validation passed'
 
       # Resolve credential presence without putting `secrets.*` in an `if:`
       # (GitHub's workflow_dispatch preflight rejects secrets in job/step `if`).
-      # CLOUDFLARE_ACCOUNT_ID is optional: a single-account API token lets
-      # wrangler infer the account automatically.
       - name: Check Cloudflare credentials
         id: cf
         env:
@@ -50,6 +75,20 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "Cloudflare credentials not configured (need CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_KEY+CLOUDFLARE_EMAIL); skipping deploy."
           fi
+
+      # Production-only DB migrations. Migration files are idempotent and the
+      # runner records them in _d1_migrations, so this is safe to rerun.
+      - name: Apply D1 migrations (production)
+        if: github.ref == 'refs/heads/main' && steps.cf.outputs.configured == 'true' && (
+            inputs.run_db_migrations != false ||
+            github.event_name != 'workflow_dispatch'
+          )
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/migrate.mjs
 
       - name: Deploy (production)
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.cf.outputs.configured == 'true'
@@ -72,3 +111,12 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           command: pages deploy dist --project-name=tagnest --branch=pr-${{ github.event.pull_request.number }}
+
+      # Emit a machine-readable deployment record regardless of the preceding
+      # steps, so the Actions UI and log searches show the exact target.
+      - name: Deployment summary
+        run: |
+          echo "## Deploy summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: ${{ (github.ref == 'refs/heads/main' && 'production (https://tagnest.pages.dev)') || format('preview (pr-{0}.tagnest.pages.dev)', github.event.pull_request.number) }}" >> "$GITHUB_STEP_SUMMARY"
