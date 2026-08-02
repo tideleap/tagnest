@@ -1,5 +1,6 @@
 // TagNest popup interaction logic.
 import { loadConfig, isConfigured } from '../bg/config.js';
+import { loadExtTheme, applyExtTheme } from '../bg/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -128,12 +129,16 @@ els.openOptions.addEventListener('keydown', (e) => {
   }
 });
 
-// Reflect theme so the popup matches the app/OS preference.
-if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-  document.documentElement.setAttribute('data-theme', 'dark');
-}
-window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', (e) => {
-  document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+// Apply the chosen theme (from extension settings; system -> OS). Follow live
+// changes so opening the popup after changing settings reflects instantly.
+(async () => {
+  const mode = await loadExtTheme();
+  applyExtTheme(mode);
+})();
+chrome.storage?.onChanged?.addListener((changes, area) => {
+  if (area === 'local' && changes.tagnestExtTheme?.newValue) {
+    applyExtTheme(changes.tagnestExtTheme.newValue);
+  }
 });
 
 reflectStatus();

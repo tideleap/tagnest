@@ -180,3 +180,47 @@ describe('extension: api client idempotency', () => {
       .rejects.toThrow(/无法连接/);
   });
 });
+
+describe('extension: theme resolver', () => {
+  // cache the original window so tests don't leak
+  const originalWindow = globalThis.window;
+
+  afterEach(() => {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    vi.unstubAllGlobals();
+  });
+
+  it('passes known themes straight through', async () => {
+    const { resolveExtTheme } = await import('../extension/bg/theme.js');
+    for (const t of ['light', 'dark', 'aurora', 'blossom', 'starlight']) {
+      expect(resolveExtTheme(t)).toBe(t);
+    }
+  });
+
+  it('resolves system to dark when OS prefers dark', async () => {
+    globalThis.window = { matchMedia: () => ({ matches: true }) };
+    const { resolveExtTheme } = await import('../extension/bg/theme.js');
+    expect(resolveExtTheme('system')).toBe('dark');
+  });
+
+  it('resolves system to light when OS prefers light', async () => {
+    globalThis.window = { matchMedia: () => ({ matches: false }) };
+    const { resolveExtTheme } = await import('../extension/bg/theme.js');
+    expect(resolveExtTheme('system')).toBe('light');
+  });
+
+  it('falls back to system for unknown values', async () => {
+    globalThis.window = { matchMedia: () => ({ matches: false }) };
+    const { resolveExtTheme } = await import('../extension/bg/theme.js');
+    expect(resolveExtTheme('bogus')).toBe('light');
+  });
+
+  it('exposes the six options the settings UI renders', async () => {
+    const { EXT_THEME_OPTIONS, KNOWN_THEMES } = await import('../extension/bg/theme.js');
+    expect(KNOWN_THEMES).toEqual(['light', 'dark', 'aurora', 'blossom', 'starlight']);
+    expect(EXT_THEME_OPTIONS.map((o) => o.value)).toEqual([
+      'light', 'starlight', 'blossom', 'dark', 'aurora', 'system',
+    ]);
+  });
+});

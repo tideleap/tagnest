@@ -1,11 +1,19 @@
 // TagNest options page logic.
 import { loadConfig, saveConfig, clearConfig, isConfigured } from '../bg/config.js';
 import { apiFetch, ApiError } from '../bg/api.js';
+import {
+  EXT_THEME_OPTIONS,
+  EXT_THEME_KEY,
+  loadExtTheme,
+  setExtTheme,
+  applyExtTheme,
+} from '../bg/theme.js';
 
 const $ = (id) => document.getElementById(id);
 const baseUrlEl = $('baseUrl');
 const apiKeyEl = $('apiKey');
 const feedEl = $('feedback');
+const themeEl = $('theme');
 
 function show(kind, text) {
   feedEl.hidden = false;
@@ -66,8 +74,26 @@ $('keyHelpLink').addEventListener('click', (e) => {
   window.open(`${base.replace(/\/+$/, '')}/settings`, '_blank', 'noopener');
 });
 
-if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-  document.documentElement.setAttribute('data-theme', 'dark');
+// Populate the theme picker and apply the persisted choice.
+function initThemePicker() {
+  themeEl.innerHTML = '';
+  for (const opt of EXT_THEME_OPTIONS) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    themeEl.appendChild(o);
+  }
+  (async () => {
+    const mode = await loadExtTheme();
+    themeEl.value = mode;
+    applyExtTheme(mode);
+  })();
 }
+
+themeEl?.addEventListener('change', () => {
+  setExtTheme(themeEl.value).catch(() => {});
+});
+
+initThemePicker();
 
 init();
