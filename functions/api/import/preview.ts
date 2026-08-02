@@ -76,13 +76,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
     // Preserve the real cause in telemetry — name/message/stack — so a truly
     // unexpected failure can be diagnosed from the logs instead of guessing.
+    // NOTE: log.error(event, err, props) — the Error must be the SECOND arg so
+    // createLogger can flatten `error`/`stack`; passing an object here produced
+    // `[object Object]` and buried the actual message (observed in prod logs).
     const cause = (e as Error) ?? new Error(String(e));
-    log.error('import.preview_failed', {
-      userId,
-      errorName: cause.name,
-      error: cause.message,
-      stack: cause.stack ?? '',
-    });
+    log.error('import.preview_failed', cause, { userId });
 
     const kind = classifyUnexpected(e);
     if (kind === 'db') {
@@ -140,7 +138,7 @@ async function handle(
   try {
     bytes = new Uint8Array(await file.arrayBuffer());
   } catch (e) {
-    log.error('import.read_failed', { userId, error: (e as Error)?.message ?? '' });
+    log.error('import.read_failed', e instanceof Error ? e : new Error(String(e)), { userId });
     throw badRequestCode('import_read', '读取文件失败，请重试');
   }
 
@@ -155,11 +153,10 @@ async function handle(
   try {
     parsed = parseBySource(source, text);
   } catch (e) {
-    log.error('import.parse_error', {
+    log.error('import.parse_error', e instanceof Error ? e : new Error(String(e)), {
       userId,
       source,
       encoding,
-      error: (e as Error)?.message ?? 'unknown',
     });
     throw badRequestCode(
       'import_parse',
