@@ -210,6 +210,32 @@ export async function requestNdjson<T>(
   let buffer = '';
   let result: T | null = null;
 
+  // Parse one NDJSON element from the start of `buffer`. Splits on `\n`; a
+  // line that isn't valid JSON (or is a transport progress frame) is skipped.
+  const consume = (s: string) => {
+    const line = s.trim();
+    if (!line) return;
+    let msg: { type?: string } & Record<string, unknown>;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return; // partial / non-JSON chip — ignore
+    }
+    if (msg.type === 'progress' && typeof msg.done === 'number') {
+      onProgress({
+        done: msg.done,
+        total: typeof msg.total === 'number' ? msg.total : 0,
+        skipped: typeof msg.skipped === 'number' ? msg.skipped : 0,
+        failed: typeof msg.failed === 'number' ? msg.failed : 0,
+      });
+    } else if (msg.type === 'result') {
+      // Drop our transport-only `type` field so the resolved value matches
+      // the declared result shape exactly.
+      const { type: _omit, ...payload } = msg;
+      result = payload as T;
+    }
+  };
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -217,32 +243,17 @@ export async function requestNdjson<T>(
 
       let nl: number;
       while ((nl = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, nl).trim();
+        consume(buffer.slice(0, nl));
         buffer = buffer.slice(nl + 1);
-        if (!line) continue;
-        let msg: { type?: string } & Record<string, unknown>;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue; // partial / non-JSON chip — ignore
-        }
-        if (msg.type === 'progress' && typeof msg.done === 'number') {
-          onProgress({
-            done: msg.done,
-            total: typeof msg.total === 'number' ? msg.total : 0,
-            skipped: typeof msg.skipped === 'number' ? msg.skipped : 0,
-            failed: typeof msg.failed === 'number' ? msg.failed : 0,
-          });
-        } else if (msg.type === 'result') {
-          // Drop our transport-only `type` field so the resolved value matches
-          // the declared result shape exactly.
-          const { type: _omit, ...payload } = msg;
-          result = payload as T;
-        }
       }
 
       if (done) break;
     }
+    // Flush any multi-byte sequence the incremental decoder still holds, and
+    // then the trailing chunk (a result line may arrive without a trailing
+    // newline after a proxy finalises/truncates the stream).
+    buffer += decoder.decode();
+    if (buffer.trim()) consume(buffer);
   } catch (error) {
     throw classifyFetchFailure(error);
   } finally {

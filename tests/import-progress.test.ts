@@ -136,4 +136,34 @@ describe('requestNdjson: progress parsing', () => {
       requestNdjson('/import/commit', {}, () => {}, { timeoutMs: 1000 }),
     ).rejects.toThrow(/未返回结果/);
   });
+
+  it('parses a final result line that is not newline-terminated', async () => {
+    // Proxies / finalising intermediaries can drop the trailing newline of the
+    // last frame. The flush-tail path must still resolve the result.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      ndjsonResponse(
+        '{"type":"progress","done":2,"total":2,"skipped":0,"failed":0}\n' +
+        '{"type":"result","imported":2,"skipped":0,"failed":0,"tagsCreated":0}',
+      ),
+    ));
+    const { requestNdjson } = await load();
+    const result = await requestNdjson('/import/commit', {}, () => {}, { timeoutMs: 1000 });
+    expect(result.imported).toBe(2);
+  });
+
+  it('flush decodes a trailing multi-byte (CJK) result with no newline', async () => {
+    // A result framed entirely inside a single trailing chunk WITHOUT a newline,
+    // where the JSON contains a multibyte character — exercises the incremental
+    // decoder flush on stream end.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(streamFrom(
+        '{"type":"progress","done":1,"total":1,"skipped":0,"failed":0}\n' +
+        '{"type":"result","imported":1,"skipped":0,"failed":0,"tagsCreated":1}',
+      ), { status: 200, ok: true, headers: { 'Content-Type': 'application/x-ndjson' } }),
+    ));
+    const { requestNdjson } = await load();
+    const result = await requestNdjson('/import/commit', {}, () => {}, { timeoutMs: 1000 });
+    expect(result.imported).toBe(1);
+    expect(result.tagsCreated).toBe(1);
+  });
 });
