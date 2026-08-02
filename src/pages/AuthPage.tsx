@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Input } from '@/components/ui';
+import { Logo } from '@/components/decor/Logo';
 import { useAuth } from '@/stores/auth';
 import { HttpError } from '@/lib/api';
 
@@ -66,18 +67,13 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-canvas px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-7 flex flex-col items-center gap-3 text-center">
-          <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand text-on-brand">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M7 4h10a1 1 0 0 1 1 1v14.4a.7.7 0 0 1-1.1.57L12 16.6l-4.9 3.37A.7.7 0 0 1 6 19.4V5a1 1 0 0 1 1-1Z"
-                fill="currentColor"
-              />
-            </svg>
+        <div className="mb-7 flex flex-col items-center gap-4 text-center">
+          <span className="mascot-idle block">
+            <Logo size={64} />
           </span>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-ink">TagNest</h1>
-            <p className="mt-1 text-sm text-ink-soft">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">TagNest</h1>
+            <p className="mt-1.5 text-sm text-ink-soft">
               {isSignUp ? '创建账户，开始整理你的书签' : '欢迎回来'}
             </p>
           </div>

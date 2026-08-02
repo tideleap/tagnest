@@ -90,3 +90,6 @@ export function DottedBg({ className }: { className?: string }) {
     />
   );
 }
+
+export { Logo } from './Logo';
+export { AmbientGlow } from './AmbientGlow';

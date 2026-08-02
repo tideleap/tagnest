@@ -16,7 +16,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   // the two "weight-bearing" variants, so destructive/primary actions respond
   // tactilely while ghost/secondary stay quiet.
   primary:
-    'btn-ripple brand-grad text-on-brand shadow-glow hover:-translate-y-px hover:shadow-overlay active:translate-y-0 active:brightness-[0.97] disabled:opacity-60',
+    'btn-ripple cta-glow brand-grad text-on-brand shadow-glow hover:-translate-y-px hover:shadow-overlay active:translate-y-0 active:brightness-[0.97] disabled:opacity-60',
   secondary:
     'bg-surface text-ink border border-line hover:bg-surface-hover hover:border-line-strong active:bg-sunken shadow-raised hover:shadow-float',
   ghost: 'bg-transparent text-ink-soft hover:bg-surface-hover hover:text-ink active:bg-sunken',

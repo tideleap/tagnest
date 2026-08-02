@@ -130,7 +130,7 @@ function AttentionCard({
     <Reveal delay={index * 50}>
       <Link
         to={to}
-        className="attention-card group flex items-center gap-4 rounded-2xl border-2 border-line bg-surface p-4 shadow-float transition-all hover:-translate-y-1 hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="attention-card card-halo group flex items-center gap-4 rounded-2xl border-2 border-line bg-surface p-4 shadow-float transition-all hover:-translate-y-1 hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         <span
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-raised"
@@ -178,7 +178,7 @@ function StatCard({
     <Reveal delay={index * 50}>
       <Link
         to={to}
-        className="stat-card block rounded-2xl border-2 border-line bg-surface p-5 shadow-float transition-all hover:-translate-y-1 hover:scale-[1.02] hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="stat-card card-halo block rounded-2xl border-2 border-line bg-surface p-5 shadow-float transition-all hover:-translate-y-1 hover:scale-[1.02] hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         <span
           className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl text-white"

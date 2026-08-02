@@ -6,6 +6,7 @@ import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileTabBar } from './MobileTabBar';
+import { AmbientGlow } from '@/components/decor/AmbientGlow';
 import { cx } from '@/lib/cx';
 
 const CommandPalette = lazy(() =>
@@ -35,15 +36,32 @@ export function AppLayout() {
 
   return (
     <div className="relative flex min-h-dvh bg-canvas">
-      {/* Ambient brand glow — a faint warm corner wash so the flat canvas
-          gains light depth. Pure decoration, reduced-motion safe. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-      >
+      {/* Static decoration layer — gradient light blobs + a faint dot texture.
+          pointer-events-none, low opacity, so it adds warmth and depth without
+          ever crowding content or swallowing clicks. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* dotted texture, brand-tinted */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)',
+            backgroundSize: '26px 26px',
+            color: 'var(--color-brand-ink)',
+            opacity: 0.05,
+            maskImage: 'radial-gradient(ellipse 60% 60% at 50% 0%, #000 40%, transparent 100%)',
+            WebkitMaskImage:
+              'radial-gradient(ellipse 60% 60% at 50% 0%, #000 40%, transparent 100%)',
+          }}
+        />
+        {/* warm corner washes */}
         <div className="absolute -left-24 -top-32 h-96 w-96 rounded-full bg-brand-soft/50 blur-[90px]" />
-        <div className="absolute bottom-auto right-[-8rem] top-16 h-80 w-80 rounded-full bg-brand-accent/20 blur-[100px]" />
+        <div className="absolute right-[-8rem] top-16 h-80 w-80 rounded-full bg-brand-accent/20 blur-[100px]" />
+        {/* a low, centred geometric accent to ground the page */}
+        <div className="absolute bottom-[-10rem] right-1/4 h-80 w-80 rounded-full border border-brand-soft/40 blur-[2px]" />
       </div>
+
+      {/* Cursor-following ambient light — desktop + smooth pointer only. */}
+      <AmbientGlow />
 
       {/* Skip link — the first stop for keyboard users, invisible until focused. */}
       <a
@@ -57,7 +75,7 @@ export function AppLayout() {
 
       <div
         className={cx(
-          'relative flex min-w-0 flex-1 flex-col transition-[padding] duration-200',
+          'anim-page-enter relative flex min-w-0 flex-1 flex-col transition-[padding] duration-200',
           // Reserve room for the floating rail (width + 12px gutter) from md up.
           collapsed ? 'md:pl-[4.25rem]' : 'md:pl-[4.25rem] lg:pl-[15.75rem]',
         )}

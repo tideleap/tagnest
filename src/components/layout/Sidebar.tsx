@@ -21,6 +21,7 @@ import { cx } from '@/lib/cx';
 import { IconButton, Skeleton, TagChip } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
 import { useStats, useTags } from '@/hooks/queries';
+import { Logo } from '@/components/decor/Logo';
 
 /**
  * How labels behave at the current width.
@@ -223,19 +224,17 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
 }
 
 function BrandMark({ mode }: { mode: LabelMode }) {
+  // Collapsed icon-rail keeps a compact 32px tile (the 56px rail must fit
+  // tile + padding); expanded lets the mark breathe large as the visual anchor.
+  const size = mode === 'lg' ? 44 : 32;
   return (
-    <span className="flex items-center gap-2 overflow-hidden">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-on-brand">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M7 4h10a1 1 0 0 1 1 1v14.4a.7.7 0 0 1-1.1.57L12 16.6l-4.9 3.37A.7.7 0 0 1 6 19.4V5a1 1 0 0 1 1-1Z"
-            fill="currentColor"
-          />
-        </svg>
+    <span className="flex items-center gap-2.5 overflow-hidden">
+      <span className="logo-breathe grow-0">
+        <Logo size={size} />
       </span>
       <span
         className={cx(
-          'truncate text-base font-semibold tracking-tight text-ink',
+          'truncate text-lg font-semibold tracking-tight text-ink',
           BLOCK_VISIBILITY[mode],
         )}
       >

@@ -1,8 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#D98324" />
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d93f07"/>
+      <stop offset="1" stop-color="#922900"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#bg)"/>
+  <rect width="32" height="32" rx="8" fill="url(#sheen)"/>
   <path
-    d="M11 8h10a1 1 0 0 1 1 1v15.2a.8.8 0 0 1-1.26.65L16 21.4l-4.74 3.45A.8.8 0 0 1 10 24.2V9a1 1 0 0 1 1-1Z"
+    d="M10.5 8h11a1 1 0 0 1 1 1v15a.8.8 0 0 1-1.24.66L16 21.2l-5.26 3.46A.8.8 0 0 1 9.5 24V9a1 1 0 0 1 1-1Z"
     fill="#fff"
+    opacity="0.98"
   />
-  <circle cx="16" cy="14" r="2.4" fill="#D98324" />
+  <circle cx="16" cy="14" r="2.3" fill="#d93f07"/>
 </svg>

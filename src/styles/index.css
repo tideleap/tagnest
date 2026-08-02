@@ -361,6 +361,81 @@
   .btn-ripple:active::after {
     animation: tn-ripple 0.5s ease-out;
   }
+
+  /* ----- Visual-enhancement motion (performance-safe) ---------------- */
+  /* Only transform/opacity, so every effect below is compositor-friendly and
+     the existing reduced-motion block at the bottom disables them for users
+     who ask for it. */
+
+  /* Page entry: the app shell fades + rises once when a route lands. Short so
+     it never delays perceiving content. */
+  @keyframes tn-page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .anim-page-enter {
+    animation: tn-page-enter 0.32s var(--ease-out-soft);
+  }
+
+  /* Gentle "breathe" for the sidebar logo — a slow scale + halo pulse that
+     keeps the brand mark feeling alive without looking busy. 5s loop. */
+  @keyframes tn-breathe {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.035);
+    }
+  }
+  .logo-breathe {
+    animation: tn-breathe 5s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  /* Hover halo for interactive cards: a soft brand wash `::after` that fades
+     in on hover. Pure opacity → cheap; sits under content (z-index -1). */
+  .card-halo {
+    position: relative;
+    z-index: 0;
+  }
+  .card-halo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(
+      120% 120% at 50% 0%,
+      color-mix(in oklab, var(--color-brand-soft) 70%, transparent),
+      transparent 60%
+    );
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    pointer-events: none;
+  }
+  .card-halo:hover::after {
+    opacity: 1;
+  }
+
+  /* Gradient edge for a key CTA on hover — a slightly stronger, animated glow
+     reserved for the primary button. */
+  @keyframes tn-glow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-brand-accent) 40%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 18px 2px color-mix(in oklab, var(--color-brand-accent) 30%, transparent);
+    }
+  }
+  .cta-glow:hover {
+    animation: tn-glow-pulse 1.6s ease-in-out infinite;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
