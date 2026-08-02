@@ -184,3 +184,145 @@
 
   color-scheme: dark;
 }
+
+/*
+ * Alternative themes.
+ *
+ * Each is a `[data-theme='<key>']` palette that lives on the same `--p-*`
+ * semantics as light/dark, so every component keeps working with no changes.
+ * `--font-sans` can differ per theme (kept conservative here to protect
+ * readability); a dedicated `--radius-theme` lets a theme nudge card rounding
+ * without every component opting in.
+ */
+
+/* ---- 极夜青蓝 (dark, cool cyan) ----------------------------------- */
+[data-theme='aurora'] {
+  --p-canvas: oklch(0.16 0.035 235);
+  --p-surface: oklch(0.2 0.04 235);
+  --p-surface-hover: oklch(0.24 0.045 235);
+  --p-sunken: oklch(0.135 0.03 235);
+
+  --p-ink: oklch(0.94 0.015 230);
+  --p-ink-soft: oklch(0.72 0.03 230);
+  --p-ink-faint: oklch(0.56 0.035 230);
+  --p-ink-inverse: oklch(0.2 0.04 235);
+
+  --p-line: oklch(0.28 0.04 235);
+  --p-line-strong: oklch(0.38 0.05 235);
+
+  --p-brand: oklch(0.78 0.11 200);
+  --p-brand-hover: oklch(0.84 0.1 200);
+  --p-brand-soft: oklch(0.3 0.06 210);
+  --p-brand-ink: oklch(0.85 0.08 205);
+  --p-on-brand: oklch(0.16 0.04 235);
+
+  --p-positive: oklch(0.78 0.12 165);
+  --p-positive-soft: oklch(0.3 0.06 165);
+  --p-positive-ink: oklch(0.82 0.1 165);
+
+  --p-caution: oklch(0.82 0.13 85);
+  --p-caution-soft: oklch(0.32 0.06 85);
+  --p-caution-ink: oklch(0.87 0.1 85);
+
+  --p-critical: oklch(0.72 0.16 18);
+  --p-critical-hover: oklch(0.77 0.15 18);
+  --p-critical-soft: oklch(0.3 0.07 18);
+  --p-critical-ink: oklch(0.84 0.12 18);
+
+  --p-focus: oklch(0.78 0.11 200);
+
+  --font-sans:
+    'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+
+  color-scheme: dark;
+  --radius-theme: 0.75rem;
+}
+
+/* ---- 暖白樱粉 (light, soft pink) ----------------------------------- */
+[data-theme='blossom'] {
+  --p-canvas: oklch(0.976 0.012 350);
+  --p-surface: oklch(1 0 0);
+  --p-surface-hover: oklch(0.968 0.016 350);
+  --p-sunken: oklch(0.952 0.018 350);
+
+  --p-ink: oklch(0.28 0.02 350);
+  --p-ink-soft: oklch(0.5 0.03 350);
+  --p-ink-faint: oklch(0.63 0.03 350);
+  --p-ink-inverse: oklch(0.976 0.012 350);
+
+  --p-line: oklch(0.91 0.015 350);
+  --p-line-strong: oklch(0.84 0.025 350);
+
+  --p-brand: oklch(0.66 0.14 355);
+  --p-brand-hover: oklch(0.6 0.15 355);
+  --p-brand-soft: oklch(0.958 0.03 355);
+  --p-brand-ink: oklch(0.48 0.12 355);
+  --p-on-brand: oklch(1 0 0);
+
+  --p-positive: oklch(0.6 0.12 160);
+  --p-positive-soft: oklch(0.955 0.035 158);
+  --p-positive-ink: oklch(0.45 0.1 160);
+
+  --p-caution: oklch(0.72 0.14 80);
+  --p-caution-soft: oklch(0.96 0.04 86);
+  --p-caution-ink: oklch(0.5 0.1 72);
+
+  --p-critical: oklch(0.6 0.17 20);
+  --p-critical-hover: oklch(0.55 0.18 20);
+  --p-critical-soft: oklch(0.958 0.025 20);
+  --p-critical-ink: oklch(0.48 0.14 20);
+
+  --p-focus: oklch(0.66 0.14 355);
+
+  --font-sans:
+    'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+
+  color-scheme: light;
+  --radius-theme: 0.9rem;
+}
+
+/* ---- 星空白昼 + 暖星黄 (light, cool white & warm gold) ------------- */
+[data-theme='starlight'] {
+  --p-canvas: oklch(0.98 0.006 250);
+  --p-surface: oklch(1 0 0);
+  --p-surface-hover: oklch(0.97 0.008 250);
+  --p-sunken: oklch(0.955 0.009 250);
+
+  --p-ink: oklch(0.26 0.018 250);
+  --p-ink-soft: oklch(0.5 0.02 245);
+  --p-ink-faint: oklch(0.64 0.02 245);
+  --p-ink-inverse: oklch(0.97 0.006 250);
+
+  --p-line: oklch(0.915 0.008 245);
+  --p-line-strong: oklch(0.85 0.012 245);
+
+  --p-brand: oklch(0.72 0.12 75);
+  --p-brand-hover: oklch(0.66 0.13 75);
+  --p-brand-soft: oklch(0.965 0.03 85);
+  --p-brand-ink: oklch(0.5 0.1 72);
+  --p-on-brand: oklch(0.16 0.02 245);
+
+  --p-positive: oklch(0.58 0.12 160);
+  --p-positive-soft: oklch(0.96 0.035 158);
+  --p-positive-ink: oklch(0.44 0.1 160);
+
+  --p-caution: oklch(0.7 0.14 75);
+  --p-caution-soft: oklch(0.955 0.04 82);
+  --p-caution-ink: oklch(0.5 0.1 70);
+
+  --p-critical: oklch(0.6 0.16 20);
+  --p-critical-hover: oklch(0.55 0.17 20);
+  --p-critical-soft: oklch(0.955 0.025 20);
+  --p-critical-ink: oklch(0.48 0.13 20);
+
+  --p-focus: oklch(0.72 0.12 75);
+
+  --font-sans:
+    'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+
+  color-scheme: light;
+  --radius-theme: 0.625rem;
+}

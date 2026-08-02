@@ -16,16 +16,22 @@
     <title>TagNest</title>
     <script>
       // Apply the stored theme before first paint to avoid a flash of the
-      // wrong palette. Kept inline and tiny on purpose.
+      // wrong palette. The persisted value can be any known palette key
+      // (light/dark/aurora/blossom/starlight); unknown/absent -> OS default.
       (function () {
         try {
           var stored = localStorage.getItem('tagnest.theme');
-          var mode =
-            stored === 'dark' || stored === 'light'
-              ? stored
-              : window.matchMedia('(prefers-color-scheme: dark)').matches
-                ? 'dark'
-                : 'light';
+          var known =
+            stored === 'light' ||
+            stored === 'dark' ||
+            stored === 'aurora' ||
+            stored === 'blossom' ||
+            stored === 'starlight';
+          var mode = known
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
           document.documentElement.dataset.theme = mode;
         } catch (e) {
           /* private mode — fall back to the light default */

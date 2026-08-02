@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { BookmarkScope, BookmarkSort } from '@shared/types';
+import { resolveTheme, type ThemeMode } from '@/lib/themes';
 
 export type ViewMode = 'list' | 'grid' | 'compact';
-export type ThemeMode = 'light' | 'dark' | 'system';
+// Re-export the theme types + registry so pages can `import { THEMES } from '@/stores/ui'`.
+export { THEMES, THEME_LABEL } from '@/lib/themes';
+export type { ThemeOption } from '@/lib/themes';
 
 interface ViewState {
   viewMode: ViewMode;
@@ -34,14 +37,25 @@ interface ThemeState {
   setMode: (mode: ThemeMode) => void;
 }
 
-function applyTheme(mode: ThemeMode) {
-  const resolved =
-    mode === 'system'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : mode;
-  document.documentElement.dataset.theme = resolved;
+function prefersDark(): boolean {
+  return typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false;
+}
+
+/**
+ * Apply a theme to the document root.
+ *
+ * `system` resolves to the OS preference; every other value maps 1:1 to a
+ * `[data-theme='<value>']` palette block. The resolved concrete theme is also
+ * persisted to `tagnest.theme` so the index.html head script (which cannot run
+ * app code) reproduces the same value before first paint.
+ */
+export function applyTheme(mode: ThemeMode) {
+  const resolved = resolveTheme(mode, prefersDark());
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = resolved;
+  }
   try {
     localStorage.setItem('tagnest.theme', resolved);
   } catch {
