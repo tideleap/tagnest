@@ -36,6 +36,19 @@
   --text-2xl: 2rem;
   --text-2xl--line-height: 2.5rem;
 
+  /* ---- Display scale ------------------------------------------------
+   * Deliberately added as a separate family so ordinary pages stay compact
+   * (they use text-* up to 2xl) while a hero / dashboard can borrow real
+   * presence without dragging the base scale up for everyone. Named 3xl-6xl
+   * so the intent is obvious at the call site.
+   */
+  --text-3xl: 2.5rem;        /* 40 — focused column headline        */
+  --text-3xl--line-height: 1.15;
+  --text-4xl: 3rem;          /* 48 — dashboard / empty-state hero   */
+  --text-4xl--line-height: 1.1;
+  --text-5xl: 3.75rem;       /* 60 — landing presence (rare)        */
+  --text-5xl--line-height: 1.05;
+
   /* ---- Radius: three steps only ------------------------------------ */
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
@@ -74,6 +87,7 @@
   --color-brand-soft: var(--p-brand-soft);
   --color-brand-ink: var(--p-brand-ink);
   --color-on-brand: var(--p-on-brand);
+  --color-brand-accent: var(--p-brand-accent, var(--p-brand));
 
   --color-positive: var(--p-positive);
   --color-positive-soft: var(--p-positive-soft);
@@ -137,6 +151,12 @@
   --p-brand-ink: oklch(0.44 0.115 55);
   --p-on-brand: #ffffff;
   --p-on-brand: oklch(1 0 0);
+
+  /* Vivid accent reserved for hero / dashboard emphasis. A saturated
+   * cinnabar-orange that reads as "the stamp of TagNest" against the warm
+   * neutral canvas. Contrast on paper surfaces exceeds 4.5:1 at bold sizes. */
+  --p-brand-accent: #d93f07;
+  --p-brand-accent: oklch(0.62 0.21 42);
 
   --p-positive: #044718;
   --p-positive: oklch(0.58 0.13 155);
@@ -207,6 +227,11 @@
   --p-brand-ink: oklch(0.83 0.12 74);
   --p-on-brand: #030201;
   --p-on-brand: oklch(0.19 0.02 60);
+
+  /* Dashboard accent on dark: a luminous amber-orange that keeps contrast
+   * while adding a different temperature to the near-black canvas. */
+  --p-brand-accent: #ff8a2e;
+  --p-brand-accent: oklch(0.78 0.17 60);
 
   --p-positive: #0f8439;
   --p-positive: oklch(0.72 0.14 158);
@@ -282,6 +307,8 @@
   --p-brand-ink: oklch(0.85 0.08 205);
   --p-on-brand: #000103;
   --p-on-brand: oklch(0.16 0.04 235);
+  --p-brand-accent: #19bcd0;
+  --p-brand-accent: oklch(0.82 0.1 200);
 
   --p-positive: #1fa05f;
   --p-positive: oklch(0.78 0.12 165);
@@ -352,6 +379,8 @@
   --p-brand-ink: oklch(0.48 0.12 355);
   --p-on-brand: #ffffff;
   --p-on-brand: oklch(1 0 0);
+  --p-brand-accent: #d14b7c;
+  --p-brand-accent: oklch(0.6 0.18 1);
 
   --p-positive: #064d23;
   --p-positive: oklch(0.6 0.12 160);
@@ -422,6 +451,8 @@
   --p-brand-ink: oklch(0.5 0.1 72);
   --p-on-brand: #000102;
   --p-on-brand: oklch(0.16 0.02 245);
+  --p-brand-accent: #e0881f;
+  --p-brand-accent: oklch(0.76 0.13 70);
 
   --p-positive: #04471f;
   --p-positive: oklch(0.58 0.12 160);

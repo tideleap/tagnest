@@ -9,7 +9,7 @@ import {
   Upload,
 } from 'lucide-react';
 import type { ImportPreview } from '@shared/types';
-import { Badge, Button, Checkbox, EmptyState, Spinner } from '@/components/ui';
+import { Badge, Button, Checkbox, EmptyState, PageHeader, Spinner } from '@/components/ui';
 import { TagPicker } from '@/components/bookmark/TagPicker';
 import { toast } from '@/components/ui/Toast';
 import { useImportCommit, useImportPreview, useStats } from '@/hooks/queries';
@@ -63,12 +63,12 @@ export function ImportPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <header>
-        <h1 className="text-lg font-semibold text-ink">导入与导出</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          支持浏览器书签（HTML）、TagNest 备份（JSON）和表格（CSV）。
-        </p>
-      </header>
+      <PageHeader
+        icon={<Download size={14} aria-hidden />}
+        eyebrow="数据进出"
+        title="导入与导出"
+        description="支持浏览器书签（HTML）、TagNest 备份（JSON）和表格（CSV）。"
+      />
 
       {!preview ? (
         <>

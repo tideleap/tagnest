@@ -167,6 +167,128 @@
   .anim-pulse {
     animation: tn-pulse 1.6s ease-in-out infinite;
   }
+
+  /* ----- Cartoon motion block (dashboard decorations) ---------------- */
+
+  /* Gentle bob for the mascot & floating accents. */
+  @keyframes tn-float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-7px);
+    }
+  }
+  .mascot-idle {
+    animation: tn-float 3.2s ease-in-out infinite;
+  }
+
+  /* Soft wiggle on hover — organic, not elastic. */
+  @keyframes tn-wiggle {
+    0%, 100% {
+      transform: rotate(0deg);
+    }
+    30% {
+      transform: rotate(-8deg) scale(1.03);
+    }
+    70% {
+      transform: rotate(7deg) scale(0.99);
+    }
+  }
+  .mascot-idle:hover .mascot-wiggle {
+    animation: tn-wiggle 0.5s var(--ease-out-soft);
+  }
+
+  /* Click "pop" — a quick scale-up pulse, retriggered by key prop change. */
+  @keyframes tn-pop {
+    0% {
+      transform: scale(1);
+    }
+    40% {
+      transform: scale(1.16);
+    }
+    70% {
+      transform: scale(0.96);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  .mascot-pop {
+    animation: tn-pop 0.45s var(--ease-out-soft);
+  }
+
+  /* Drift accent that slowly turns a cheerful gear / sun. */
+  @keyframes tn-spin-slow {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .decor-spin-slow {
+    animation: tn-spin-slow 14s linear infinite;
+  }
+
+  /* Quip bubble appears + fades out. */
+  @keyframes tn-quip {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, 4px);
+    }
+    12%, 80% {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -4px);
+    }
+  }
+  .mascot-quip {
+    animation: tn-quip 2.2s var(--ease-out-soft);
+  }
+
+  /* Scroll-into-view reveal: fade + small lift, staged via transition-delay.
+   * Uses transform/opacity only (compositor-friendly). */
+  .reveal-card {
+    opacity: 0;
+    transform: translateY(14px) scale(0.99);
+    transition:
+      opacity 0.5s var(--ease-out-soft),
+      transform 0.5s var(--ease-out-soft);
+    will-change: opacity, transform;
+  }
+  .reveal-card.is-inview {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Call-to-action ripple: a pulse ring emitted from a button on hover/active. */
+  @keyframes tn-ripple {
+    from {
+      transform: scale(0.6);
+      opacity: 0.5;
+    }
+    to {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+  .btn-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-ripple::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .btn-ripple:active::after {
+    animation: tn-ripple 0.5s ease-out;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

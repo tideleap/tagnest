@@ -11,6 +11,7 @@ import {
   Input,
   Menu,
   Modal,
+  PageHeader,
   Select,
   Skeleton,
   TagChip,
@@ -49,16 +50,19 @@ export function TagsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <TagIcon size={19} className="shrink-0 text-ink-faint" aria-hidden />
-          <h1 className="text-lg font-semibold text-ink">标签</h1>
-          {tags && <span className="text-xs tabular-nums text-ink-faint">{tags.length}</span>}
-        </div>
+      <PageHeader
+        icon={<TagIcon size={14} aria-hidden />}
+        eyebrow="整理分类"
+        title="标签"
+        description="把书签收进一致的词汇表——合并、重命名或清理从不使用的标签。"
+      >
+        {tags && (
+          <span className="mr-1 text-xs tabular-nums text-ink-faint">{tags.length} 个</span>
+        )}
         <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setCreating(true)}>
           新建标签
         </Button>
-      </header>
+      </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
         <Input
