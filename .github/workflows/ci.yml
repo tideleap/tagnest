@@ -30,6 +30,12 @@ jobs:
         # Backend logic only; runs in plain Node without a live D1.
         run: npm test
 
+      - name: UI component tests
+        # Front-end components in a happy-dom environment via React Testing
+        # Library. Catches UI regressions (theme switching, cards, import) that
+        # the backend suite cannot see.
+        run: npm run test:ui
+
       - name: Backlog consistency
         # Fails when docs/backlog.json claims a status the repository does not
         # support, in either direction. Keeps the requirement ledger honest.
