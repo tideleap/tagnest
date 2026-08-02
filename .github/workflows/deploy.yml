@@ -134,6 +134,44 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           command: pages deploy dist --project-name=tagnest --branch=main --commit-dirty=true
 
+      - name: Post-deploy health check (production)
+        # The release is only considered LIVE after /api/health answers ok on
+        # the production alias. If it does not come up within the window this
+        # step fails and (below) triggers an automatic rollback.
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.cf.outputs.configured == 'true' && steps.migrate.outcome != 'failure'
+        id: health
+        run: |
+          node scripts/health-check.mjs \
+            --base=https://tagnest.pages.dev \
+            --retries=8 --interval=8000
+          echo "health=ok" >> "$GITHUB_OUTPUT"
+
+      - name: Automatic rollback on failed health check
+        # If the fresh deploy never came up healthy, restore service from the
+        # last commit known to be live (github.event.before on a push). Rollback
+        # itself ends with a health check, so it only reports success when the
+        # previous release is genuinely serving again.
+        if: ${{ failure() && steps.health.outcome == 'failure' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        id: rollback
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          TARGET=""
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TARGET="${{ github.event.before }}"
+          fi
+          if [ -z "$TARGET" ] || [ "$TARGET" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous commit to roll back to; skipping rollback."
+            echo "ROLLBACK_DONE=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Rolling back to $TARGET"
+          node scripts/rollback.mjs --ref="$TARGET" --project=tagnest --branch=main --base=https://tagnest.pages.dev
+          echo "ROLLBACK_DONE=yes" >> "$GITHUB_OUTPUT"
+
       - name: Deploy (preview)
         if: github.event_name == 'pull_request' && steps.cf.outputs.configured == 'true'
         uses: cloudflare/wrangler-action@v3
@@ -161,3 +199,10 @@ jobs:
           elif [ "${{ steps.migrate.outcome }}" = "failure" ]; then
             echo "- ✗ DB migrations: **failed — this release was HELD.** Fix the migration and push again." >> "$GITHUB_STEP_SUMMARY"
           fi
+          echo "- Health check: ${{ (steps.health.outcome == 'success' && '✅ passed') || (steps.health.outcome == 'failure' && '❌ failed') || 'n/a (skipped)' }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.rollback.outputs.ROLLBACK_DONE }}" = "yes" ]; then
+            echo "- ⚠️ **Automatic rollback triggered** — restored to \`${{ github.event.before }}\` because the new release failed its health check. See the *Automatic rollback* step log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "🌐 **访问链接:** https://tagnest.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "📋 **日志摘要:** 详见下方各步骤日志；健康检查与（可能的）回滚均有独立步骤与时间戳。" >> "$GITHUB_STEP_SUMMARY"

@@ -118,6 +118,9 @@ if (!skipChecks) {
 
   heading('单元测试');
   run('npm', ['test']);
+
+  heading('许可证合规审计');
+  run('node', ['scripts/license-audit.mjs']);
 } else {
   console.log(C.yellow('\n  ⚠ 已跳过质量门禁（--skip-checks）'));
 }
@@ -126,7 +129,22 @@ if (!skipBuild) {
   heading('生产构建');
   // TN_KEEP_DIST=1 keeps the build alive where a sandbox hook blocks the
   // recursive delete of dist. CI has no such hook and can override to ''.
-  run('npm', ['run', 'build'], { env: { TN_KEEP_DIST: process.env.TN_KEEP_DIST ?? '1' } });
+  // TN_KEEP_DIST=1 keeps the build alive where a sandbox hook blocks the
+  // recursive delete of dist. CI has no such hook and can override to ''.
+  // The proxy env vars are also cleared for the build: with them set, Vite's
+  // build hangs (the sandbox proxy intercepts the worker spawn). `migrate.mjs`
+  // already does the same for remote D1 calls.
+  run('npm', ['run', 'build'], {
+    env: {
+      TN_KEEP_DIST: process.env.TN_KEEP_DIST ?? '1',
+      http_proxy: '',
+      https_proxy: '',
+      HTTP_PROXY: '',
+      HTTPS_PROXY: '',
+      all_proxy: '',
+      ALL_PROXY: '',
+    },
+  });
 
   const indexHtml = resolve(ROOT, 'dist/index.html');
   if (!existsSync(indexHtml)) fail('构建产物缺失：dist/index.html');
