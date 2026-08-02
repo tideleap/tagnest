@@ -10,7 +10,7 @@ import {
 import { ApiException, conflict, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
 import { assertNotThrottled, recordFailure } from '../../_lib/throttle';
-import { assertEmailAllowed } from '../../_lib/signup';
+import { assertEmailAllowed, assertInviteCode } from '../../_lib/signup';
 import { createLogger } from '../../_lib/logger';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ request, env }) => {
@@ -18,8 +18,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async ({ r
     throw new ApiException(403, 'signup_disabled', '该实例已关闭注册');
   }
 
-  const body = await readJson<{ email?: string; password?: string; displayName?: string }>(request);
+  const body = await readJson<{
+    email?: string;
+    password?: string;
+    displayName?: string;
+    inviteCode?: string;
+  }>(request);
   const { email, password } = validateCredentials(body.email, body.password);
+
+  // Invite-code gate (optional): when the operator sets INVITE_CODE, a matching
+  // code must accompany the signup. Constant-time compare; a blank form can't
+  // bypass it. A mismatch is also throttled so the code can't be brute-forced
+  // through the register endpoint.
+  try {
+    assertInviteCode(env, body.inviteCode);
+  } catch (e) {
+    await recordFailure(env, request, email);
+    throw e;
+  }
+
   assertEmailAllowed(env, email);
 
   // Registration is open on this instance, so the same IP bucket that guards

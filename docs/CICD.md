@@ -47,7 +47,7 @@ tagnest/                              ← GitHub 仓库根
 | `npm run deploy` / `deploy:preview` / `deploy:check` | 手动部署流水线 | 手动 |
 | `npm run hooks:install` | 启用推送前门禁钩子 | 本地 |
 
-`wrangler.toml` 关键配置：`pages_build_output_dir = "dist"`、D1 `DB`（`tagnest-db`）、KV `SHARE_CACHE`、`compatibility_date`、变量 `DISABLE_SIGNUP` / `ALLOWED_EMAILS`。`JWT_SECRET` 属敏感信息，**用 Secret 注入，不进仓库**。
+`wrangler.toml` 关键配置：`pages_build_output_dir = "dist"`、D1 `DB`（`tagnest-db`）、KV `SHARE_CACHE`、`compatibility_date`、变量 `DISABLE_SIGNUP` / `ALLOWED_EMAILS` / `INVITE_CODE`。`JWT_SECRET` 属敏感信息，**用 Secret 注入，不进仓库**。
 
 ---
 

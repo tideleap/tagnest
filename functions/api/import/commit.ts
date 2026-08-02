@@ -115,7 +115,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
           statements.push(
             ctx.env.DB.prepare(
-              `INSERT INTO bookmarks
+              // `INSERT OR IGNORE` + the partial UNIQUE index on (user_id,
+              // url_key) WHERE deleted_at IS NULL (migration 0004) make import
+              // idempotent at the database layer: a URL that already exists
+              // live is silently skipped even if it raced past the in-memory
+              // `existing` set (e.g. a concurrent save or a prior partial
+              // import), instead of failing the whole batch.
+              `INSERT OR IGNORE INTO bookmarks
                  (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
                   ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
                   created_at, updated_at, deleted_at)

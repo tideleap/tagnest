@@ -65,24 +65,23 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   // A repeat save is almost always an accident (re-clicking the extension, a
   // double submit). Surfacing the existing record beats silently duplicating.
-  const dupe = await ctx.env.DB.prepare(
-    `SELECT id FROM bookmarks WHERE user_id = ? AND url_key = ? AND deleted_at IS NULL LIMIT 1`,
-  )
-    .bind(userId, key)
-    .first<{ id: string }>();
-
-  if (dupe) throw conflict('该网址已在书签库中', { id: dupe.id });
-
-  const id = newId();
+  //
+  // `INSERT OR IGNORE` + `RETURNING id` is now backed by the partial UNIQUE
+  // index on (user_id, url_key) WHERE deleted_at IS NULL (migration 0004), so
+  // two concurrent creates for the same live URL cannot both succeed — the
+  // loser gets no row back and we surface the existing id as a 409, exactly
+  // like a naive duplicate save.
   const ts = nowIso();
   const title = (typeof body.title === 'string' && body.title.trim()) || titleFallback(url);
+  const id = newId();
 
-  await ctx.env.DB.prepare(
-    `INSERT INTO bookmarks
+  const inserted = await ctx.env.DB.prepare(
+    `INSERT OR IGNORE INTO bookmarks
        (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
         ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
         created_at, updated_at, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0, NULL, ?, ?, NULL)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0, NULL, ?, ?, NULL)
+     RETURNING id`,
   )
     .bind(
       id,
@@ -99,21 +98,32 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       ts,
       ts,
     )
-    .run();
+    .first<{ id: string }>();
+
+  if (!inserted) {
+    // The URL already exists (either from the pre-check narrowing the race, or
+    // the UNIQUE index rejecting our insert). Surface the existing record.
+    const existing = await ctx.env.DB.prepare(
+      `SELECT id FROM bookmarks WHERE user_id = ? AND url_key = ? AND deleted_at IS NULL LIMIT 1`,
+    )
+      .bind(userId, key)
+      .first<{ id: string }>();
+    throw conflict('该网址已在书签库中', { id: existing?.id ?? '' });
+  }
 
   if (Array.isArray(body.tagNames) && body.tagNames.length > 0) {
     const { ids } = await ensureTags(ctx.env, userId, body.tagNames.slice(0, 30));
-    await setBookmarkTags(ctx.env, id, ids);
+    await setBookmarkTags(ctx.env, inserted.id, ids);
   }
 
-  const created = await loadBookmark(ctx.env, userId, id);
+  const created = await loadBookmark(ctx.env, userId, inserted.id);
   createLogger(ctx.env).info('bookmark.create', { userId });
 
   // AI enrichment runs after the response is on its way. Saving a bookmark is
   // a one-second action and must stay that way; the summary and suggested tags
   // land on the next read. No-op unless the user configured a provider.
   ctx.waitUntil(
-    enrichBookmark(ctx.env, userId, id, {
+    enrichBookmark(ctx.env, userId, inserted.id, {
       url,
       title: created?.title ?? title,
       description: created?.description ?? null,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assertEmailAllowed } from '../functions/_lib/signup';
+import { assertEmailAllowed, assertInviteCode, constantTimeEq } from '../functions/_lib/signup';
 import type { Env } from '../functions/_lib/env';
 
 const withEnv = (overrides: Partial<Env> = {}): Env => overrides as Env;
@@ -54,5 +54,52 @@ describe('assertEmailAllowed (open-but-gated registration)', () => {
         'bob@corp.dev',
       ),
     ).not.toThrow();
+  });
+});
+
+describe('assertInviteCode (optional gate)', () => {
+  it('allows anyone when INVITE_CODE is unset', () => {
+    expect(() => assertInviteCode(withEnv(), undefined)).not.toThrow();
+    expect(() => assertInviteCode(withEnv(), '')).not.toThrow();
+    expect(() => assertInviteCode(withEnv(), 'anything')).not.toThrow();
+  });
+
+  it('rejects an empty code when a secret is configured', () => {
+    let thrown: unknown;
+    try {
+      assertInviteCode(withEnv({ INVITE_CODE: 's3cret' }), undefined);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as { status: number }).status).toBe(403);
+    expect((thrown as { code: string }).code).toBe('signup_invite_required');
+  });
+
+  it('accepts the exact code (case-sensitive)', () => {
+    expect(() => assertInviteCode(withEnv({ INVITE_CODE: 'Open-Sesame' }), 'Open-Sesame')).not.toThrow();
+    expect(() => assertInviteCode(withEnv({ INVITE_CODE: 'Open-Sesame' }), 'open-sesame')).toThrow();
+  });
+
+  it('rejects a wrong code', () => {
+    expect(() => assertInviteCode(withEnv({ INVITE_CODE: 's3cret' }), 'wrong')).toThrow();
+    expect(() => assertInviteCode(withEnv({ INVITE_CODE: 's3cret' }), 's3cres')).toThrow();
+  });
+});
+
+describe('constantTimeEq', () => {
+  it('matches identical strings', () => {
+    expect(constantTimeEq('abc', 'abc')).toBe(true);
+    expect(constantTimeEq('', '')).toBe(true);
+  });
+
+  it('rejects differing length', () => {
+    expect(constantTimeEq('abc', 'abcd')).toBe(false);
+    expect(constantTimeEq('a', 'ab')).toBe(false);
+  });
+
+  it('rejects differing content', () => {
+    expect(constantTimeEq('abc', 'xyz')).toBe(false);
+    expect(constantTimeEq('abc', 'abx')).toBe(false);
   });
 });

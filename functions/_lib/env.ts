@@ -15,6 +15,14 @@ export interface Env {
    */
   ALLOWED_EMAILS?: string;
   /**
+   * Optional invite-code gate. When set, registration requires a matching
+   * `inviteCode` in the POST body (constant-time compared). A single shared
+   * secret is simpler to operate than an email allowlist when the instance is
+   * mostly private but a handful of people need accounts. Empty or unset
+   * disables the gate. Can be combined with ALLOWED_EMAILS.
+   */
+  INVITE_CODE?: string;
+  /**
    * Optional edge cache for public share pages. Absent in local dev and on
    * deployments that skip the binding; every read path degrades to D1.
    */

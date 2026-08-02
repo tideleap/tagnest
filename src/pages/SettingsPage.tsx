@@ -57,6 +57,7 @@ import {
 import { SHORTCUTS } from '@/hooks/useGlobalHotkeys';
 import { relativeTime } from '@/lib/url';
 import { cx } from '@/lib/cx';
+import { aiReadiness } from '@/lib/ai-readiness';
 
 const SECTIONS = [
   { id: 'account', label: '账户', icon: User },
@@ -777,17 +778,44 @@ function AiSection() {
   const currentBaseUrl = baseUrl ?? data.baseUrl ?? '';
   const currentModel = model ?? data.model ?? '';
 
+  // Live readiness: mirrors the backend `loadAiConfig` gate, so the UI is honest
+  // about whether saving a bookmark will actually run inference today.
+  const missing = aiReadiness({
+    provider: currentProvider,
+    hasApiKey: data.hasApiKey,
+    tempKeyPresent: Boolean(apiKey),
+    model: currentModel,
+    autoTag: data.autoTag,
+    autoSummarize: data.autoSummarize,
+  });
+  const aiReady = missing.length === 0;
+
   return (
     <>
-      <section className="mb-4 flex items-start gap-2.5 rounded-md border border-caution bg-caution-soft px-4 py-3">
-        <Sparkles size={16} className="mt-px shrink-0 text-caution-ink" aria-hidden />
-        <div>
-          <p className="text-sm font-medium text-caution-ink">功能入口已预留，尚未接入模型</p>
-          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-            这里的配置会被完整保存。等模型接入之后，自动摘要和自动打标签会立即生效，不需要重新设置。
-          </p>
-        </div>
-      </section>
+      {aiReady ? (
+        <section className="mb-4 flex items-start gap-2.5 rounded-md border border-positive bg-positive-soft px-4 py-3">
+          <Sparkles size={16} className="mt-px shrink-0 text-positive-ink" aria-hidden />
+          <div>
+            <p className="text-sm font-medium text-positive-ink">AI 已就绪</p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              保存书签时会自动{' '}
+              {[data.autoSummarize && '生成摘要', data.autoTag && '推荐标签'].filter(Boolean).join('、')}。
+            </p>
+          </div>
+        </section>
+      ) : (
+        <section className="mb-4 flex items-start gap-2.5 rounded-md border border-caution bg-caution-soft px-4 py-3">
+          <Sparkles size={16} className="mt-px shrink-0 text-caution-ink" aria-hidden />
+          <div>
+            <p className="text-sm font-medium text-caution-ink">AI 尚未生效，还差以下配置</p>
+            <ul className="mt-1 list-inside list-disc text-xs leading-relaxed text-ink-soft">
+              {missing.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       <Card title="模型配置">
         <div className="flex flex-col gap-3.5">
