@@ -28,3 +28,6 @@ export type { BadgeTone, EmptyStateProps, Segment, TagChipProps } from './Displa
 
 export { Toaster, toast, useToastStore } from './Toast';
 export type { ToastTone } from './Toast';
+
+export { RemoteImage } from './RemoteImage';
+export type { RemoteImageProps } from './RemoteImage';

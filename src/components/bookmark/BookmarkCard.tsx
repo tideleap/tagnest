@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import {
   Archive,
   ArchiveRestore,
@@ -14,7 +14,7 @@ import {
 import type { Bookmark } from '@shared/types';
 import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
-import { IconButton, Menu, TagChip } from '@/components/ui';
+import { IconButton, Menu, TagChip, RemoteImage } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import type { ViewMode } from '@/stores/ui';
 
@@ -41,32 +41,24 @@ export interface BookmarkCardProps {
 }
 
 function Favicon({ bookmark, size }: { bookmark: Bookmark; size: number }) {
-  const [failed, setFailed] = useState(false);
   const src = bookmark.faviconUrl ?? faviconFor(bookmark.url);
-
-  if (failed) {
-    return (
-      <span
-        className="flex shrink-0 items-center justify-center rounded-sm bg-sunken text-2xs font-semibold uppercase text-ink-faint"
-        style={{ width: size, height: size }}
-        aria-hidden
-      >
-        {displayHost(bookmark.url).charAt(0)}
-      </span>
-    );
-  }
-
   return (
-    <img
+    <RemoteImage
       src={src}
       alt=""
       width={size}
       height={size}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
       className="shrink-0 rounded-sm bg-sunken object-contain"
       style={{ width: size, height: size }}
+      fallback={
+        <span
+          className="flex shrink-0 items-center justify-center rounded-sm bg-sunken text-2xs font-semibold uppercase text-ink-faint"
+          style={{ width: size, height: size }}
+          aria-hidden
+        >
+          {displayHost(bookmark.url).charAt(0)}
+        </span>
+      }
     />
   );
 }
@@ -77,20 +69,17 @@ function Favicon({ bookmark, size }: { bookmark: Bookmark; size: number }) {
  * Only rendered when a `coverUrl` exists — a bookmark without one keeps the
  * title-first layout rather than exposing a blank tiles wall. The fixed ratio
  * reserves space up front so rows don't jump as images stream in; a broken
- * cover falls back silently to the favicon row below it.
+ * cover falls back silently (renders nothing over the sunken strip).
  */
 function Cover({ bookmark }: { bookmark: Bookmark }) {
-  const [failed, setFailed] = useState(false);
-  if (!bookmark.coverUrl || failed) return null;
+  if (!bookmark.coverUrl) return null;
   return (
     <div className="mb-2.5 -mx-3.5 -mt-3.5 overflow-hidden rounded-t-md bg-sunken">
-      <img
+      <RemoteImage
         src={bookmark.coverUrl}
         alt=""
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(true)}
         className="aspect-[16/9] w-full object-cover"
+        fallback={<></>}
       />
     </div>
   );
