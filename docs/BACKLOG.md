@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 48 条（其中 2 条为跨文档别名），独立需求 46 项：✅ done 43 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
+> 登记 49 条（其中 2 条为跨文档别名），独立需求 47 项：✅ done 44 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -172,6 +172,7 @@ npm run backlog:write   # 重新生成下方状态表
 | `B1` | 纠正 README 中 AI 已接线的失实描述 | P0 | ✅ done | 1/1 |  |
 | `B7` | api 客户端请求超时与重试分流 | P1 | ✅ done | 2/2 |  |
 | `B8` | 概览页 /dashboard | P3 | ✅ done | 3/3 | 登录落地首页：核心指标（书签/近7天/标签/收藏）+ 维护（未打标/归档/回收站）+ 快捷入口；数据源自 /stats。 |
+| `B9` | CI/CD 自动化部署流水线 | P2 | ✅ done | 4/4 | push main → CI→Deploy 自动把 dist 部署到 Cloudflare Pages 生产；PR 走 pr-<n> 预览；prod push 顺带逐文件幂等 D1 迁移（非阻塞）；手动 workflow_dispatch 带迁移开关；已实测 success。回滚见 docs/CICD.md §7。 |
 
 **当前执行队列**：空 —— 所有需求已进入终态。
 

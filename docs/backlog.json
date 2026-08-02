@@ -810,6 +810,32 @@
           "pattern": "LayoutDashboard"
         }
       ]
+    },
+    {
+      "id": "B9",
+      "title": "CI/CD 自动化部署流水线",
+      "source": "工程基建",
+      "priority": "P2",
+      "status": "done",
+      "note": "push main → CI→Deploy 自动把 dist 部署到 Cloudflare Pages 生产；PR 走 pr-<n> 预览；prod push 顺带逐文件幂等 D1 迁移（非阻塞）；手动 workflow_dispatch 带迁移开关；已实测 success。回滚见 docs/CICD.md §7。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": ".github/workflows/deploy.yml"
+        },
+        {
+          "type": "file",
+          "path": ".github/workflows/ci.yml"
+        },
+        {
+          "type": "file",
+          "path": "scripts/migrate.mjs"
+        },
+        {
+          "type": "file",
+          "path": "docs/CICD.md"
+        }
+      ]
     }
   ]
 }
