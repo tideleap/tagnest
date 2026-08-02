@@ -129,7 +129,30 @@
    * so backend panels get the same hover feel as dashboard data cards. */
   .card-interactive {
     @apply transition-all duration-150;
-    @apply hover:-translate-y-0.5 hover:shadow-raised hover:border-line-strong;
+    @apply hover:-translate-y-0.5 hover:border-line-strong;
+    transition-property: transform, box-shadow, border-color, background-color;
+  }
+  .card-interactive:hover {
+    box-shadow: var(--shadow-float);
+  }
+
+  /* L1 float — the resting elevation for cards that sit slightly above the
+   * page but do not need an interaction, plus a brand-gradient stamp for
+   * key CTAs / the page hero. */
+  .card-float {
+    box-shadow: var(--shadow-float);
+  }
+  .brand-grad {
+    background-image: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-accent) 100%);
+  }
+
+  /* Glass panel — translucent surface + blur. Dark themes keep a higher
+   * opacity (glass token stays readable) and skip blur where the browser
+   * does not support it. */
+  .glass {
+    background-color: var(--color-glass);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
   }
 }
 

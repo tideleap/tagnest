@@ -38,7 +38,7 @@ export function TopBar() {
   const isDark = document.documentElement.dataset.theme === 'dark';
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-canvas/85 px-3 backdrop-blur-md sm:px-4 xl:px-6">
+    <header className="glass sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line/40 px-3 sm:px-4 xl:px-6">
       <IconButton
         label="打开导航"
         icon={<MenuIcon size={19} />}

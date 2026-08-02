@@ -16,9 +16,9 @@ const VARIANT: Record<ButtonVariant, string> = {
   // the two "weight-bearing" variants, so destructive/primary actions respond
   // tactilely while ghost/secondary stay quiet.
   primary:
-    'btn-ripple bg-brand text-on-brand hover:bg-brand-hover active:bg-brand-hover shadow-raised disabled:bg-brand/55',
+    'btn-ripple brand-grad text-on-brand shadow-glow hover:-translate-y-px hover:shadow-overlay active:translate-y-0 active:brightness-[0.97] disabled:opacity-60',
   secondary:
-    'bg-surface text-ink border border-line hover:bg-surface-hover active:bg-sunken shadow-raised',
+    'bg-surface text-ink border border-line hover:bg-surface-hover hover:border-line-strong active:bg-sunken shadow-raised hover:shadow-float',
   ghost: 'bg-transparent text-ink-soft hover:bg-surface-hover hover:text-ink active:bg-sunken',
   danger:
     'btn-ripple bg-critical text-white hover:bg-critical-hover active:bg-critical-hover shadow-raised',
@@ -26,9 +26,9 @@ const VARIANT: Record<ButtonVariant, string> = {
 };
 
 const SIZE: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-xs gap-1.5 rounded-sm',
-  md: 'h-9 px-3.5 text-sm gap-2 rounded-md',
-  lg: 'h-11 px-5 text-base gap-2 rounded-md',
+  sm: 'h-8 px-3 text-xs gap-1.5 rounded-md',
+  md: 'h-9 px-3.5 text-sm gap-2 rounded-lg',
+  lg: 'h-11 px-5 text-base gap-2 rounded-lg',
 };
 
 const ICON_SIZE: Record<ButtonSize, number> = { sm: 14, md: 15, lg: 17 };
@@ -69,7 +69,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={loading || undefined}
       className={cx(
         'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-medium',
-        'transition-colors duration-150',
+        'transition-all duration-150 ease-out',
         'disabled:pointer-events-none disabled:opacity-60',
         variant !== 'link' && SIZE[size],
         VARIANT[variant],

@@ -25,9 +25,9 @@ export function Card({
   return (
     <div
       className={cx(
-        'rounded-lg border border-line bg-surface',
+        'rounded-xl border border-line bg-surface',
         interactive &&
-          'transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised hover:border-line-strong',
+          'card-interactive cursor-pointer',
         className,
       )}
       {...rest}

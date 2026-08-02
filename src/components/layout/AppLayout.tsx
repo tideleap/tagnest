@@ -34,7 +34,17 @@ export function AppLayout() {
   useGlobalHotkeys();
 
   return (
-    <div className="flex min-h-dvh bg-canvas">
+    <div className="relative flex min-h-dvh bg-canvas">
+      {/* Ambient brand glow — a faint warm corner wash so the flat canvas
+          gains light depth. Pure decoration, reduced-motion safe. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        <div className="absolute -left-24 -top-32 h-96 w-96 rounded-full bg-brand-soft/50 blur-[90px]" />
+        <div className="absolute bottom-auto right-[-8rem] top-16 h-80 w-80 rounded-full bg-brand-accent/20 blur-[100px]" />
+      </div>
+
       {/* Skip link — the first stop for keyboard users, invisible until focused. */}
       <a
         href="#main"
@@ -47,9 +57,9 @@ export function AppLayout() {
 
       <div
         className={cx(
-          'flex min-w-0 flex-1 flex-col transition-[padding] duration-200',
-          // Reserve room for the fixed rail from md up.
-          collapsed ? 'md:pl-14' : 'md:pl-14 lg:pl-60',
+          'relative flex min-w-0 flex-1 flex-col transition-[padding] duration-200',
+          // Reserve room for the floating rail (width + 12px gutter) from md up.
+          collapsed ? 'md:pl-[4.25rem]' : 'md:pl-[4.25rem] lg:pl-[15.75rem]',
         )}
       >
         <TopBar />
@@ -57,7 +67,7 @@ export function AppLayout() {
         <main
           id="main"
           tabIndex={-1}
-          className="mx-auto w-full max-w-7xl flex-1 px-3 pb-24 pt-3 outline-none sm:px-4 md:pb-6 md:pt-4 xl:px-6"
+          className="mx-auto w-full max-w-7xl flex-1 px-3 pb-24 pt-3 outline-none sm:px-5 md:pb-8 md:pt-5 xl:px-8 xl:pt-6"
         >
           <Outlet />
         </main>

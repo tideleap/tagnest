@@ -49,18 +49,31 @@
   --text-5xl: 3.75rem;       /* 60 — landing presence (rare)        */
   --text-5xl--line-height: 1.05;
 
-  /* ---- Radius: three steps only ------------------------------------ */
+  /* ---- Radius: four steps ------------------------------------------
+   * `sm` stays tight: it sits on tiny controls (16px checkboxes, chips,
+   * icon thumbs) where a big corner reads as a blob. md/lg soften the
+   * panels that carry most of the surface; xl/2xl are the hero + glass.
+   */
   --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.125rem;
+  --radius-xl: 1.375rem;
+  --radius-2xl: 1.75rem;
   --radius-full: 9999px;
 
-  /* ---- Elevation: three steps only --------------------------------- */
+  /* ---- Elevation: four steps only ----------------------------------
+   * Layered soft shadows: a tight low-alpha edge + a wide diffuse second
+   * layer. That two-layer spread is what makes it feel "lifted" rather
+   * than a hard hairline. `glow` is the warm brand halo for key CTAs.
+   */
   --shadow-raised: 0 1px 2px 0 rgb(16 14 10 / 0.05);
+  --shadow-float:
+    0 2px 4px -1px rgb(16 14 10 / 0.04), 0 10px 22px -8px rgb(16 14 10 / 0.12);
   --shadow-overlay:
-    0 4px 6px -2px rgb(16 14 10 / 0.06), 0 12px 20px -6px rgb(16 14 10 / 0.1);
+    0 4px 8px -2px rgb(16 14 10 / 0.06), 0 20px 36px -12px rgb(16 14 10 / 0.16);
   --shadow-modal:
-    0 8px 12px -4px rgb(16 14 10 / 0.08), 0 24px 48px -12px rgb(16 14 10 / 0.18);
+    0 8px 14px -6px rgb(16 14 10 / 0.08), 0 32px 64px -16px rgb(16 14 10 / 0.22);
+  --shadow-glow: 0 8px 26px -8px color-mix(in oklab, var(--p-brand) 38%, transparent);
 
   /* ---- Motion ------------------------------------------------------ */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
@@ -73,6 +86,11 @@
   --color-surface: var(--p-surface);
   --color-surface-hover: var(--p-surface-hover);
   --color-sunken: var(--p-sunken);
+
+  /* Glass surfaces resolve the current theme's surface at 70% then blur,
+   * so the sidebar / topbar tint changes with every theme for free. */
+  --color-glass: color-mix(in oklab, var(--p-surface) 72%, transparent);
+  --color-glass-canvas: color-mix(in oklab, var(--p-canvas) 82%, transparent);
 
   --color-ink: var(--p-ink);
   --color-ink-soft: var(--p-ink-soft);

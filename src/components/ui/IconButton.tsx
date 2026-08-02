@@ -7,15 +7,15 @@ export type IconButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANT: Record<IconButtonVariant, string> = {
   ghost: 'text-ink-soft hover:bg-surface-hover hover:text-ink active:bg-sunken',
-  solid: 'bg-brand text-on-brand hover:bg-brand-hover shadow-raised',
+  solid: 'brand-grad text-on-brand shadow-glow hover:brightness-[0.97]',
   outline: 'border border-line bg-surface text-ink-soft hover:bg-surface-hover hover:text-ink',
   danger: 'text-critical hover:bg-critical-soft active:bg-critical-soft',
 };
 
 const SIZE: Record<IconButtonSize, string> = {
-  sm: 'h-7 w-7 rounded-sm',
-  md: 'h-9 w-9 rounded-md',
-  lg: 'h-11 w-11 rounded-md',
+  sm: 'h-7 w-7 rounded-md',
+  md: 'h-9 w-9 rounded-lg',
+  lg: 'h-11 w-11 rounded-lg',
 };
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

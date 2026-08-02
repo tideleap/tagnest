@@ -23,7 +23,7 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="快捷导航"
-      className="pad-safe-b fixed inset-x-0 bottom-0 z-30 flex h-14 items-stretch border-t border-line bg-surface/95 backdrop-blur-md md:hidden"
+      className="pad-safe-b glass fixed inset-x-3 bottom-3 z-30 flex h-14 items-stretch rounded-2xl shadow-float md:hidden"
     >
       {TABS.slice(0, 2).map((tab) => (
         <TabLink key={tab.to} {...tab} />
@@ -34,7 +34,7 @@ export function MobileTabBar() {
           type="button"
           onClick={() => setQuickAddOpen(true)}
           aria-label="添加书签"
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-on-brand shadow-overlay transition-transform active:scale-95"
+          className="brand-grad flex h-11 w-11 items-center justify-center rounded-full text-on-brand shadow-glow transition-transform active:scale-95"
         >
           <Plus size={21} />
         </button>

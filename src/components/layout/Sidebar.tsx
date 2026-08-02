@@ -158,7 +158,7 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
 
   return (
     <nav aria-label="书签分区" className="flex h-full flex-col px-2 py-3">
-      <ul className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-1">
         {PRIMARY.map((item) => (
           <li key={item.to}>
             <NavRow
@@ -171,8 +171,8 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
         ))}
       </ul>
 
-      <div className={cx('mt-4 min-h-0 flex-1 overflow-y-auto scrollbar-slim', BLOCK_VISIBILITY[mode])}>
-        <h2 className="px-2.5 pb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-faint">
+      <div className={cx('mt-5 min-h-0 flex-1 overflow-y-auto scrollbar-slim', BLOCK_VISIBILITY[mode])}>
+        <h2 className="px-2.5 pb-2 text-2xs font-semibold uppercase tracking-wide text-ink-faint">
           常用标签
         </h2>
         {tagsLoading ? (
@@ -186,7 +186,7 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
             还没有标签。给书签打上标签后会出现在这里。
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-1.5 px-2.5">
+          <ul className="flex flex-wrap gap-2 px-2.5">
             {topTags.map((tag) => (
               <li key={tag.id}>
                 <NavLink to={`/tags/${tag.id}`} onClick={onNavigate}>
@@ -206,7 +206,7 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
         )}
       </div>
 
-      <ul className="mt-3 flex flex-col gap-0.5 border-t border-line pt-2">
+      <ul className="mt-4 flex flex-col gap-1 border-t border-line pt-3">
         {SECONDARY.map((item) => (
           <li key={item.to}>
             <NavRow
@@ -263,20 +263,21 @@ export function Sidebar() {
     <>
       <aside
         className={cx(
-          'fixed inset-y-0 left-0 z-30 hidden shrink-0 flex-col border-r border-line bg-surface md:flex',
+          'glass fixed inset-y-0 left-0 z-30 hidden flex-col md:flex',
+          'm-3 mb-3 rounded-2xl shadow-float',
           'transition-[width] duration-200',
           collapsed ? 'w-14' : 'w-14 lg:w-60',
         )}
       >
-        <div className="flex h-14 shrink-0 items-center border-b border-line px-3">
+        <div className="flex h-14 shrink-0 items-center px-3">
           <BrandMark mode={desktopMode} />
         </div>
 
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 pb-1">
           <SidebarContent mode={desktopMode} />
         </div>
 
-        <div className="hidden shrink-0 border-t border-line p-2 lg:block">
+        <div className="hidden shrink-0 p-2 pt-1 lg:block">
           <IconButton
             label={collapsed ? '展开侧栏' : '收起侧栏'}
             icon={collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
@@ -294,10 +295,8 @@ export function Sidebar() {
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <aside
-            className="anim-rise absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col bg-surface shadow-modal"
-          >
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-3">
+          <aside className="anim-rise absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col bg-surface shadow-modal">
+            <div className="flex h-14 shrink-0 items-center justify-between px-3">
               <BrandMark mode="always" />
               <IconButton
                 label="关闭导航"

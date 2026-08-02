@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TagNest UI 现代化重设计方案</title>
+<style>
+  :root{
+    --ink:#3b342c; --ink-soft:#6b6257; --ink-faint:#9a8f80;
+    --line:#e6e0d6; --line-strong:#cfc6b8;
+    --canvas:#f6f4ef; --surface:#ffffff; --sunken:#f0ece5;
+    --brand:#922900; --brand-hover:#791c00; --brand-soft:#fadaaf; --brand-accent:#d93f07;
+    --on-brand:#ffffff; --brand-gradient:linear-gradient(135deg,#922900 0%,#d93f07 100%);
+    --radius-sm:8px; --radius-md:14px; --radius-lg:20px;
+    --shadow-sm:0 1px 2px rgba(59,52,44,.05);
+    --shadow-md:0 6px 16px -4px rgba(59,52,44,.10);
+    --shadow-lg:0 20px 44px -12px rgba(59,52,44,.18);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--canvas);color:var(--ink);font-family:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;line-height:1.65;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 72px;}
+  h1,h2,h3{font-weight:600;letter-spacing:-.011em;}
+  h1{font-size:30px;line-height:1.2;margin:8px 0 6px;}
+  h2{font-size:22px;margin:44px 0 12px;padding-top:30px;border-top:1px solid var(--line);}
+  h3{font-size:16px;margin:24px 0 8px;}
+  p{margin:8px 0;color:var(--ink-soft);}
+  .kicker{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-accent);}
+  .lead{font-size:15px;color:var(--ink-soft);max-width:62ch;}
+  .tag{display:inline-block;background:var(--brand-soft);color:var(--brand);font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;margin:0 4px 4px 0;}
+  .pill{display:inline-block;background:var(--sunken);color:var(--ink-soft);font-size:13px;font-weight:500;padding:4px 12px;border-radius:999px;}
+  .grid{display:grid;gap:18px;}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:20px 22px;box-shadow:var(--shadow-sm);}
+  .card h3{margin-top:0}
+  .verdict{background:var(--brand-soft);border-radius:var(--radius-md);padding:18px 22px;margin:16px 0;}
+  .verdict h3{color:var(--brand);margin-top:0}
+  ul,ol{margin:8px 0;padding-left:22px;color:var(--ink-soft);}
+  li{margin:5px 0;}
+  .bad{color:#a30a0e;font-weight:500}
+  .good{color:#044718;font-weight:500}
+  .swatch{display:inline-block;width:52px;height:52px;border-radius:12px;border:1px solid var(--line-strong);vertical-align:middle;margin-right:10px;}
+  .copyline{font-size:13px;color:var(--ink-soft);}
+  code{background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--brand);}
+  .token-card{display:grid;grid-template-columns:64px 1fr;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:10px;}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:14px 0;}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{font-weight:600;color:var(--ink);background:var(--sunken);}
+  td{color:var(--ink-soft);}
+  .before-after{display:grid;grid-template-columns:1fr 1fr;gap:0;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--line);margin:18px 0;}
+  .ba-head{padding:12px 16px;font-weight:600;font-size:14px;color:var(--on-brand);}
+  .ba-before .ba-head{background:var(--ink-soft);}
+  .ba-after .ba-head{background:var(--brand-gradient);}
+  .ba-body{padding:16px 18px;background:var(--surface);font-size:14px;}
+  .ba-body ul{margin:0;}
+  .muted{color:var(--ink-faint);font-size:13px;}
+  .note{background:var(--sunken);border-left:3px solid var(--brand-accent);border-radius:6px;padding:12px 16px;font-size:14px;color:var(--ink-soft);margin:14px 0;}
+  @media(max-width:640px){.wrap{padding:24px 16px 56px}.before-after{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="kicker">TagNest · UI 现代化重设计</p>
+  <h1>布局重设计方案</h1>
+  <p class="lead">在保留既有暖白品牌与四档响应式骨架的基础上，将现行"扁平直角"界面升级为"毛玻璃 + 圆角卡片 + 柔和阴影 + 渐变点缀"的现代语言——重点是让信息层级更清晰、留白更有节奏，而不是推翻重建。</p>
+  <div>
+    <span class="tag">视觉风格</span><span class="tag">布局分区</span><span class="tag">色彩与字体</span><span class="tag">交互动效</span><span class="tag">响应式适配</span>
+  </div>
+
+  <h2>一、现有布局的结构与问题分析</h2>
+
+  <h3>现状骨架</h3>
+  <p>TagNest 已有一套相当扎实的设计系统：oklch 语义令牌、暖白中性色、琥珀/金红色品牌色、三档圆角与阴影、四档断点（base/md/lg/xl）、响应式侧栏（icon-rail ↔ drawer）。这些是<b>资产</b>，重设计要继承。</p>
+
+  <div class="before-after">
+    <div class="ba-before">
+      <div class="ba-head">当前：扁平直角</div>
+      <div class="ba-body">
+        <ul>
+          <li>圆角偏收紧（sm 6px / md 10px / lg 16px）</li>
+          <li>侧栏与内容同底色，无悬浮分层</li>
+          <li>发丝线阴影（–shadow-raised）缺柔光</li>
+          <li>导航行距 gap 0.5（2px）偏拥挤</li>
+          <li>页面平铺在画布上，无"浮起"提示</li>
+          <li>品牌为纯色块，无渐变表达</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ba-after">
+      <div class="ba-head">目标：毛玻璃 + 卡片悬浮</div>
+      <div class="ba-body">
+        <ul>
+          <li>圆角打开（sm 8 / md 14 / lg 20）</li>
+          <li>侧栏 / 顶栏独立浮层，半透明玻璃</li>
+          <li>分层柔和阴影，从贴边到悬浮 3 级</li>
+          <li>分区与导航留白拉开，节奏更从容</li>
+          <li>主内容承载于圆角卡片上，层级明确</li>
+          <li>渐变品牌印章 + 柔和强调点缀</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h3>7 个具体问题（诊断）</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h3>1. 圆角尺度过紧</h3>
+      <p>现有 <code>rounded-md: .625rem(10px)</code>、<code>rounded-lg: 1rem(16px)</code> 在卡片场景偏"工具箱"而非"现代应用"。现代 SaaS 普遍用更放松的圆角传递亲和。</p>
+    </div>
+    <div class="card">
+      <h3>2. 侧栏缺乏悬浮感</h3>
+      <p>侧栏 <code>border-r + bg-surface</code> 与画布同平面，视觉上与内容区是"粘连"的。独立成一个圆角浮层能显著提升现代感。</p>
+    </div>
+    <div class="card">
+      <h3>3. 纯色表面无层次</h3>
+      <p><code>--p-surface: #fff</code> / 近黑，顶栏用了 <code>backdrop-blur</code> 但侧栏与移动抽屉完全实心，玻璃质感未铺开。</p>
+    </div>
+    <div class="card">
+      <h3>4. 阴影发丝化</h3>
+      <p><code>--shadow-raised: 0 1px 2px</code> 几乎不可见；没有"贴边/浮动/弹出"三级层高来区分静态面板与可交互卡片。</p>
+    </div>
+    <div class="card">
+      <h3>5. 导航行距拥挤</h3>
+      <p>主/次导航 <code>gap-0.5</code>、行高 <code>h-9</code>，8 个常点入口挤在一起。分组间缺呼吸，次级功能与主功能边界模糊。</p>
+    </div>
+    <div class="card">
+      <h3>6. 内容区无层级承载</h3>
+      <p>页面自绘在画布上，各区块靠自身 border 区隔，"内容浮在背景上"的主次关系没有建立。</p>
+    </div>
+    <div class="card">
+      <h3>7. 品牌缺渐变表达</h3>
+      <p>品牌色是纯 <code>#922900</code> 色块，仅卡通 dashboard 用彩色 blob。主入口按钮 / 封面卡若用温和渐变，品牌"印章感"更强。</p>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <h3>设计取向</h3>
+    <p><b>克制地现代化</b>：保留暖白中性色与琥珀品牌色（这是既有辨识度），以「玻璃分层 + 圆角卡片 + 柔和阴影 + 一处渐变印章」为骨架重梳布局。不做游戏化的渐变铺满，也不引入新的品牌色——让"更留白的层级"自己说话。</p>
+  </div>
+
+  <h2>二、整体设计方案</h2>
+
+  <h3>1. 视觉风格 · 玻璃分层 + 圆角卡片</h3>
+  <p>以三档"悬浮层级"取代纯平铺陈：</p>
+  <ul>
+    <li><span class="good">L0 贴地平铺</span>：页面容器、静态说明。白底 + 细边框 + 极轻阴影。</li>
+    <li><span class="good">L1 浮起卡片</span>：指标卡、可点卡片、表单面板。<code>rounded-lg + shadow-md + hover 抬升</code>。</li>
+    <li><span class="good">L2 玻璃悬浮</span>：侧栏、顶栏、命令面板、弹窗。半透明 <code>bg + backdrop-blur</code> + 中距阴影。</li>
+  </ul>
+  <div class="note">玻璃实现用现有工具箱即可：Tailwind v4 的 <code>bg-*/70 + backdrop-blur</code>（顶栏已在用 <code>bg-canvas/85</code>），无需引入依赖。暗色主题下降低透明以满足 WCAG 对比度。</div>
+
+  <h3>2. 布局结构 · 分区与主次</h3>
+  <div class="card">
+    <ol>
+      <li><span class="good">侧栏</span>（L2 玻璃浮层）：品牌 → 主功能（概览/收件箱/全部/收藏/归档） → 常用标签 → 次功能（AI整理/标签/标签页组/导入/回收站/设置）。分组间用 <code>gap-3</code> 拉开，主动画描边保留。</li>
+      <li><span class="good">顶栏</span>（L2 玻璃条）：移动端汉堡 → 全局搜索（右侧 `/` 快捷键） → 「+ 添加」主按钮 → 主题切换 → 账户。搜索框由全宽改为 <code>max-w</code> 束窄，右侧让位给行动项。</li>
+      <li><span class="good">主内容</span>（L0）：以 <code>max-w-7xl</code> 居中，页头（eyebrow + 标题 + 描述 + 行动项）固定为统一 <code>PageHeader</code>；下方数据承载到 L1 圆角卡片。<code>xl</code> 时侧栏 240px，内容留白 <code>px-8</code>。</li>
+      <li><span class="good">移动端</span>：抽屉侧栏 + 底部 TabBar（中间 + 按钮）不变，卡片栅格切单列。</li>
+    </ol>
+  </div>
+
+  <h3>3. 色彩与字体</h3>
+  <p>色彩沿用既有令牌，新增"玻璃/层次"相关语义。字体层级微调，标题字号与字重更明确。</p>
+
+  <div class="token-card">
+    <span class="swatch" style="background:linear-gradient(135deg,#922900,#d93f07)"></span>
+    <div><span class="good">主色 brand-gradient</span><div class="copyline">品牌印章改为温和渐变 <code>linear-gradient(135deg, brand, brand-accent)</code>——用于「+添加」/推荐页 Hero / 选中态。</div></div>
+  </div>
+  <div class="token-card">
+    <span class="swatch" style="background:#f6f4ef"></span>
+    <div><span class="good">画布 canvas</span><div class="copyline">保持暖白 <code>oklch(.985 .003 85)</code>。可替换顶部大面积区域为极浅的品牌色晕染作"氛围底"，增强沉浸而不抢内容。</div></div>
+  </div>
+  <div class="token-card">
+    <span class="swatch" style="background:#ffffff;box-shadow:0 4px 12px rgba(59,52,44,.12)"></span>
+    <div><span class="good">卡片 surface</span><div class="copyline"><code>#fff</code> 白底作为 L1/L2 承载面；玻璃态用 <code>surface/70 + blur</code>，保证文字对比度 ≥4.5:1。</div></div>
+  </div>
+  <div class="token-card">
+    <span class="swatch" style="background:#fadaaf"></span>
+    <div><span class="good">强调 brand-soft / brand-accent</span><div class="copyline">soft 底用于选中 nav 与徽标底；accent 金红用于勾选描边、hover 图标、页码高亮。</div></div>
+  </div>
+
+  <h4>字体层级（标题 / 正文 / 辅助）</h4>
+  <table>
+    <tr><th>层</th><th>字号</th><th>字重</th><th>场景</th></tr>
+    <tr><td><span class="good">标题 H1</span></td><td><code>text-2xl / 2rem</code></td><td>600</td><td>页头主标题（保持克制，不吼）</td></tr>
+    <tr><td><span class="good">区块 H3</span></td><td><code>text-sm / .8125rem</code></td><td>600</td><td>卡片标题</td></tr>
+    <tr><td>正文 Body</td><td><code>text-base / .9375rem</code></td><td>400</td><td>书签标题、说明</td></tr>
+    <tr><td>辅助 Meta</td><td><code>text-xs / .75rem</code></td><td>400</td><td>计数、时间、标签次数（<span class="good">text-ink-faint</span>）</td></tr>
+  </table>
+
+  <h3>4. 交互细节 · 动效</h3>
+  <ul>
+    <li><span class="good">按钮</span>：主按钮 hover 微上浮 + 柔和阴影扩散；点击保留现有 ripple。渐变主按钮 <code>transition: transform .15s, box-shadow .15s</code>，上升 <code>-translate-y-px</code>。</li>
+    <li><span class="good">卡片</span>（L1 可交互）：沿用 <code>.card-interactive</code>（hover 抬升 + 阴影 + 边框加深），统一到所有可点卡片；静态面板不抬升，避免误用。</li>
+    <li><span class="good">导航项</span>：图标 hover 微放大（<code>group-hover:scale-105</code>）+ 左缘 accent 条淡入（现已有，保留）；行距增大提升命中区。</li>
+    <li><span class="good">进入/滚动</span>：区块滚动进场 <code>.reveal-card</code>（已有，IntersectionObserver），从"整页同现"改为"分段上浮"，节奏更现代；<code>prefers-reduced-motion</code> 下全部禁用（已有）。</li>
+    <li><span class="good">焦点态</span>：保留 <code>:focus-visible</code> 2px 品牌描边，键盘可操作性不因美观牺牲。</li>
+  </ul>
+
+  <h3>5. 响应式适配</h3>
+  <table>
+    <tr><th>断点</th><th>布局</th><th>要点</th></tr>
+    <tr><td>base (&lt;768)</td><td>手机</td><td>底栏 TabBar + 抽屉侧栏；卡片单列；Hero 堆叠；主按钮由顶栏移入内容区</td></tr>
+    <tr><td>md (768)</td><td>平板纵</td><td>侧栏 → icon-rail 56px（标签隐藏）</td></tr>
+    <tr><td>lg (1024)</td><td>笔记本</td><td>侧栏展开 180px 圆角浮层；主内容进 <code>lg:pl-60</code></td></tr>
+    <tr><td>xl (1280+)</td><td>桌面</td><td>侧栏 240px；内容 <code>px-8</code>，指标卡 3–4 列</td></tr>
+  </table>
+  <p>栅格用 <code>repeat(auto-fit, minmax(280px, 1fr))</code> 承载书签/指标，避免固定列数在小屏溢出。所有新增视觉（玻璃、圆角、阴影）均为纯 CSS，不增加包体。</p>
+
+  <h2>三、相比原布局的主要改进点</h2>
+  <table>
+    <tr><th>维度</th><th>原布局</th><th>新布局</th></tr>
+    <tr><td><span class="good">层级</span></td><td>扁平，无悬浮区分</td><td>L0/L1/L2 三级，主次一目了然</td></tr>
+    <tr><td><span class="good">圆角</span></td><td>6–16px 偏紧</td><td>8–20px 现代柔和</td></tr>
+    <tr><td><span class="good">侧栏</span></td><td>与画布同平面</td><td>独立玻璃浮层，悬浮感强</td></tr>
+    <tr><td><span class="good">阴影</span></td><td>发丝线，难感知</td><td>三级柔和阴影，卡片"浮起"</td></tr>
+    <tr><td><span class="good">留白</span></td><td>导航 gap-0.5 拥挤</td><td>分区 gap-3，节奏从容</td></tr>
+    <tr><td><span class="good">品牌</span></td><td>纯色块</td><td>渐变印章，识别度更强</td></tr>
+    <tr><td><span class="good">动效</span></td><td>已有基础过渡</td><td>卡片上浮 + 滚动进场，更现代</td></tr>
+    <tr><td><span class="good">适配</span></td><td>四档断点已清晰</td><td>保留并完善卡片自适配栅格</td></tr>
+  </table>
+
+  <div class="note"><b>落地顺序建议</b>：① token（radius/shadows/alpha 玻璃变量）→ ② Sidebar + TopBar 改浮层 → ③ AppLayout padding 与内容容器 → ④ Button/Card 圆角阴影统一 → ⑤ Dashboard Hero 渐变 + 卡片栅格 → ⑥ 逐页验收响应式与对比度。</div>
+
+  <p class="muted" style="margin-top:32px">UI Designer · TagNest 布局现代化重设计方案 · 保留既有暖白品牌，克制地拥抱现代设计语言</p>
+</div>
+</body>
+</html>

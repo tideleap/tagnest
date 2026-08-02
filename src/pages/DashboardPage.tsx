@@ -43,8 +43,14 @@ function MascotHero({
   return (
     <section
       aria-label="概览"
-      className="relative overflow-hidden rounded-3xl border border-line bg-surface p-6 sm:p-8"
+      className="relative overflow-hidden rounded-2xl border border-line bg-surface p-6 shadow-float sm:p-8"
     >
+      {/* Soft brand wash so the hero reads as "the page's anchor" — the warm
+          corner of the room. Lifts the flat card into the modern glow. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-brand-soft/70 blur-[64px]" />
+        <div className="absolute -bottom-20 left-1/4 h-48 w-48 rounded-full bg-brand-accent/10 blur-[60px]" />
+      </div>
       {/* cartoon ground fill: dotted texture + drift blobs */}
       <DottedBg className="text-brand-ink" />
       <DecorBlob className="-left-10 -top-12 h-40 w-40" color="#ffd6a5" />
@@ -124,7 +130,7 @@ function AttentionCard({
     <Reveal delay={index * 50}>
       <Link
         to={to}
-        className="attention-card group flex items-center gap-4 rounded-2xl border-2 border-line bg-surface p-4 transition-all hover:-translate-y-1 hover:border-brand-accent hover:shadow-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="attention-card group flex items-center gap-4 rounded-2xl border-2 border-line bg-surface p-4 shadow-float transition-all hover:-translate-y-1 hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         <span
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-raised"
@@ -172,7 +178,7 @@ function StatCard({
     <Reveal delay={index * 50}>
       <Link
         to={to}
-        className="stat-card block rounded-2xl border-2 border-line bg-surface p-5 transition-all hover:-translate-y-1 hover:scale-[1.02] hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        className="stat-card block rounded-2xl border-2 border-line bg-surface p-5 shadow-float transition-all hover:-translate-y-1 hover:scale-[1.02] hover:border-brand-accent hover:shadow-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         <span
           className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl text-white"
@@ -281,7 +287,7 @@ export function DashboardPage() {
             <span className="text-2xs text-ink-faint">像翻漫画一样点着玩</span>
           </div>
         </Reveal>
-        <div className="relative overflow-hidden rounded-3xl border-2 border-dashed border-line-strong bg-surface/60 p-4">
+        <div className="relative overflow-hidden rounded-2xl border-2 border-dashed border-line-strong bg-surface/60 p-4">
           <DottedBg className="text-brand-ink" />
           <div className="relative grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             {[
