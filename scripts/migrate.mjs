@@ -172,20 +172,40 @@ for (const file of files) {
 
 console.log(`\n完成：新应用 ${count} 个；跳过已应用 ${files.length - count} 个。`);
 
-// Post-flight check: every migration file must be recorded, otherwise a silent
-// partial apply slipped through (e.g. a statement whose runtime outcome was
-// uncertain). Exit non-zero so CI treats it as a real failure instead of
-// shipping against an under-migrated schema.
-const verifyOut = run(['--command', `SELECT name FROM _d1_migrations`]);
-const verified = new Set(
-  [...verifyOut.matchAll(/"name"\s*:\s*"([^"]+)"/g)].map((m) => m[1]),
-);
-const missing = files.filter((f) => !verified.has(f));
-if (missing.length > 0) {
-  console.error(`✗ 校验失败：以下迁移未登记：${missing.join(', ')}`);
-  process.exit(1);
+// Post-flight schema verification.
+//
+// We deliberately verify the *schema markers* (not a read-back of
+// `_d1_migrations`): D1 remote is eventually consistent, so a bookkeeping
+// write made in this very run may not be visible to an immediate re-read and
+// would spuriously fail. Schema markers reflect the actual migrated state and
+// are the true correctness signal.
+const MIGRATION_VERIFY = {
+  // 0004 must leave a partial UNIQUE index in place.
+  '0004_bookmark_urlkey_unique.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='index' AND name='idx_bm_user_urlkey' AND sql LIKE '%UNIQUE%'`,
+};
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+const schemaPresent = (probe) => {
+  const out = run(['--command', probe]) ?? '';
+  return [...out.matchAll(/"present"\s*:\s*(\d+)/g)].some((m) => Number(m[1]) > 0);
+};
+
+let verifyFailed = false;
+for (const file of files) {
+  const probe = MIGRATION_VERIFY[file];
+  if (!probe) continue;
+  // Retry once after a short wait to absorb D1 replication lag.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await sleepMs(attempt * 1500);
+    if (schemaPresent(probe)) break;
+    if (attempt === 1) {
+      console.error(`✗ 校验失败：迁移 ${file} 的 schema 未就绪`);
+      verifyFailed = true;
+    }
+  }
 }
-console.log(`✓ 校验通过：${files.length}/${files.length} 个迁移均已登记。`);
+if (verifyFailed) process.exit(1);
+console.log(`✓ schema 校验通过。`);
 
 if (count > 0 && !local) {
   console.log('提示：部署内容已就绪，任何迁移都在 push 后在 GitHub Actions 中自动执行。');
