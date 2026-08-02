@@ -76,19 +76,26 @@ jobs:
             echo "Cloudflare credentials not configured (need CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_KEY+CLOUDFLARE_EMAIL); skipping deploy."
           fi
 
-      # Production-only DB migrations. Migration files are idempotent and the
-      # runner records them in _d1_migrations, so this is safe to rerun.
+      # Production-only DB migrations. Files are idempotent and recorded in
+      # _d1_migrations, so rerunning is safe. This is a non-blocking step on
+      # purpose: a token that can deploy Pages but lacks D1 scope must not take
+      # down an otherwise-good release. The outcome is surfaced in the summary
+      # and the deploy continues; fix the token's D1 scope, then re-run.
       - name: Apply D1 migrations (production)
         if: github.ref == 'refs/heads/main' && steps.cf.outputs.configured == 'true' && (
             inputs.run_db_migrations != false ||
             github.event_name != 'workflow_dispatch'
           )
+        continue-on-error: true
+        id: migrate
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scripts/migrate.mjs
+        run: |
+          node scripts/migrate.mjs
+          echo "migrated=ok" >> "$GITHUB_OUTPUT"
 
       - name: Deploy (production)
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.cf.outputs.configured == 'true'
@@ -115,8 +122,14 @@ jobs:
       # Emit a machine-readable deployment record regardless of the preceding
       # steps, so the Actions UI and log searches show the exact target.
       - name: Deployment summary
+        if: always()
         run: |
           echo "## Deploy summary" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Target: ${{ (github.ref == 'refs/heads/main' && 'production (https://tagnest.pages.dev)') || format('preview (pr-{0}.tagnest.pages.dev)', github.event.pull_request.number) }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.migrate.outcome }}" = "failure" ]; then
+            echo "- ⚠️ DB migrations: **failed (deploy continued)** — the Cloudflare token likely lacks \`Account > D1 > Edit\` scope. Add it and Re-run, or run \`npm run db:migrate:all\` manually." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.migrate.outcome }}" = "success" ]; then
+            echo "- DB migrations: applied" >> "$GITHUB_STEP_SUMMARY"
+          fi
