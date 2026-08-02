@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Layers,
   Settings,
+  Sparkles,
   Star,
   Tag as TagIcon,
   Trash2,
@@ -64,6 +65,10 @@ const PRIMARY: NavItem[] = [
 ];
 
 const SECONDARY: NavItem[] = [
+  // Sits directly above 标签: organising and the vocabulary it produces are
+  // the same job, and the entry point has to be visible for a feature that
+  // used to be an invisible side-effect of saving.
+  { to: '/organize', label: 'AI 整理', icon: Sparkles },
   { to: '/tags', label: '标签', icon: TagIcon },
   { to: '/tab-groups', label: '标签页组', icon: FolderOpen },
   { to: '/import', label: '导入导出', icon: Download },

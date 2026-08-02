@@ -8,10 +8,20 @@ import { encryptField } from '../../_lib/crypto';
 /**
  * AI configuration storage.
  *
- * The feature is intentionally inert: these values are written and read back,
- * and nothing in the codebase sends a request to a provider. Wiring the
- * settings up first means the eventual model integration is a handler change
- * rather than a schema migration and a UI rewrite.
+ * ## The `enabled` trap this handler used to set
+ *
+ * `enabled` was stored as an independent boolean and the backend gated all
+ * inference on it — but nothing ever set it to 1. The column defaulted to 0,
+ * registration hard-coded 0, and the settings UI had no such switch. Users
+ * could fill in a provider, a model and a key, see a green "AI 已就绪" banner,
+ * and get nothing. Forever.
+ *
+ * It is now **derived** on write from the fields that actually determine
+ * whether a call can be made, and no read path gates on the column any more
+ * (see `_lib/ai/config.ts#isModelReady`). The column is still written so the
+ * UI and any reporting can read the resolved state, but it can no longer
+ * disagree with reality. Pausing is explicit: set the provider to 未选择, or
+ * turn off both automation toggles.
  */
 
 const PROVIDERS: AiProvider[] = ['none', 'openai', 'anthropic', 'gemini', 'custom'];
@@ -24,11 +34,36 @@ const DEFAULTS: AiSettings = {
   autoSummarize: false,
   autoTag: false,
   enabled: false,
+  autoApplyThreshold: 1,
+  heuristicsEnabled: true,
+  maxTags: 4,
 };
 
+/**
+ * Mirrors `_lib/ai/config.ts#isModelReady`.
+ *
+ * Kept as a local expression over the DTO rather than importing the row-level
+ * predicate, because here the only fact available about the key is whether one
+ * exists — the plaintext is never loaded on this path.
+ */
+function deriveEnabled(s: AiSettings): boolean {
+  if (s.provider === 'none') return false;
+  if (!s.model || !s.model.trim()) return false;
+  if (!s.hasApiKey) return false;
+  if (!s.autoTag && !s.autoSummarize) return false;
+  return true;
+}
+
+function clamp(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 function mapSettings(row: Record<string, unknown> | null): AiSettings {
-  if (!row) return DEFAULTS;
-  return {
+  if (!row) return { ...DEFAULTS };
+
+  const settings: AiSettings = {
     provider: (row.provider as AiProvider) ?? 'none',
     baseUrl: (row.base_url as string | null) ?? null,
     model: (row.model as string | null) ?? null,
@@ -36,8 +71,16 @@ function mapSettings(row: Record<string, unknown> | null): AiSettings {
     hasApiKey: Boolean(row.api_key_encrypted),
     autoSummarize: row.auto_summarize === 1,
     autoTag: row.auto_tag === 1,
-    enabled: row.enabled === 1,
+    enabled: false,
+    autoApplyThreshold: clamp(row.auto_apply_threshold, 0, 1, 1),
+    // Absent column (a row written before migration 0006) reads as on.
+    heuristicsEnabled: row.heuristics_enabled === undefined ? true : row.heuristics_enabled === 1,
+    maxTags: Math.trunc(clamp(row.max_tags, 1, 8, 4)),
   };
+
+  // Always recomputed on read, so a stale column value can never mislead.
+  settings.enabled = deriveEnabled(settings);
+  return settings;
 }
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
@@ -71,7 +114,14 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
   }
   if ('autoSummarize' in body) merged.autoSummarize = Boolean(body.autoSummarize);
   if ('autoTag' in body) merged.autoTag = Boolean(body.autoTag);
-  if ('enabled' in body) merged.enabled = Boolean(body.enabled);
+  if ('heuristicsEnabled' in body) merged.heuristicsEnabled = Boolean(body.heuristicsEnabled);
+  if ('autoApplyThreshold' in body) {
+    merged.autoApplyThreshold = clamp(body.autoApplyThreshold, 0, 1, 1);
+  }
+  if ('maxTags' in body) merged.maxTags = Math.trunc(clamp(body.maxTags, 1, 8, 4));
+
+  // `enabled` is deliberately NOT read from the body. It is a status, not a
+  // setting; accepting it would reintroduce the drift this handler documents.
 
   // An empty string clears the key; omitting the field leaves it in place, so
   // saving other settings does not silently wipe the credential.
@@ -82,7 +132,12 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
   if ('apiKey' in body) {
     const raw = body.apiKey === null ? '' : String(body.apiKey).trim();
     apiKey = raw ? await encryptField(raw.slice(0, 500), ctx.env) : null;
+    merged.hasApiKey = Boolean(apiKey);
   }
+
+  // Recompute after every field has settled, including a key just supplied or
+  // cleared in this same request.
+  merged.enabled = deriveEnabled(merged);
 
   const ts = nowIso();
 
@@ -94,6 +149,9 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       'auto_summarize = ?',
       'auto_tag = ?',
       'enabled = ?',
+      'auto_apply_threshold = ?',
+      'heuristics_enabled = ?',
+      'max_tags = ?',
       'updated_at = ?',
     ];
     const params: unknown[] = [
@@ -103,12 +161,14 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       merged.autoSummarize ? 1 : 0,
       merged.autoTag ? 1 : 0,
       merged.enabled ? 1 : 0,
+      merged.autoApplyThreshold,
+      merged.heuristicsEnabled ? 1 : 0,
+      merged.maxTags,
       ts,
     ];
     if (apiKey !== undefined) {
       sets.push('api_key_encrypted = ?');
       params.push(apiKey);
-      merged.hasApiKey = Boolean(apiKey);
     }
     params.push(userId);
     await ctx.env.DB.prepare(`UPDATE ai_settings SET ${sets.join(', ')} WHERE user_id = ?`)
@@ -118,8 +178,9 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
     await ctx.env.DB.prepare(
       `INSERT INTO ai_settings
          (user_id, provider, base_url, model, api_key_encrypted,
-          auto_summarize, auto_tag, enabled, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          auto_summarize, auto_tag, enabled,
+          auto_apply_threshold, heuristics_enabled, max_tags, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         userId,
@@ -130,10 +191,12 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
         merged.autoSummarize ? 1 : 0,
         merged.autoTag ? 1 : 0,
         merged.enabled ? 1 : 0,
+        merged.autoApplyThreshold,
+        merged.heuristicsEnabled ? 1 : 0,
+        merged.maxTags,
         ts,
       )
       .run();
-    merged.hasApiKey = Boolean(apiKey);
   }
 
   return json(merged);

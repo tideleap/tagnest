@@ -59,11 +59,20 @@ TagNest is deployed and verified end-to-end on Cloudflare Pages:
 - **Tab groups (O12).** Curate an ordered set of your existing bookmarks into named,
   color-coded groups and reopen the whole set in one click; the extension's
   "capture window" flow automatically files a window's tabs into a fresh group.
-- **AI auto-tagging & summaries (O11).** When you configure a provider (OpenAI,
-  Anthropic, Gemini, or any OpenAI-compatible `custom` endpoint) and enable
-  auto-tag/summarize, new bookmarks are enriched asynchronously in the
-  background — the provider key is sealed with AES-256-GCM, and no provider key
-  simply means a silent no-op that never blocks saving a bookmark.
+- **AI tagging & summaries, now a first-class capability (O11).** Tagging is
+  driven by a two-track engine — the model **and** a local heuristic rule engine
+  that always runs for free — whose outputs are normalised against your existing
+  taxonomy so the library stays tidy instead of accumulating `前端` / `Frontend` /
+  `前端开发` for the same idea. Every proposal lands in a review queue with a
+  confidence score and a reason, tagged by source (`model` / `heuristic` /
+  `taxonomy`) so AI contributions are measurable and fully reversible. With no API
+  key the heuristic engine still produces a usable result; with a key, the model
+  lifts quality and the two engines cross-check each other (agreement raises
+  confidence). Configure a provider (OpenAI, Anthropic, Gemini, or any
+  OpenAI-compatible `custom` endpoint) and open **AI 整理** (`/organize`) to
+  organise the whole library in batched, resumable jobs; new bookmarks are also
+  enriched on save. Keys are sealed with AES-256-GCM. See
+  [docs/AI-REFACTOR-2026-08-02.md](./docs/AI-REFACTOR-2026-08-02.md).
 - **Browser extension (O10).** A Manifest V3 helper in [extension/](./extension/)
   saves the current page or captures an entire window into a tab group in one
   click (Ctrl+Shift+T). It talks to your instance over HTTPS with a scoped

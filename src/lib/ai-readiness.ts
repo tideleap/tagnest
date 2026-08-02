@@ -1,12 +1,18 @@
 import type { AiSettings } from '@shared/types';
 
 /**
- * Live readiness diagnostic for the AI feature.
+ * Live readiness diagnostic for the model track.
  *
- * Mirrors the backend `loadAiConfig` gate (functions/_lib/ai.ts) so the settings
- * UI is honest about whether saving a bookmark will actually run inference
- * today. Returns the list of reasons the feature is NOT ready; an empty list
- * means it will run.
+ * Mirrors `functions/_lib/ai/config.ts#isModelReady` field for field. That
+ * parity is the whole point: the backend used to gate additionally on an
+ * `enabled` column this check knew nothing about, and since nothing ever set
+ * that column to 1, the UI reported "ready" for a feature that was
+ * unreachable. `enabled` is now derived from exactly these fields, so the two
+ * cannot drift apart again.
+ *
+ * Returns the reasons the model is NOT usable; an empty list means it is.
+ * Note this describes the *model* only — with heuristics on, the organiser
+ * still produces suggestions when this returns a non-empty list.
  *
  * Kept as a pure function so the UI logic is unit-testable.
  */

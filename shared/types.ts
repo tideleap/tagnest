@@ -143,8 +143,14 @@ export interface Stats {
 export type AiProvider = 'none' | 'openai' | 'anthropic' | 'gemini' | 'custom';
 
 /**
- * Persisted but inert. The UI exposes these controls and the API stores them;
- * no request is ever made to a provider until the feature ships.
+ * AI tagging configuration.
+ *
+ * `enabled` is **derived, not stored intent**: the server reports whether a
+ * model call can actually be made (provider + model + key + at least one
+ * automation toggle). It used to be an independent column that nothing ever
+ * set to 1, which silently disabled the whole feature while the UI claimed it
+ * was ready. Treat it as read-only status; changing behaviour means changing
+ * the fields it is derived from.
  */
 export interface AiSettings {
   provider: AiProvider;
@@ -153,7 +159,104 @@ export interface AiSettings {
   hasApiKey: boolean;
   autoSummarize: boolean;
   autoTag: boolean;
+  /** Read-only. True when inference can actually run. */
   enabled: boolean;
+  /**
+   * Confidence at or above which a suggestion is applied without review.
+   * 1 = always review (default). Lowering it trades review for speed.
+   */
+  autoApplyThreshold: number;
+  /** Local rule engine. Keeps the feature working with no API key. */
+  heuristicsEnabled: boolean;
+  /** Upper bound on tags proposed per bookmark (1-8). */
+  maxTags: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * AI tagging workflow
+ * ------------------------------------------------------------------ */
+
+/** Which engine produced a proposal. Surfaced so a fallback is never silent. */
+export type AiEngineKind = 'model' | 'heuristic' | 'mixed' | 'none';
+
+export type AiCandidateSource = 'model' | 'heuristic' | 'taxonomy';
+
+export type AiJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+/** What a run covers. `untagged` is the default because it pays off fastest. */
+export type AiJobTarget = 'untagged' | 'all' | 'ids';
+
+export interface AiJob {
+  id: string;
+  kind: string;
+  status: AiJobStatus;
+  total: number;
+  processed: number;
+  /** Proposals written so far. */
+  suggested: number;
+  failed: number;
+  engine: AiEngineKind | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One proposed (bookmark, tag) pair awaiting a decision. */
+export interface AiSuggestion {
+  id: string;
+  bookmarkId: string;
+  bookmarkTitle: string;
+  bookmarkUrl: string;
+  tagName: string;
+  tagId: string | null;
+  confidence: number;
+  source: AiCandidateSource;
+  /** Why this tag was proposed, shown in the review queue. */
+  reason: string | null;
+  createdAt: string;
+}
+
+/** Result of one chunk of a run, so the UI can show live progress. */
+export interface AiJobRunResult {
+  job: AiJob;
+  /** True when the snapshot is exhausted and no further run call is needed. */
+  done: boolean;
+  /** Proposals written by this chunk. */
+  suggested: number;
+  /** Applied without review because they cleared the threshold. */
+  autoApplied: number;
+  engine: AiEngineKind;
+  modelError: string | null;
+}
+
+/** A group of tags that mean the same thing, proposed for merging. */
+export interface AiTaxonomyCluster {
+  canonicalId: string;
+  canonicalName: string;
+  canonicalCount: number;
+  duplicates: Array<{ id: string; name: string; count: number }>;
+  reason: string;
+}
+
+export interface AiTaxonomyAudit {
+  totalTags: number;
+  clusters: AiTaxonomyCluster[];
+  /** Tags attached to nothing; safe to delete. */
+  unused: Array<{ id: string; name: string }>;
+}
+
+/** Dashboard numbers for the organiser workbench. */
+export interface AiOverview {
+  /** Model reachable with the current settings. */
+  modelReady: boolean;
+  heuristicsEnabled: boolean;
+  pendingSuggestions: number;
+  untaggedBookmarks: number;
+  totalBookmarks: number;
+  /** Tag links written by AI vs. by the user — the contribution measure. */
+  aiTagLinks: number;
+  userTagLinks: number;
+  recentJobs: AiJob[];
 }
 
 /* ------------------------------------------------------------------ *

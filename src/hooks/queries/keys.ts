@@ -14,6 +14,11 @@ export const keys = {
   tags: ['tags'] as const,
   stats: ['stats'] as const,
   aiSettings: ['ai-settings'] as const,
+  aiOverview: ['ai-overview'] as const,
+  aiTaxonomy: ['ai-taxonomy'] as const,
+  /** Pending proposals; scoped by run so "review what I just made" is cacheable. */
+  aiSuggestions: (jobId?: string | null) => ['ai-suggestions', jobId ?? 'all'] as const,
+  aiSuggestionsRoot: ['ai-suggestions'] as const,
   apiKeys: ['api-keys'] as const,
   shares: ['shares'] as const,
   tabGroups: ['tab-groups'] as const,

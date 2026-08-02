@@ -39,6 +39,15 @@ export {
 } from './queries/ai';
 
 export {
+  useAiOverview,
+  useAiSuggestions,
+  useAiTaxonomyAudit,
+  useDecideSuggestions,
+  useSuggestNow,
+  useOrganizeRun,
+} from './queries/organize';
+
+export {
   useApiKeys,
   useCreateApiKey,
   useDeleteApiKey,

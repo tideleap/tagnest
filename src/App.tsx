@@ -28,6 +28,9 @@ const TabGroupsPage = lazy(() =>
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const OrganizePage = lazy(() =>
+  import('@/pages/OrganizePage').then((m) => ({ default: m.OrganizePage })),
+);
 
 function RouteFallback() {
   return (
@@ -91,6 +94,7 @@ export function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/library/:scope" element={<LibraryPage />} />
+            <Route path="/organize" element={<OrganizePage />} />
             <Route path="/tags" element={<TagsPage />} />
             <Route path="/tags/:tagId" element={<LibraryPage />} />
             <Route path="/import" element={<ImportPage />} />

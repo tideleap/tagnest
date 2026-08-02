@@ -51,6 +51,15 @@ function classify(httpError: HttpError): ImportErrorInfo {
       detail: httpError.message,
     };
   }
+  if (code === 'import_network') {
+    // A transport blip (not a database outage). Retriable; the DB is fine.
+    return {
+      kind: 'timeout',
+      title: '网络波动',
+      hint: '网络波动导致数据处理暂未完成，请稍等片刻后重试',
+      detail: httpError.message,
+    };
+  }
   if (code === 'payload_too_large' || httpError.status === 413) {
     return { kind: 'too_large', title: '文件过大', hint: '请分多次导入，或先移除部分书签再导出', detail: httpError.message };
   }

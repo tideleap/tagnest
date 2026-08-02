@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_SUMMARY_LENGTH,
-  MAX_TAGS,
   MAX_TAG_LENGTH,
   buildProviderRequest,
-  buildPrompt,
+  buildTaggingPrompt,
+  callProvider,
   extractText,
-  parseEnrichment,
-  requestEnrichment,
+  parseTaggingResponse,
+  buildVocabulary,
   type AiConfig,
 } from '../functions/_lib/ai';
 
@@ -18,6 +18,9 @@ const base: AiConfig = {
   apiKey: 'sk-test',
   autoTag: true,
   autoSummarize: true,
+  autoApplyThreshold: 1,
+  heuristicsEnabled: true,
+  maxTags: 4,
 };
 
 describe('provider request shaping', () => {
@@ -56,25 +59,6 @@ describe('provider request shaping', () => {
   });
 });
 
-describe('prompt', () => {
-  it('asks only for the fields that are switched on', () => {
-    expect(buildPrompt({ url: 'https://a.dev', title: 'A' }, { ...base, autoTag: false })).not.toContain(
-      '"tags"',
-    );
-    expect(
-      buildPrompt({ url: 'https://a.dev', title: 'A' }, { ...base, autoSummarize: false }),
-    ).not.toContain('"summary"');
-  });
-
-  it('caps a long description instead of sending the whole page', () => {
-    const prompt = buildPrompt(
-      { url: 'https://a.dev', title: 'A', description: 'x'.repeat(5000) },
-      base,
-    );
-    expect(prompt.length).toBeLessThan(2000);
-  });
-});
-
 describe('response extraction', () => {
   it('reads each provider envelope', () => {
     expect(extractText('openai', { choices: [{ message: { content: 'a' } }] })).toBe('a');
@@ -89,56 +73,152 @@ describe('response extraction', () => {
   });
 });
 
-describe('parseEnrichment', () => {
-  it('extracts JSON even when the model wraps it in prose or fences', () => {
-    const out = parseEnrichment('好的：\n```json\n{"summary":"一个工具","tags":["工具","效率"]}\n```');
-    expect(out.summary).toBe('一个工具');
-    expect(out.tags).toEqual(['工具', '效率']);
+describe('buildTaggingPrompt — classification against the user taxonomy', () => {
+  const vocab = buildVocabulary([
+    { id: 't1', name: '前端', aliases: [], count: 40 },
+    { id: 't2', name: '后端', aliases: [], count: 12 },
+  ]);
+
+  it('tells the model to reuse existing tags when it has a taxonomy', () => {
+    const prompt = buildTaggingPrompt([{ url: 'https://a.dev', title: 'A' }], vocab, {
+      maxTags: 4,
+      wantSummary: false,
+    });
+    expect(prompt).toContain('已有标签');
+    expect(prompt).toContain('前端');
   });
 
-  it('deduplicates case-insensitively and enforces the ceilings', () => {
-    const out = parseEnrichment(
-      JSON.stringify({
-        summary: 's'.repeat(MAX_SUMMARY_LENGTH + 50),
-        tags: ['React', 'react', 'REACT', 'a'.repeat(MAX_TAG_LENGTH + 10), 'b', 'c', 'd', 'e', 'f'],
-      }),
+  it('asks for a summary only when summarisation is switched on', () => {
+    const off = buildTaggingPrompt([{ url: 'https://a.dev', title: 'A' }], vocab, {
+      maxTags: 4,
+      wantSummary: false,
+    });
+    const on = buildTaggingPrompt([{ url: 'https://a.dev', title: 'A' }], vocab, {
+      maxTags: 4,
+      wantSummary: true,
+    });
+    expect(off.toLowerCase()).not.toContain('summary');
+    expect(on).toContain('summary');
+  });
+
+  it('caps a long description instead of sending the whole page', () => {
+    const prompt = buildTaggingPrompt(
+      [{ url: 'https://a.dev', title: 'A', description: 'x'.repeat(5000) }],
+      vocab,
+      { maxTags: 4, wantSummary: false },
     );
-    expect(out.summary!.length).toBe(MAX_SUMMARY_LENGTH);
-    expect(out.tags.length).toBeLessThanOrEqual(MAX_TAGS);
-    expect(out.tags.filter((t) => t.toLowerCase() === 'react')).toHaveLength(1);
-    expect(out.tags.every((t) => t.length <= MAX_TAG_LENGTH)).toBe(true);
-  });
-
-  it('degrades to an empty result on junk, never throws', () => {
-    expect(parseEnrichment(null)).toEqual({ summary: null, tags: [] });
-    expect(parseEnrichment('sorry, I cannot help')).toEqual({ summary: null, tags: [] });
-    expect(parseEnrichment('{ not json')).toEqual({ summary: null, tags: [] });
-    expect(parseEnrichment('{"tags":[1,2,null],"summary":42}')).toEqual({ summary: null, tags: [] });
+    // Description is truncated to 400 chars; the prompt stays well under 5000.
+    expect(prompt.length).toBeLessThan(2000);
   });
 });
 
-describe('requestEnrichment', () => {
-  it('returns null on a provider error instead of surfacing it', async () => {
-    const fetchImpl = vi.fn(async () => new Response('nope', { status: 500 }));
-    await expect(requestEnrichment(base, { url: 'https://a.dev', title: 'A' }, fetchImpl as never))
-      .resolves.toBeNull();
+describe('parseTaggingResponse — defensive batch parsing', () => {
+  it('parses a batch response into per-bookmark items', () => {
+    const out = parseTaggingResponse(
+      JSON.stringify({
+        results: [{ i: 1, tags: [{ name: '前端', confidence: 0.9, reason: 'React 文档' }], summary: '摘要' }],
+      }),
+      1,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].index).toBe(0);
+    expect(out[0].tags[0]).toMatchObject({ name: '前端', confidence: 0.9 });
+    expect(out[0].summary).toBe('摘要');
   });
 
-  it('parses a successful completion end to end', async () => {
-    const fetchImpl = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            choices: [{ message: { content: '{"summary":"摘要","tags":["笔记"]}' } }],
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
+  it('accepts bare-string tags with a default confidence', () => {
+    const out = parseTaggingResponse(JSON.stringify({ results: [{ i: 1, tags: ['React', 'vue'] }] }), 1);
+    expect(out[0].tags).toEqual([
+      { name: 'React', confidence: 0.6, reason: '模型建议' },
+      { name: 'vue', confidence: 0.6, reason: '模型建议' },
+    ]);
+  });
+
+  it('clamps confidence and ignores out-of-range indices', () => {
+    const out = parseTaggingResponse(
+      JSON.stringify({
+        results: [
+          { i: 1, tags: [{ name: '前端', confidence: 5 }] },
+          { i: 9, tags: [{ name: '越界', confidence: 1 }] },
+        ],
+      }),
+      1,
     );
+    expect(out).toHaveLength(1);
+    expect(out[0].tags[0].confidence).toBe(1);
+  });
 
-    const out = await requestEnrichment(base, { url: 'https://a.dev', title: 'A' }, fetchImpl as never);
-    expect(out).toEqual({ summary: '摘要', tags: ['笔记'] });
+  it('degrades to an empty result on junk, never throws', () => {
+    expect(parseTaggingResponse(null, 1)).toEqual([]);
+    expect(parseTaggingResponse('not json', 1)).toEqual([]);
+    expect(parseTaggingResponse('{ not json', 1)).toEqual([]);
+  });
+});
 
-    const init = fetchImpl.mock.calls[0]![1] as RequestInit;
-    expect(init.signal).toBeInstanceOf(AbortSignal);
+describe('callProvider', () => {
+  it('returns ok with extracted text on a successful call', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: '{"results":[]}' } }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(true);
+    expect(out.text).toBe('{"results":[]}');
+  });
+
+  it('surfaces a 401 as a fatal provider error with no text', async () => {
+    const fetchImpl = vi.fn(async () => new Response('nope', { status: 401 }));
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.status).toBe(401);
+      expect(out.error.message).toContain('Key');
+    }
+  });
+
+  it('returns a network/timeout error (status null) rather than throwing', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('aborted');
+    });
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.status).toBeNull();
+      expect(out.error.message).toContain('超时');
+    }
+  });
+
+  it('enforces the ceilings on parsed content', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  results: [
+                    {
+                      i: 1,
+                      tags: [{ name: 'a'.repeat(MAX_TAG_LENGTH + 10), confidence: 0.5 }],
+                      summary: 's'.repeat(MAX_SUMMARY_LENGTH + 50),
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      const parsed = parseTaggingResponse(out.text, 1);
+      expect(parsed[0].tags[0].name.length).toBeLessThanOrEqual(MAX_TAG_LENGTH);
+      expect(parsed[0].summary!.length).toBe(MAX_SUMMARY_LENGTH);
+    }
   });
 });

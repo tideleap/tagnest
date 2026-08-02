@@ -20,11 +20,35 @@ function isUserError(e: unknown): boolean {
   return e instanceof ApiException;
 }
 
-/** Tells a D1 failure apart from a file/decode problem so we can message it. */
-function classifyUnexpected(e: unknown): 'db' | 'read' | 'unknown' {
+/**
+ * Tells a D1 failure apart from a file/decode problem so we can message it.
+ *
+ * Three distinct outcomes, because three very different things can go wrong
+ * and each deserves its own user message:
+ *   - 'db'       a genuine D1/SQL failure → 503, "请稍后重试，无需修改文件"
+ *                (retriable server-side, never the user's file).
+ *   - 'network'  a transport blip (D1 cross-region fetch / cold start) → a
+ *                retriable message that does NOT claim "数据库不可用", because
+ *                the database itself is likely fine.
+ *   - 'unknown'  everything else → 400, "文件无法处理" so the user re-exports.
+ *
+ * The `/fetch|network|Connection|ECONN|socket/` class was previously folded
+ * into 'db', which mislabelled plain network hiccups as a database outage and
+ * sent users into "服务器暂时不可用" loops. Splitting it keeps the honest
+ * "please retry" while no longer blaming the database.
+ */
+function classifyUnexpected(e: unknown): 'db' | 'network' | 'unknown' {
   const msg = (e as { message?: string })?.message ?? '';
-  if (/D1_ERROR|D1 database|no such (table|column)|SQLITE|constraint/i.test(msg)) return 'db';
-  if (/fetch|network|Connection|ECONN|socket/i.test(msg)) return 'db';
+  // A real D1 / SQL error (this is the only thing that should say the
+  // database is unavailable). "constraint" here is a SQLite constraint
+  // violation; do NOT broaden this — a stray "Connection" must not land here.
+  if (/D1_ERROR|D1 database|no such (table|column)|D1_|SQLITE|UNIQUE constraint|FOREIGN KEY constraint/i.test(msg)) {
+    return 'db';
+  }
+  // Transport-level blip, not a database fault.
+  if (/fetch failed|failed to fetch|ECONNREFUSED|ECONNRESET|network error|socket hang up|ETIMEDOUT|timed out|connection (reset|refused|closed|terminated)/i.test(msg)) {
+    return 'network';
+  }
   return 'unknown';
 }
 
@@ -67,6 +91,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
         503,
         'import_db_unavailable',
         '服务器数据处理暂时不可用，请稍等片刻后重试，无需修改文件',
+      );
+    }
+    if (kind === 'network') {
+      // A transport blip, not a database fault. Retriable, but don't tell the
+      // user the database is down (it isn't).
+      throw new ApiException(
+        503,
+        'import_network',
+        '网络波动导致数据处理暂未完成，请稍等片刻后重试',
       );
     }
 

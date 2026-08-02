@@ -163,7 +163,7 @@ export function QuickAddDialog() {
 
         <p className="flex items-center gap-1.5 rounded-md bg-sunken px-2.5 py-2 text-2xs leading-relaxed text-ink-faint">
           <Sparkles size={13} className="shrink-0" aria-hidden />
-          AI 自动摘要与自动打标签的入口已预留，接入模型后即可启用。
+          配置模型后，新书签保存时会自动生成摘要与标签建议；也可到「AI 整理」对整库批量整理。
         </p>
       </form>
     </Modal>

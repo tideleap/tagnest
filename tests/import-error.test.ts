@@ -63,4 +63,14 @@ describe('describeImportError (front-end mapping)', () => {
     expect(info.detail).toBe('boom');
     expect(info.hint).not.toContain('请检查文件内容');
   });
+
+  it('maps import_network to a network blip (not "数据库不可用")', () => {
+    const info = describeImportError(new HttpError(503, 'import_network', 'fetch failed'));
+    expect(info.kind).toBe('timeout');
+    expect(info.title).toContain('网络');
+    // Must NOT blame the database or tell the user their file is broken.
+    expect(info.title).not.toContain('数据库');
+    expect(info.title).not.toContain('文件');
+    expect(info.hint).toContain('稍等');
+  });
 });
