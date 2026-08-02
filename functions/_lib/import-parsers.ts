@@ -34,7 +34,19 @@ export function decodeEntities(input: string): string {
         body[1] === 'x' || body[1] === 'X'
           ? Number.parseInt(body.slice(2), 16)
           : Number.parseInt(body.slice(1), 10);
-      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : match;
+      // A malformed or out-of-range code point (e.g. > 0x10FFFF or a lone
+      // surrogate) would make String.fromCodePoint throw and take down the
+      // whole import. Resist that: if it isn't a legal code point, emit the
+      // original entity as-is rather than failing.
+      if (
+        Number.isFinite(code) &&
+        code > 0 &&
+        code <= 0x10ffff &&
+        !(code >= 0xd800 && code <= 0xdfff)
+      ) {
+        return String.fromCodePoint(code);
+      }
+      return match;
     }
     return ENTITIES[body.toLowerCase()] ?? match;
   });
@@ -114,19 +126,31 @@ export function parseNetscapeHtml(source: string): ParseOutcome {
       continue;
     }
 
-    const title = decodeEntities(match[3] ?? '')
-      .replace(/<[^>]*>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    let title = '';
+    try {
+      title = decodeEntities(match[3] ?? '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch {
+      // A pathological title (e.g. a broken character entity) must never take
+      // down the whole import — fall back to the raw fragment.
+      title = (match[3] ?? '').replace(/<[^>]*>/g, '').trim();
+    }
 
     // Some exporters (Pocket, Raindrop) already carry tags in an attribute.
-    const tagAttr = attr(attrs, 'tags');
-    const tagNames = tagAttr
-      ? tagAttr
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
+    let tagNames: string[] = [];
+    try {
+      const tagAttr = attr(attrs, 'tags');
+      tagNames = tagAttr
+        ? tagAttr
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [];
+    } catch {
+      tagNames = [];
+    }
 
     items.push({
       url,

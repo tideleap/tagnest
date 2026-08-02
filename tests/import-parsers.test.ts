@@ -52,6 +52,31 @@ describe('parseNetscapeHtml', () => {
     const vite = items.find((i) => i.url === 'https://vitejs.dev/guide/');
     expect(vite?.addedAt).toBeNull();
   });
+
+  it('does not throw on an out-of-range character entity in a title', () => {
+    // A malformed/oversized numeric entity (e.g. past the Unicode maximum)
+    // previously crashed String.fromCodePoint and turned the whole import
+    // into a 500. It must be left as-is and the other bookmarks still parse.
+    const src = `<DL><p>
+      <DT><A HREF="https://a.example/x">bad &#1114114; entity</A>
+      <DT><A HREF="https://b.example/y">Good bookmark</A>
+    </DL><p>`;
+    const { items, invalid } = parseNetscapeHtml(src);
+    expect(() => parseNetscapeHtml(src)).not.toThrow();
+    expect(items).toHaveLength(2);
+    expect(items[1].title).toBe('Good bookmark');
+    expect(items[0].title).toContain('&#'); // oversized entity kept verbatim
+    expect(invalid).toBe(0);
+  });
+
+  it('does not throw on a lone-surrogate numeric entity in a URL attribute', () => {
+    // A high surrogate in a URL that must be decoded but is not a valid
+    // Unicode scalar value must not crash the parser.
+    const src = `<DL><p>
+      <DT><A HREF="https://c.example/?q=&#xD800;">surrogate</A>
+    </DL><p>`;
+    expect(() => parseNetscapeHtml(src)).not.toThrow();
+  });
 });
 
 describe('parseJson', () => {
