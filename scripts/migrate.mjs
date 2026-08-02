@@ -44,6 +44,14 @@ const MIGRATION_PROBES = {
   // 0003 creates tab_groups (idempotent, but harmless to confirm and record).
   '0003_tab_groups.sql':
     `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='table' AND name='tab_groups'`,
+  // 0004 partial UNIQUE index on live bookmarks (idempotent DDL, but recording
+  // avoids churny re-applies when the bookkeeping write lagged).
+  '0004_bookmark_urlkey_unique.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='index' AND name='idx_bm_user_urlkey'`,
+  // 0005 adds shares.palette via ALTER TABLE (not idempotent). Same "applied
+  // but unrecorded" risk as 0002.
+  '0005_share_palette.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('shares') WHERE name='palette'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
