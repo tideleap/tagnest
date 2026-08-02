@@ -257,6 +257,8 @@ export interface ApiError {
     code: string;
     message: string;
     details?: Record<string, string>;
+    /** True when the operation may succeed if retried as-is (transient). */
+    retriable?: boolean;
   };
 }
 

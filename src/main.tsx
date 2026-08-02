@@ -15,7 +15,10 @@ const queryClient = new QueryClient({
       staleTime: 30_000,
       gcTime: 5 * 60_000,
       retry: (failureCount, error) => {
-        if (error instanceof HttpError && error.status >= 400 && error.status < 500) return false;
+        // Retry only genuinely transient failures (timeout / network blip /
+        // 429 / 5xx), using the server's `retriable` flag which the API client
+        // surfaces on HttpError. A permanent validation error is never retried.
+        if (error instanceof HttpError && !error.retriable) return false;
         return failureCount < 2;
       },
     },

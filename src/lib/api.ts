@@ -6,13 +6,22 @@ export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: Record<string, string> | undefined;
+  /** True when retrying as-is may succeed (429 / 5xx / network blip). */
+  readonly retriable: boolean;
 
-  constructor(status: number, code: string, message: string, details?: Record<string, string>) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: Record<string, string>,
+    retriable = status >= 500 || status === 408 || status === 425 || status === 429,
+  ) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retriable = retriable;
   }
 
   get isAuthError() {
@@ -65,12 +74,12 @@ export const DOWNLOAD_TIMEOUT_MS = 60_000;
 export function classifyFetchFailure(error: unknown): HttpError {
   const name = (error as { name?: string } | null)?.name;
   if (name === 'TimeoutError') {
-    return new HttpError(0, 'timeout', '请求超时，请稍后重试');
+    return new HttpError(0, 'timeout', '请求超时，请稍后重试', undefined, true);
   }
   if (name === 'AbortError') {
-    return new HttpError(0, 'aborted', '请求已取消');
+    return new HttpError(0, 'aborted', '请求已取消', undefined, false);
   }
-  return new HttpError(0, 'network_error', '网络连接失败，请检查网络后重试');
+  return new HttpError(0, 'network_error', '网络连接失败，请检查网络后重试', undefined, true);
 }
 
 /**
@@ -144,6 +153,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       err?.error?.code ?? 'unknown',
       err?.error?.message ?? `请求失败（${response.status}）`,
       err?.error?.details,
+      err?.error?.retriable,
     );
   }
 

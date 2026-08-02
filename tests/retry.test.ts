@@ -39,6 +39,15 @@ describe('classifyFetchFailure', () => {
     expect(offline.code).toBe('network_error');
   });
 
+  it('marks timeout and network errors retriable, but a user abort not', () => {
+    const timeout = classifyFetchFailure(Object.assign(new Error('x'), { name: 'TimeoutError' }));
+    expect(timeout.retriable).toBe(true);
+    const offline = classifyFetchFailure(new TypeError('Failed to fetch'));
+    expect(offline.retriable).toBe(true);
+    const aborted = classifyFetchFailure(Object.assign(new Error('x'), { name: 'AbortError' }));
+    expect(aborted.retriable).toBe(false);
+  });
+
   it('never leaks a non-HttpError to callers', () => {
     expect(classifyFetchFailure('not an error')).toBeInstanceOf(HttpError);
     expect(classifyFetchFailure(null)).toBeInstanceOf(HttpError);

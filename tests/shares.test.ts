@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { mapShare, PALETTES } from '../functions/_lib/shares';
-import type { Share } from '../shared/types';
 
 function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

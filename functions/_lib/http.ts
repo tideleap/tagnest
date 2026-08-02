@@ -60,10 +60,20 @@ export function noContent(init: ResponseInit = {}): Response {
   return new Response(null, { ...init, status: 204 });
 }
 
+/** Whether a status is transient enough that a retry as-is may succeed. */
+export function isRetriable(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
 export function errorResponse(e: unknown): Response {
   if (e instanceof ApiException) {
     const body: ApiError = {
-      error: { code: e.code, message: e.message, ...(e.details ? { details: e.details } : {}) },
+      error: {
+        code: e.code,
+        message: e.message,
+        ...(e.details ? { details: e.details } : {}),
+        retriable: isRetriable(e.status),
+      },
     };
     return json(body, { status: e.status });
   }
@@ -72,7 +82,7 @@ export function errorResponse(e: unknown): Response {
   // table and column names. The API middleware logs it as a structured
   // `request_error` event, so no raw console.error belongs here.
   const body: ApiError = {
-    error: { code: 'internal_error', message: '服务器内部错误，请稍后重试' },
+    error: { code: 'internal_error', message: '服务器内部错误，请稍后重试', retriable: true },
   };
   return json(body, { status: 500 });
 }
