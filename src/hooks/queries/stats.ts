@@ -42,7 +42,11 @@ export function useImportCommit() {
       setProgress(null);
     },
     onError: (e: Error) => {
-      toast.error('导入失败', e.message);
+      // Reuse the same classifier so commit failures get the same clear
+      // title/hint split as preview (e.g. a 503 database blip becomes "请稍后
+      // 重试" instead of a raw server error message).
+      const info = describeImportError(e);
+      toast.error(info.title, info.hint + (info.detail ? `\n${info.detail}` : ''));
       setProgress(null);
     },
     onMutate: () => setProgress({ done: 0, total: 0, skipped: 0, failed: 0 }),

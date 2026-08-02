@@ -1,7 +1,7 @@
 import type { ImportPreview, ImportPreviewItem } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
-import { ApiException, badRequest, json, tooLarge } from '../../_lib/http';
+import { ApiException, badRequestCode, json, tooLarge } from '../../_lib/http';
 import { isoFromNow, nowIso, randomToken } from '../../_lib/ids';
 import { detectSource, parseBySource } from '../../_lib/import-parsers';
 import { decodeUploadBytes } from '../../_lib/encoding';
@@ -20,6 +20,14 @@ function isUserError(e: unknown): boolean {
   return e instanceof ApiException;
 }
 
+/** Tells a D1 failure apart from a file/decode problem so we can message it. */
+function classifyUnexpected(e: unknown): 'db' | 'read' | 'unknown' {
+  const msg = (e as { message?: string })?.message ?? '';
+  if (/D1_ERROR|D1 database|no such (table|column)|SQLITE|constraint/i.test(msg)) return 'db';
+  if (/fetch|network|Connection|ECONN|socket/i.test(msg)) return 'db';
+  return 'unknown';
+}
+
 /**
  * Parses an uploaded file and stages the result.
  *
@@ -27,9 +35,11 @@ function isUserError(e: unknown): boolean {
  * written before anything touches the library.
  *
  * Robustness: this endpoint must never surface a raw 500 on user input. Any
- * unexpected exception is logged with context and converted to a 4xx with a
- * specific, user-addressable message — so "解析失败 / 服务器内部错误" stops
- * being the only thing a user ever sees on a tricky export.
+ * unexpected exception is logged with full context (name/message/stack) and
+ * converted to a 4xx with a specific, user-addressable message. Crucially, a
+ * server-side database problem is reported as "请稍后重试" — NOT as a broken
+ * file — so a transient D1 failure stops being mistaken for a bad export and
+ * the user stops re-exporting a perfectly good file over and over.
  */
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -40,15 +50,30 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   } catch (e) {
     if (isUserError(e)) throw e;
 
+    // Preserve the real cause in telemetry — name/message/stack — so a truly
+    // unexpected failure can be diagnosed from the logs instead of guessing.
+    const cause = (e as Error) ?? new Error(String(e));
     log.error('import.preview_failed', {
       userId,
-      error: (e as Error)?.message ?? String(e),
-      stack: (e as Error)?.stack ?? '',
+      errorName: cause.name,
+      error: cause.message,
+      stack: cause.stack ?? '',
     });
+
+    const kind = classifyUnexpected(e);
+    if (kind === 'db') {
+      // Server-side, transient, retriable — nothing to do with the user's file.
+      throw new ApiException(
+        503,
+        'import_db_unavailable',
+        '服务器数据处理暂时不可用，请稍等片刻后重试，无需修改文件',
+      );
+    }
+
     // Not a recognised parse error, not a validation error — we report it as an
-    // unreadable file so the user knows to re-export / re-check, and the log above
-    // carries the real cause.
-    throw badRequest('无法读取该文件，请确认文件未损坏或重新导出后再试', { code: 'import_unreadable' });
+    // unreadable file so the user knows to re-export / re-check, and the log
+    // above carries the real cause.
+    throw new ApiException(400, 'import_unreadable', '服务器未能处理该文件，请确认文件未损坏或重新导出后再试');
   }
 };
 
@@ -61,19 +86,19 @@ async function handle(
   try {
     form = await ctx.request.formData();
   } catch {
-    throw badRequest('请求不是合法的表单上传', { code: 'import_form' });
+    throw badRequestCode('import_form', '请求不是合法的表单上传');
   }
 
   const entry = form.get('file');
-  if (!entry || typeof entry === 'string') throw badRequest('未收到文件', { code: 'import_no_file' });
+  if (!entry || typeof entry === 'string') throw badRequestCode('import_no_file', '未收到文件');
 
   const file = entry as unknown as {
     size: number;
     name: string;
     arrayBuffer(): Promise<ArrayBuffer>;
   };
-  if (typeof file.arrayBuffer !== 'function') throw badRequest('未收到文件', { code: 'import_no_file' });
-  if (file.size === 0) throw badRequest('文件为空', { code: 'import_empty' });
+  if (typeof file.arrayBuffer !== 'function') throw badRequestCode('import_no_file', '未收到文件');
+  if (file.size === 0) throw badRequestCode('import_empty', '文件为空');
   if (file.size > MAX_FILE_BYTES) {
     throw tooLarge('文件超过 20 MB 上限，请先拆分或压缩后再导入');
   }
@@ -83,7 +108,7 @@ async function handle(
     bytes = new Uint8Array(await file.arrayBuffer());
   } catch (e) {
     log.error('import.read_failed', { userId, error: (e as Error)?.message ?? '' });
-    throw badRequest('读取文件失败，请重试', { code: 'import_read' });
+    throw badRequestCode('import_read', '读取文件失败，请重试');
   }
 
   // Encoding-aware decode. The old `file.text()` was always UTF-8 and mangled
@@ -103,20 +128,20 @@ async function handle(
       encoding,
       error: (e as Error)?.message ?? 'unknown',
     });
-    throw badRequest(
+    throw badRequestCode(
+      'import_parse',
       source === 'html'
         ? '未能解析该 HTML 书签文件，请确认它是浏览器（Chrome / Edge / Firefox / Safari）导出的书签'
         : '未能解析该文件，请确认文件格式正确（书签 HTML、JSON 或 CSV）',
-      { code: 'import_parse' },
     );
   }
 
   if (parsed.items.length === 0) {
-    throw badRequest(
+    throw badRequestCode(
+      'import_empty_parse',
       source === 'html'
         ? '未能从该文件解析出书签，请确认是浏览器导出的 HTML 书签文件'
         : '未能从该文件解析出书签，请检查文件格式',
-      { code: 'import_empty_parse' },
     );
   }
 

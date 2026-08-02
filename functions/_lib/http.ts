@@ -27,6 +27,18 @@ export class ApiException extends Error {
 export const badRequest = (message: string, details?: Record<string, string>) =>
   new ApiException(400, 'bad_request', message, details);
 
+/**
+ * badRequest with an explicit error code.
+ *
+ * `badRequest(message, { code })` does NOT set `code` — its second argument is
+ * `details`, so the error would silently keep the generic `bad_request` code
+ * and the front end would never be able to tell one failure from another
+ * (a real regression this project hit on the import path). Use this helper
+ * whenever a caller needs a meaningful, mappable error code.
+ */
+export const badRequestCode = (code: string, message: string, details?: Record<string, string>) =>
+  new ApiException(400, code, message, details);
+
 export const unauthorized = (message = '登录状态已失效，请重新登录') =>
   new ApiException(401, 'unauthorized', message);
 
