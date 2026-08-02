@@ -3,6 +3,7 @@ import type { ImportCommit, ImportPreview, ImportResult, Stats } from '@shared/t
 import { api, requestNdjson, type ImportProgress } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
+import { describeImportError } from '@/lib/import-error';
 import { useState } from 'react';
 
 export function useStats() {
@@ -20,7 +21,10 @@ export function useImportPreview() {
       form.append('file', file);
       return api.post<ImportPreview>('/import/preview', form);
     },
-    onError: (e: Error) => toast.error('解析失败', e.message),
+    onError: (e: Error) => {
+      const info = describeImportError(e);
+      toast.error(info.title, info.hint + (info.detail ? `\n${info.detail}` : ''));
+    },
   });
 }
 

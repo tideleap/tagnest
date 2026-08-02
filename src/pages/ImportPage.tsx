@@ -18,7 +18,7 @@ import { downloadBlob } from '@/lib/api';
 import { cx } from '@/lib/cx';
 
 const ACCEPTED = '.html,.htm,.json,.csv';
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 20 * 1024 * 1024;
 
 export function ImportPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -35,7 +35,7 @@ export function ImportPage() {
   const handleFile = (file: File | undefined) => {
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      toast.error('文件过大', '请上传 10 MB 以内的文件');
+      toast.error('文件过大', '请上传 20 MB 以内的文件');
       return;
     }
     previewMutation.mutate(file, { onSuccess: setPreview });
