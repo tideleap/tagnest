@@ -12,6 +12,54 @@ type Row = Record<string, unknown>;
 
 const bool = (v: unknown) => v === 1 || v === true;
 
+/* ------------------------------------------------------------------ *
+ * D1 parameter-limit-safe IN-clause execution
+ * ------------------------------------------------------------------ */
+
+/**
+ * Cloudflare D1 caps a single statement at **100 bound parameters**. An
+ * `IN (...)` clause therefore holds at most 99 values once we also bind a
+ * leading filter such as `user_id = ?`. The import endpoints used to chunk at
+ * 400, so any import past ~99 URLs died with
+ * `D1_ERROR: too many SQL variables` → HTTP 503 `import_db_unavailable`,
+ * i.e. "服务器暂时不可用" on every real-world bookmark file.
+ *
+ * `D1_IN_CHUNK` = 99 leaves exactly one slot for the leading bound param.
+ */
+export const D1_MAX_PARAMS = 100;
+export const D1_IN_CHUNK = D1_MAX_PARAMS - 1;
+
+/**
+ * Runs `makeSql(placeholders)` once per chunk of `values`, binding `leadParams`
+ * first and then the chunk, and accumulates every row.
+ *
+ * @param db            the D1 binding (env.DB)
+ * @param values        the list that becomes the IN(...) values
+ * @param leadParams    bound *before* the chunk (e.g. `[userId]`)
+ * @param makeSql       builds the SQL given the `?, ?, ...` placeholder string
+ * @param mapRow        converts a raw row to the desired shape
+ */
+export async function queryInChunks<T = Row, R = T>(
+  db: Env['DB'],
+  values: string[],
+  leadParams: unknown[],
+  makeSql: (placeholders: string) => string,
+  mapRow: (row: T) => R,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < values.length; i += D1_IN_CHUNK) {
+    const slice = values.slice(i, i + D1_IN_CHUNK);
+    const placeholders = slice.map(() => '?').join(',');
+    const rows = await db
+      .prepare(makeSql(placeholders))
+      .bind(...leadParams, ...slice)
+      .all<T>();
+    for (const r of rows.results) out.push(mapRow(r));
+  }
+  return out;
+}
+
+
 export function mapTag(row: Row): Tag {
   return {
     id: row.id as string,
@@ -148,15 +196,16 @@ export async function ensureTags(
   ];
   if (cleaned.length === 0) return { ids: [], created: 0 };
 
-  const existing = await env.DB.prepare(
-    `SELECT id, name FROM tags
-      WHERE user_id = ? AND name COLLATE NOCASE IN (${cleaned.map(() => '?').join(',')})`,
-  )
-    .bind(userId, ...cleaned)
-    .all<Row>();
+  const existing = await queryInChunks<Row, Row>(
+    env.DB,
+    cleaned,
+    [userId],
+    (ph) => `SELECT id, name FROM tags WHERE user_id = ? AND name COLLATE NOCASE IN (${ph})`,
+    (r) => r,
+  );
 
   const byLower = new Map(
-    existing.results.map((r) => [(r.name as string).toLowerCase(), r.id as string]),
+    existing.map((r) => [(r.name as string).toLowerCase(), r.id as string]),
   );
 
   const ids: string[] = [];

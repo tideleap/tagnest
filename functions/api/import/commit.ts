@@ -2,7 +2,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, notFound, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
-import { ensureTags } from '../../_lib/db';
+import { ensureTags, queryInChunks } from '../../_lib/db';
 import type { ParsedItem } from '../../_lib/import-parsers';
 import { faviconFor, titleFallback, urlKey } from '../../_lib/urlkey';
 
@@ -66,12 +66,14 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const tagIdByLower = new Map<string, string>();
   if (resolvedIds.length > 0) {
-    const rows = await ctx.env.DB.prepare(
-      `SELECT id, name FROM tags WHERE user_id = ? AND id IN (${resolvedIds.map(() => '?').join(',')})`,
-    )
-      .bind(userId, ...resolvedIds)
-      .all<{ id: string; name: string }>();
-    for (const r of rows.results) tagIdByLower.set(r.name.toLowerCase(), r.id);
+    const rows = await queryInChunks<{ id: string; name: string }, { id: string; name: string }>(
+      ctx.env.DB,
+      resolvedIds,
+      [userId],
+      (ph) => `SELECT id, name FROM tags WHERE user_id = ? AND id IN (${ph})`,
+      (r) => r,
+    );
+    for (const r of rows) tagIdByLower.set(r.name.toLowerCase(), r.id);
   }
 
   const extraIds = extraNames
@@ -207,21 +209,14 @@ async function countTags(env: Env, userId: string): Promise<number> {
 }
 
 async function loadExistingKeys(env: Env, userId: string, keys: string[]): Promise<Set<string>> {
-  const found = new Set<string>();
   const unique = [...new Set(keys)];
-  const CHUNK = 400;
-
-  for (let i = 0; i < unique.length; i += CHUNK) {
-    const slice = unique.slice(i, i + CHUNK);
-    const rows = await env.DB.prepare(
-      `SELECT url_key FROM bookmarks
-        WHERE user_id = ? AND deleted_at IS NULL
-          AND url_key IN (${slice.map(() => '?').join(',')})`,
-    )
-      .bind(userId, ...slice)
-      .all<{ url_key: string }>();
-    for (const row of rows.results) found.add(row.url_key);
-  }
-
-  return found;
+  const rows = await queryInChunks<{ url_key: string }, string>(
+    env.DB,
+    unique,
+    [userId],
+    (ph) =>
+      `SELECT url_key FROM bookmarks WHERE user_id = ? AND deleted_at IS NULL AND url_key IN (${ph})`,
+    (r) => r.url_key,
+  );
+  return new Set(rows);
 }

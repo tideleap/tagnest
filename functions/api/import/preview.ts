@@ -7,6 +7,7 @@ import { detectSource, parseBySource } from '../../_lib/import-parsers';
 import { decodeUploadBytes } from '../../_lib/encoding';
 import { urlKey } from '../../_lib/urlkey';
 import { createLogger } from '../../_lib/logger';
+import { queryInChunks } from '../../_lib/db';
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_ITEMS = 20_000;
@@ -113,39 +114,71 @@ async function handle(
   userId: string,
   log: ReturnType<typeof createLogger>,
 ): Promise<Response> {
-  let form: FormData;
-  try {
-    form = await ctx.request.formData();
-  } catch {
-    throw badRequestCode('import_form', '请求不是合法的表单上传');
-  }
-
-  const entry = form.get('file');
-  if (!entry || typeof entry === 'string') throw badRequestCode('import_no_file', '未收到文件');
-
-  const file = entry as unknown as {
-    size: number;
-    name: string;
-    arrayBuffer(): Promise<ArrayBuffer>;
-  };
-  if (typeof file.arrayBuffer !== 'function') throw badRequestCode('import_no_file', '未收到文件');
-  if (file.size === 0) throw badRequestCode('import_empty', '文件为空');
-  if (file.size > MAX_FILE_BYTES) {
-    throw tooLarge('文件超过 20 MB 上限，请先拆分或压缩后再导入');
-  }
-
+  // Cloudflare Pages Functions rejects `multipart/form-data` uploads at the
+  // *edge* (HTTP 503, before the function runs) once the body passes ~16 KB —
+  // `request.formData()` has to buffer the whole body and the edge gateway
+  // refuses it. So the browser sends the file as a JSON body ({fileName,
+  // content}) instead, which streams through normally. We still accept
+  // multipart for tiny files / legacy callers.
+  const contentType = ctx.request.headers.get('content-type') ?? '';
+  let fileName = '';
   let bytes: Uint8Array;
-  try {
-    bytes = new Uint8Array(await file.arrayBuffer());
-  } catch (e) {
-    log.error('import.read_failed', e instanceof Error ? e : new Error(String(e)), { userId });
-    throw badRequestCode('import_read', '读取文件失败，请重试');
+
+  if (contentType.includes('multipart/form-data')) {
+    let form: FormData;
+    try {
+      form = await ctx.request.formData();
+    } catch {
+      throw badRequestCode('import_form', '请求不是合法的表单上传');
+    }
+    const entry = form.get('file');
+    if (!entry || typeof entry === 'string') throw badRequestCode('import_no_file', '未收到文件');
+    const file = entry as unknown as {
+      size: number;
+      name: string;
+      arrayBuffer(): Promise<ArrayBuffer>;
+    };
+    if (typeof file.arrayBuffer !== 'function') throw badRequestCode('import_no_file', '未收到文件');
+    if (file.size === 0) throw badRequestCode('import_empty', '文件为空');
+    if (file.size > MAX_FILE_BYTES) throw tooLarge('文件超过 20 MB 上限，请先拆分或压缩后再导入');
+    fileName = typeof file.name === 'string' ? file.name : '';
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch (e) {
+      log.error('import.read_failed', e instanceof Error ? e : new Error(String(e)), { userId });
+      throw badRequestCode('import_read', '读取文件失败，请重试');
+    }
+  } else {
+    // JSON body: { fileName, content, encoding? } where `content` is base64 of
+    // the *raw* file bytes. base64 (not text) preserves GBK / UTF-16 so the
+    // server-side decoder still gets the original bytes. This path streams
+    // through Cloudflare normally — no multipart edge 503.
+    let payload: { fileName?: string; content?: unknown; encoding?: unknown };
+    try {
+      payload = await ctx.request.json();
+    } catch {
+      throw badRequestCode('import_form', '请求体必须是 JSON 或小于 16KB 的表单上传');
+    }
+    if (typeof payload.content !== 'string' || !payload.content) {
+      throw badRequestCode('import_no_file', '未收到文件内容');
+    }
+    if (payload.encoding === 'base64') {
+      const bin = atob(payload.content.replace(/\s+/g, ''));
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else {
+      // Plain-text fallback (UTF-8 only — loses GBK/UTF-16).
+      const enc = new TextEncoder().encode(payload.content);
+      bytes = enc;
+    }
+    if (bytes.length === 0) throw badRequestCode('import_empty', '文件为空');
+    if (bytes.length > MAX_FILE_BYTES) throw tooLarge('文件超过 20 MB 上限，请先拆分或压缩后再导入');
+    fileName = typeof payload.fileName === 'string' ? payload.fileName : '';
   }
 
   // Encoding-aware decode. The old `file.text()` was always UTF-8 and mangled
   // GBK / UTF-16 Chinese exports into U+FFFD garbage.
   const { text, encoding } = decodeUploadBytes(bytes);
-  const fileName = typeof file.name === 'string' ? file.name : '';
   log.info('import.parsing', { userId, bytes: bytes.length, encoding, fileName });
 
   const source = detectSource(fileName, text);
@@ -239,30 +272,23 @@ async function handle(
 }
 
 /**
- * Duplicate lookup in chunks.
- *
- * SQLite caps a statement at 999 bound parameters, and a 20k-bookmark export
- * would blow straight past it.
+ * Duplicate lookup, D1-parameter-limit-safe (see queryInChunks / D1_IN_CHUNK).
+ * A 20k-bookmark export previously blew past D1's 100-param cap and every large
+ * import returned HTTP 503 "服务器暂时不可用".
  */
 async function loadExistingKeys(
   env: Env,
   userId: string,
   keys: string[],
 ): Promise<Set<string>> {
-  const found = new Set<string>();
-  const CHUNK = 400;
-
-  for (let i = 0; i < keys.length; i += CHUNK) {
-    const slice = keys.slice(i, i + CHUNK);
-    const rows = await env.DB.prepare(
-      `SELECT url_key FROM bookmarks
-        WHERE user_id = ? AND deleted_at IS NULL
-          AND url_key IN (${slice.map(() => '?').join(',')})`,
-    )
-      .bind(userId, ...slice)
-      .all<{ url_key: string }>();
-    for (const row of rows.results) found.add(row.url_key);
-  }
-
-  return found;
+  const unique = [...new Set(keys)];
+  const rows = await queryInChunks<{ url_key: string }, string>(
+    env.DB,
+    unique,
+    [userId],
+    (ph) =>
+      `SELECT url_key FROM bookmarks WHERE user_id = ? AND deleted_at IS NULL AND url_key IN (${ph})`,
+    (r) => r.url_key,
+  );
+  return new Set(rows);
 }

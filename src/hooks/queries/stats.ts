@@ -16,10 +16,24 @@ export function useStats() {
 
 export function useImportPreview() {
   return useMutation({
-    mutationFn: (file: File) => {
-      const form = new FormData();
-      form.append('file', file);
-      return api.post<ImportPreview>('/import/preview', form);
+    mutationFn: async (file: File) => {
+      // Send the file as base64 inside a JSON body instead of multipart/form-data.
+      // Cloudflare Pages Functions rejects multipart uploads larger than ~16 KB at
+      // the *edge* (HTTP 503 before the function runs), so any real bookmark file
+      // fails. A JSON body streams through normally and keeps the raw bytes (so
+      // GBK / UTF-16 exports decode correctly server-side).
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < buf.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + CHUNK)));
+      }
+      const content = btoa(binary);
+      return api.post<ImportPreview>('/import/preview', {
+        fileName: file.name,
+        content,
+        encoding: 'base64',
+      });
     },
     onError: (e: Error) => {
       const info = describeImportError(e);

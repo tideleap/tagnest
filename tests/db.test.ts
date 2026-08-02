@@ -4,8 +4,12 @@ import {
   encodeCursor,
   decodeCursor,
   SORTS,
+  queryInChunks,
+  D1_IN_CHUNK,
+  D1_MAX_PARAMS,
 } from '../functions/_lib/db';
 import type { BookmarkSort } from '../shared/types';
+import type { Env } from '../functions/_lib/env';
 
 describe('colorForName', () => {
   it('is deterministic for a given name', () => {
@@ -69,3 +73,42 @@ describe('SORTS', () => {
     }
   });
 });
+
+describe('queryInChunks — D1 100-bound-parameter limit', () => {
+  it('never binds more than D1_MAX_PARAMS per statement (regression: import 503)', async () => {
+    const boundCounts: number[] = [];
+    // A fake D1 binding that records how many params each statement received
+    // and echoes back the IN-list values so we can verify correctness.
+    const fakeDb = {
+      prepare(_sql: string) {
+        return {
+          bind(...args: unknown[]) {
+            boundCounts.push(args.length);
+            const slice = args.slice(1) as string[]; // drop the leading user_id
+            return {
+              all: async () => ({ results: slice.map((v) => ({ k: v })) }),
+            };
+          },
+        };
+      },
+    } as unknown as Env['DB'];
+
+    const values = Array.from({ length: 6000 }, (_, i) => `k${i}`);
+    const rows = await queryInChunks<{ k: string }, string>(
+      fakeDb,
+      values,
+      ['user-1'],
+      (ph) => `SELECT k FROM t WHERE user_id = ? AND k IN (${ph})`,
+      (r) => r.k,
+    );
+
+    // Every statement stayed within the D1 limit (1 lead param + <=99 values).
+    expect(D1_IN_CHUNK).toBe(D1_MAX_PARAMS - 1);
+    for (const n of boundCounts) expect(n).toBeLessThanOrEqual(D1_MAX_PARAMS);
+    // It actually chunked into multiple queries.
+    expect(boundCounts.length).toBeGreaterThan(1);
+    // All input values came back.
+    expect(rows.sort()).toEqual(values.slice().sort());
+  });
+});
+
