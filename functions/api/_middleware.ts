@@ -20,6 +20,13 @@ const PUBLIC_PATHS = new Set([
 
 /** Anonymous read surface for published share pages. */
 const PUBLIC_PREFIXES = ['/api/public/'];
+/**
+ * Snapshot images are public, unauthenticated GET endpoints: the object key
+ * (`snapshots/{userId}/{bookmarkId}.webp`) doubles as the access token, and the
+ * browser card renders them as a plain <img> with no auth header, so the path
+ * must bypass auth (fail-closed allowlist kept intact for everything else).
+ */
+const PUBLIC_IMAGE_PREFIXES = ['/api/snapshots/'];
 
 /**
  * Routes a personal access key may never reach.
@@ -124,7 +131,10 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
       if (userId) data.userId = userId;
     }
 
-    const isPublic = PUBLIC_PATHS.has(path) || PUBLIC_PREFIXES.some((p) => path.startsWith(p));
+    const isPublic =
+      PUBLIC_PATHS.has(path) ||
+      PUBLIC_PREFIXES.some((p) => path.startsWith(p)) ||
+      PUBLIC_IMAGE_PREFIXES.some((p) => path.startsWith(p));
     if (!isPublic && !data.userId) throw unauthorized();
 
     const response = await next();
