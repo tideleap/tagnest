@@ -56,6 +56,7 @@ export {
   useDecideSuggestions,
   useSuggestNow,
   useOrganizeRun,
+  useAutoGroupTags,
 } from './queries/organize';
 
 export {

@@ -8,6 +8,7 @@ import type {
   AiOverview,
   AiSuggestion,
   AiTaxonomyAudit,
+  Tag,
 } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -267,4 +268,33 @@ export function useOrganizeRun() {
   );
 
   return { ...state, start, stop, reset };
+}
+
+/** Result of an auto-group run. */
+export interface AutoGroupResult {
+  createdCategories: number;
+  relocated: number;
+  untouched: number;
+  summary: string[];
+  tags: Tag[];
+}
+
+/**
+ * Applies the automatic 一级→二级→三级 grouping to the user's tags and returns
+ * the new tree. Invalidates the tag list + taxonomy audit on success.
+ */
+export function useAutoGroupTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<AutoGroupResult>('/ai/taxonomy/group', {}),
+    onSuccess: (result) => {
+      void qc.setQueryData(keys.tags, result.tags);
+      void qc.invalidateQueries({ queryKey: keys.tags });
+      void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+      toast.success(
+        `已建组：新建 ${result.createdCategories} 个分类，调整 ${result.relocated} 个标签`,
+      );
+    },
+    onError: (e: Error) => toast.error('自动建组失败', e.message),
+  });
 }

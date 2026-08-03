@@ -6,6 +6,7 @@ import { Button, PageHeader, SegmentedControl } from '@/components/ui';
 import { RunPanel } from '@/components/organize/RunPanel';
 import { SuggestionReview } from '@/components/organize/SuggestionReview';
 import { TaxonomyPanel } from '@/components/organize/TaxonomyPanel';
+import { AutoGroupPanel } from '@/components/organize/AutoGroupPanel';
 import {
   useAiOverview,
   useAiSuggestions,
@@ -132,8 +133,9 @@ export function OrganizePage() {
 
       {tab === 'audit' && (
         <div className="flex flex-col gap-3">
-          <TagExportBar />
+          <AutoGroupPanel />
           <TaxonomyPanel audit={audit} loading={auditLoading} />
+          <TagExportBar />
         </div>
       )}
     </div>
