@@ -4,9 +4,11 @@ import { badRequestCode, json, notFound } from '../../../_lib/http';
 import { nowIso } from '../../../_lib/ids';
 import { loadBookmark } from '../../../_lib/db';
 import {
+  captureWithBrowserRun,
   classifySnapshotError,
   fetchSnapshotFromApi,
   putSnapshot,
+  resolveSnapshotProvider,
   snapshotServePath,
 } from '../../../_lib/snapshots';
 
@@ -14,9 +16,10 @@ import {
  * POST /api/bookmarks/:id/snapshot
  *
  * Generates a website snapshot for the bookmark's URL via the configured
- * third-party screenshot API, stores the image in R2, and persists the object
- * key on the bookmark (`snapshot_key`). The caller receives the served image
- * path so the grid card can swap the website preview to the first-party image.
+ * provider (Cloudflare Browser Run, or an optional external screenshot API),
+ * stores the image in R2, and persists the object key on the bookmark
+ * (`snapshot_key`). The caller receives the served image path so the grid card
+ * can swap the website preview to the first-party image.
  */
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -25,20 +28,28 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const bookmark = await loadBookmark(ctx.env, userId, id);
   if (!bookmark) throw notFound('书签不存在');
 
-  // SNAPSHOT_API_URL is optional: when unset, the snapshot lib falls back to a
-  // built-in free web-screenshot provider (see DEFAULT_SNAPSHOT_API_URL). Only
-  // the R2 bucket is required here — a served image needs somewhere to live.
+  // The R2 bucket is required — a served image needs somewhere to live. The
+  // capture provider (Browser Run vs external API) is picked separately below.
   if (!ctx.env.SNAPSHOT_BUCKET) {
     throw badRequestCode('snapshot_not_configured', '网站快照存储未配置，无法生成预览图');
+  }
+
+  const provider = resolveSnapshotProvider(ctx.env);
+  if (provider === 'none') {
+    throw badRequestCode('snapshot_not_configured', '未配置截图能力（需启用 Cloudflare Browser Run 或设置 SNAPSHOT_API_URL）');
   }
 
   let bytes: Uint8Array;
   let contentType: string;
   try {
-    ({ bytes, contentType } = await fetchSnapshotFromApi(bookmark.url, {
-      apiUrl: ctx.env.SNAPSHOT_API_URL,
-      apiKey: ctx.env.SNAPSHOT_API_KEY,
-    }));
+    if (provider === 'external') {
+      ({ bytes, contentType } = await fetchSnapshotFromApi(bookmark.url, {
+        apiUrl: ctx.env.SNAPSHOT_API_URL,
+        apiKey: ctx.env.SNAPSHOT_API_KEY,
+      }));
+    } else {
+      ({ bytes, contentType } = await captureWithBrowserRun(ctx.env, bookmark.url));
+    }
   } catch (e) {
     const { kind, message } = classifySnapshotError(e);
     // Provider / size / emptiness failures are non-fatal to the bookmark —
@@ -54,6 +65,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     }
     if (kind === 'r2_unavailable') {
       throw badRequestCode('snapshot_storage_unavailable', message);
+    }
+    if (kind === 'not_configured') {
+      throw badRequestCode('snapshot_not_configured', message);
     }
     throw e;
   }

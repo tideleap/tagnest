@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  captureWithBrowserRun,
   classifySnapshotError,
   fetchSnapshotFromApi,
   getSnapshot,
   putSnapshot,
+  resolveSnapshotProvider,
   snapshotServePath,
 } from '../functions/_lib/snapshots';
 
@@ -59,12 +61,11 @@ const userId = 'user_abc';
 const bookmarkId = 'bookmark_123';
 
 describe('fetchSnapshotFromApi', () => {
-  it('falls back to the built-in default provider when no API URL is configured', async () => {
+  it('throws when no external API URL is configured (Browser Run is the default path)', async () => {
     const fetchFn = mockFetch();
-    await fetchSnapshotFromApi('https://example.com', { fetchFn });
-    const [calledUrl] = fetchFn.mock.calls[0] as unknown as [string];
-    expect(calledUrl).toContain('api.sitelookeratter.com/screenshot');
-    expect(calledUrl).toContain('https%3A%2F%2Fexample.com');
+    await expect(
+      fetchSnapshotFromApi('https://example.com', { fetchFn }),
+    ).rejects.toThrow('SNAPSHOT_API_URL 未配置');
   });
 
   it('prefers an explicitly configured API URL', async () => {
@@ -138,6 +139,52 @@ describe('fetchSnapshotFromApi', () => {
     });
     expect(out.bytes.byteLength).toBe(5);
     expect(out.contentType).toBe('image/png');
+  });
+});
+
+describe('resolveSnapshotProvider', () => {
+  it('external wins when SNAPSHOT_API_URL is set', () => {
+    expect(resolveSnapshotProvider({ SNAPSHOT_API_URL: 'https://shot.dev/' })).toBe(
+      'external',
+    );
+  });
+
+  it('browser is used when only the BROWSER binding is present', () => {
+    expect(
+      resolveSnapshotProvider({ BROWSER: {} as BrowserRun }),
+    ).toBe('browser');
+  });
+
+  it('external wins over browser when both are present', () => {
+    expect(
+      resolveSnapshotProvider({ SNAPSHOT_API_URL: 'https://shot.dev/', BROWSER: {} as BrowserRun }),
+    ).toBe('external');
+  });
+
+  it('none when neither is available', () => {
+    expect(resolveSnapshotProvider({})).toBe('none');
+  });
+});
+
+describe('captureWithBrowserRun', () => {
+  it('captures via BROWSER.quickAction and returns validated bytes', async () => {
+    const quickAction = vi.fn(async () =>
+      new Response(new Uint8Array([1, 2, 3, 4, 5]), { headers: { 'content-type': 'image/webp' } }),
+    );
+    const env = { BROWSER: { quickAction } };
+    const out = await captureWithBrowserRun(env, 'https://example.com');
+    expect(out.bytes.byteLength).toBe(5);
+    expect(out.contentType).toBe('image/webp');
+    expect(quickAction).toHaveBeenCalledWith('screenshot', {
+      url: 'https://example.com',
+      screenshotOptions: {},
+    });
+  });
+
+  it('throws when the BROWSER binding is absent', async () => {
+    await expect(captureWithBrowserRun({}, 'https://example.com')).rejects.toThrow(
+      'BROWSER (Browser Run) 未绑定',
+    );
   });
 });
 

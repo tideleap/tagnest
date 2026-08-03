@@ -131,20 +131,31 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   );
 
   // Website snapshot generation runs out-of-band too. When the R2 bucket is
-  // bound (SNAPSHOT_BUCKET), kick off a best-effort snapshot so the card's
-  // "preview image" shows the real site instead of a plain circle badge on the
-  // next render. SNAPSHOT_API_URL is optional — when unset the snapshot lib
-  // falls back to a built-in free web-screenshot provider. Guarded by
-  // ctx.waitUntil so a slow/failed provider never blocks saving.
-  if (ctx.env.SNAPSHOT_BUCKET) {
+  // bound (SNAPSHOT_BUCKET) AND a capture provider is available (Cloudflare
+  // Browser Run binding, or SNAPSHOT_API_URL), kick off a best-effort snapshot
+  // so the card's "preview image" shows the real site. Guarded by ctx.waitUntil
+  // so a slow/failed provider never blocks saving.
+  const hasSnapshotProvider =
+    ctx.env.SNAPSHOT_BUCKET &&
+    (Boolean(ctx.env.BROWSER) || Boolean(ctx.env.SNAPSHOT_API_URL));
+  if (hasSnapshotProvider) {
     ctx.waitUntil(
       (async () => {
         try {
-          const { fetchSnapshotFromApi, putSnapshot } = await import('../../_lib/snapshots');
-          const { bytes, contentType } = await fetchSnapshotFromApi(url, {
-            apiUrl: ctx.env.SNAPSHOT_API_URL,
-            apiKey: ctx.env.SNAPSHOT_API_KEY,
-          });
+          const {
+            captureWithBrowserRun,
+            fetchSnapshotFromApi,
+            putSnapshot,
+            resolveSnapshotProvider,
+          } = await import('../../_lib/snapshots');
+          const provider = resolveSnapshotProvider(ctx.env);
+          const { bytes, contentType } =
+            provider === 'external'
+              ? await fetchSnapshotFromApi(url, {
+                  apiUrl: ctx.env.SNAPSHOT_API_URL,
+                  apiKey: ctx.env.SNAPSHOT_API_KEY,
+                })
+              : await captureWithBrowserRun(ctx.env, url);
           const key = await putSnapshot(ctx.env, userId, inserted.id, bytes, contentType);
           await ctx.env.DB.prepare(
             `UPDATE bookmarks SET snapshot_key = ?, updated_at = ? WHERE id = ? AND user_id = ?`,

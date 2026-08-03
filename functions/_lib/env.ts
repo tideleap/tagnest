@@ -34,12 +34,18 @@ export interface Env {
    */
   SNAPSHOT_BUCKET?: R2Bucket;
   /**
-   * Base URL of the third-party screenshot API used to generate a snapshot
-   * image. Optional — when unset the snapshot lib falls back to a built-in
-   * free provider (see DEFAULT_SNAPSHOT_API_URL in snapshots.ts). After a
+   * Optional Cloudflare Browser Run binding (`browser` in wrangler.toml).
+   * When present and SNAPSHOT_API_URL is unset, snapshots are captured
+   * self-hosted on Cloudflare's network via `env.BROWSER.quickAction(...)` —
+   * no third party, no API key. Requires compatibility_date >= 2026-03-24.
+   */
+  BROWSER?: BrowserRun;
+  /**
+   * Base URL of a third-party screenshot API used to generate a snapshot
+   * image. Optional — when set it takes priority over Browser Run. Supports a
+   * `{url}` token that is replaced with the (encoded) target URL. After a
    * dashboard change, a FRESH deploy is required for Pages to bind it (env
    * vars are applied per-deployment).
-   * Supports a `{url}` token that is replaced with the (encoded) target URL.
    */
   SNAPSHOT_API_URL?: string;
   /**

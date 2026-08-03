@@ -4,11 +4,11 @@ import type { Env } from './env';
  * Website snapshots ("website preview image").
  *
  * Pipeline ownership:
- *   1. The backend asks a third-party screenshot API for an image of the
- *      bookmark's URL (the source is intentionally external — see the SNAPSHOT_
- *      env vars in env.ts).
- *   2. The returned bytes are uploaded to an R2 object at
- *      `snapshots/{userId}/{bookmarkId}.{ext}`; the object key is stored on the
+ *   1. The backend captures an image of the bookmark's URL using either
+ *      Cloudflare Browser Run (self-hosted on the same platform — preferred,
+ *      reliable, no third party) or an optional external screenshot API.
+ *   2. The bytes are uploaded to an R2 object at
+ *      `snapshots/{userId}/{bookmarkId}.{ext}`; the key is stored on the
  *      bookmark row as `snapshot_key`.
  *   3. The card now serves the FIRST-PARTY image via the snapshot endpoint
  *      instead of the raw remote `coverUrl`.
@@ -19,31 +19,27 @@ import type { Env } from './env';
 
 export const SNAPSHOT_EXT = 'webp';
 
-/** Max bytes accepted from a third-party snapshot service (≈ 4 MB). */
+/** Max bytes accepted as a snapshot image (≈ 4 MB). */
 export const MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024;
 
 /**
- * Default snapshot provider used when SNAPSHOT_API_URL is not configured on an
- * instance. Points at a no-key service that answers a GET with the raw image
- * bytes (`image/webp`), which is exactly what `fetchSnapshotFromApi` expects.
+ * Which render source to use for a snapshot, in resolution order:
+ *   1. external  — `SNAPSHOT_API_URL` is set; call that third-party service.
+ *   2. browser   — no external URL, but the Cloudflare `BROWSER` (Browser Run)
+ *                  binding is present; capture on the platform (no third party).
+ *   3. none      — neither is available; the caller should return a clear error.
  *
- * This is a best-effort ON-BY-DEFAULT fallback so snapshots work out of the
- * box on a fresh deploy. Operators who want a governed provider — or none at
- * all — should set `SNAPSHOT_API_URL` explicitly (an explicit value always
- * wins). To disable the default while leaving the feature otherwise armed via
- * `SNAPSHOT_API_URL`, simply configure your own value.
+ * A self-hosted Browser Run capture is the recommended default for deployments
+ * that have the binding, because it runs on Cloudflare's own network (no risk
+ * of datacenter-IP bans that plague free screenshot APIs) at no per-capture
+ * cost on the free tier, and needs no API key or external request.
  */
-export const DEFAULT_SNAPSHOT_API_URL =
-  'https://api.sitelookeratter.com/screenshot?url={url}&format=webp&device=desktop';
+export type SnapshotProvider = 'external' | 'browser' | 'none';
 
-/**
- * Resolves the provider URL to call, honouring an explicit SNAPSHOT_API_URL
- * first and falling back to the built-in free default. `null` only when the
- * caller explicitly disabled the default by passing an empty string.
- */
-export function resolveSnapshotApiUrl(configured?: string): string | null {
-  if (configured) return configured;
-  return DEFAULT_SNAPSHOT_API_URL;
+export function resolveSnapshotProvider(env: Pick<Env, 'SNAPSHOT_API_URL' | 'BROWSER'>): SnapshotProvider {
+  if (env.SNAPSHOT_API_URL) return 'external';
+  if (env.BROWSER) return 'browser';
+  return 'none';
 }
 
 function snapshotObjectKey(userId: string, bookmarkId: string): string {
@@ -76,10 +72,10 @@ export async function fetchSnapshotFromApi(
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
   const { apiUrl: configuredUrl, apiKey, fetchFn = fetch } = opts;
 
-  const apiUrl = resolveSnapshotApiUrl(configuredUrl);
-  if (!apiUrl) {
-    throw new Error('SNAPSHOT_API_URL 未配置，无法生成网站快照');
+  if (!configuredUrl) {
+    throw new Error('SNAPSHOT_API_URL 未配置，无法用外部服务生成网站快照');
   }
+  const apiUrl = configuredUrl;
 
   // Support both a plain base URL and one that takes the target as a token.
   const url = apiUrl.includes('{url}') ? apiUrl.replace('{url}', encodeURIComponent(targetUrl)) : apiUrl;
@@ -109,6 +105,42 @@ export async function fetchSnapshotFromApi(
   }
 
   const contentType = res.headers.get('content-type')?.split(';')[0].trim() || snapshotContentType();
+  return { bytes: buf, contentType };
+}
+
+/**
+ * Captures a screenshot of `targetUrl` with Cloudflare Browser Run via the
+ * `BROWSER` binding (`env.BROWSER.quickAction("screenshot", …)`). Runs on
+ * Cloudflare's own network — no external API, no API key, and no risk of the
+ * datacenter-IP bans that affect free screenshot APIs.
+ *
+ * Requires the `BROWSER` binding (browser binding in wrangler.toml) and a
+ * compatibility_date >= 2026-03-24. `quickAction` returns a Response whose body
+ * is the image; we validate non-empty and byte-size like the external path so
+ * the downstream size guard is uniform.
+ */
+export async function captureWithBrowserRun(
+  env: Pick<Env, 'BROWSER'>,
+  targetUrl: string,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  if (!env.BROWSER) {
+    throw new Error('BROWSER (Browser Run) 未绑定，无法生成网站快照');
+  }
+  // `quickAction("screenshot", { url, screenshotOptions })` on the browser
+  // binding (Cloudflare Browser Run) renders the page and returns the image.
+  const res = await env.BROWSER.quickAction('screenshot', {
+    url: targetUrl,
+    screenshotOptions: {},
+  });
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.byteLength === 0) {
+    throw new Error('截图服务返回了空响应');
+  }
+  if (buf.byteLength > MAX_SNAPSHOT_BYTES) {
+    throw new Error('截图服务返回的图片过大');
+  }
+  const contentType =
+    res.headers.get('content-type')?.split(';')[0].trim() || snapshotContentType();
   return { bytes: buf, contentType };
 }
 
@@ -153,9 +185,10 @@ export type SnapshotErrorKind =
 
 export function classifySnapshotError(e: unknown): { kind: SnapshotErrorKind; message: string } {
   const msg = e instanceof Error ? e.message : String(e);
-  if (msg.includes('SNAPSHOT_API_URL 未配置')) return { kind: 'not_configured', message: '网站快照功能未配置，无法生成预览图' };
+  if (msg.includes('SNAPSHOT_API_URL 未配置')) return { kind: 'not_configured', message: '网站快照功能未配置（未设置 SNAPSHOT_API_URL）' };
+  if (msg.includes('BROWSER (Browser Run) 未绑定')) return { kind: 'not_configured', message: '网站快照功能未配置（未启用 Cloudflare Browser Run）' };
+  if (msg.includes('SNAPSHOT_BUCKET 未绑定')) return { kind: 'r2_unavailable', message: '图片存储服务未配置，请稍后重试' };
   if (msg.includes('空响应')) return { kind: 'empty', message: '截图服务返回了空响应，请稍后重试' };
   if (msg.includes('图片过大')) return { kind: 'too_large', message: '截图服务返回的图片过大，无法存储' };
-  if (msg.includes('未绑定')) return { kind: 'r2_unavailable', message: '图片存储服务暂不可用，请稍后重试' };
   return { kind: 'provider_error', message: msg };
 }

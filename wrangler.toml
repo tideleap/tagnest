@@ -2,8 +2,9 @@ name = "tagnest"
 pages_build_output_dir = "dist"
 
 # HTMLRewriter streaming, FormData in Functions and the newer WebCrypto
-# surface all depend on a recent compatibility date.
-compatibility_date = "2024-12-30"
+# surface all depend on a recent compatibility date. 2026-03-24 is the minimum
+# for the Browser Run `.quickAction()` snapshot binding below.
+compatibility_date = "2026-03-24"
 compatibility_flags = ["nodejs_compat"]
 
 # Created 2026-08-01 via `npx wrangler d1 create tagnest-db` (region APAC).
@@ -22,17 +23,27 @@ id = "e0090e3806074150badd3bf531b4fdb6"
 
 # Website snapshots ("website preview image") live in R2. The bucket must be
 # created before deploy. Use the existing bucket created in the Cloudflare
-# dashboard (APAC region). Snapshot generation falls back to a built-in free
-# web-screenshot provider when SNAPSHOT_API_URL is unset, so snapshots work as
-# soon as this bucket binding is live.
+# dashboard (APAC region).
 #
-# To override the provider, define SNAPSHOT_API_URL (and optional
-# SNAPSHOT_API_KEY) as a Pages production variable. Pages binds env vars
-# per-deployment — add them, then trigger a fresh deploy. Verify the chain with
+# Capture provider precedence:
+#   1. SNAPSHOT_API_URL   — external screenshot API, if you set it.
+#   2. [browser] binding  — Cloudflare Browser Run (self-hosted, no third party).
+# Neither configured ⇒ snapshots are skipped and cards fall back to the remote
+# coverUrl / circle badge (no error).
+#
+# Page env vars (SNAPSHOT_API_URL / SNAPSHOT_API_KEY) are bound per-deployment —
+# add them, then trigger a fresh deploy. Verify the chain with
 # `scripts/verify-snapshot.mjs`.
 [[r2_buckets]]
 binding = "SNAPSHOT_BUCKET"
 bucket_name = "tagnest-media"
+
+# Cloudflare Browser Run (formerly Browser Rendering) — capture website
+# snapshots on Cloudflare's own network. Requires the Browser Run service to be
+# enabled on the account/dashboard (free tier available). The binding is absent
+# on instances that have not enabled it; the pipeline degrades gracefully.
+[browser]
+binding = "BROWSER"
 
 [vars]
 # Non-secret defaults. JWT_SECRET is deliberately absent — set it with
