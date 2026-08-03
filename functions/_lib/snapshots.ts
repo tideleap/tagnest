@@ -72,7 +72,7 @@ export function snapshotServePath(userId: string, bookmarkId: string): string {
  */
 export async function fetchSnapshotFromApi(
   targetUrl: string,
-  opts: { apiUrl?: string; apiKey?: string; fetchFn?: typeof fetch },
+  opts: { apiUrl?: string; apiKey?: string; userAgent?: string; fetchFn?: typeof fetch },
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
   const { apiUrl: configuredUrl, apiKey, fetchFn = fetch } = opts;
 
@@ -83,10 +83,17 @@ export async function fetchSnapshotFromApi(
 
   // Support both a plain base URL and one that takes the target as a token.
   const url = apiUrl.includes('{url}') ? apiUrl.replace('{url}', encodeURIComponent(targetUrl)) : apiUrl;
+  // A realistic browser User-Agent greatly improves success with free / no-key
+  // screenshot services, many of which reject the default Workers UA (or empty
+  // UA) as a bot / datacenter request and answer with 401. Overridable via the
+  // `userAgent` opt (e.g. a provider that requires a registered agent string).
   const headers: Record<string, string> = {
     accept: 'image/webp, image/png, image/jpeg, */*',
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
   };
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+  if (opts.userAgent) headers['user-agent'] = opts.userAgent;
 
   const res = await fetchFn(url, { headers, redirect: 'follow' });
   if (!res.ok) {

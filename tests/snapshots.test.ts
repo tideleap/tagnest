@@ -99,6 +99,23 @@ describe('fetchSnapshotFromApi', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer secret');
   });
 
+  it('sends a browser User-Agent by default and honours an override', async () => {
+    const fetchFn = mockFetch();
+    await fetchSnapshotFromApi('https://a.com', { apiUrl: 'https://shot.dev/', fetchFn });
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    const ua = (init.headers as Record<string, string>)['user-agent'];
+    expect(ua).toMatch(/\bChrome\//);
+
+    const fetchFn2 = mockFetch();
+    await fetchSnapshotFromApi('https://a.com', {
+      apiUrl: 'https://shot.dev/',
+      userAgent: 'custom-agent',
+      fetchFn: fetchFn2,
+    });
+    const [, init2] = fetchFn2.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init2.headers as Record<string, string>)['user-agent']).toBe('custom-agent');
+  });
+
   it('throws on non-2xx from the provider', async () => {
     const fetchFn = mockFetch({ status: 502 });
     await expect(
