@@ -4,7 +4,8 @@ import { badRequest, json, readJson } from '../_lib/http';
 import { faviconFor, parseUrl, titleFallback } from '../_lib/urlkey';
 
 /** Hostnames that must never be fetched on a user's behalf. */
-const BLOCKED_HOSTS = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?)/i;
+const BLOCKED_HOSTS =
+  /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?|\[?::ffff:|\[0:0:0:0:0:ffff:)/i;
 
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_BYTES = 512 * 1024;
@@ -45,9 +46,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(target.toString(), {
-      method: 'GET',
-      redirect: 'follow',
+    // Manual redirects so every hop's hostname is re-validated against the
+    // SSRF blocklist — `redirect: 'follow'` would silently follow a 302 into
+    // a loopback / metadata address that the first URL's check never saw.
+    const response = await fetchWithSafeRedirects(target.toString(), {
       signal: controller.signal,
       headers: {
         // Some sites serve a JS shell to unknown agents; a browser-ish UA gets
@@ -59,7 +61,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       },
     });
 
-    if (!response.ok || !response.body) return json(fallback);
+    if (!response || !response.ok || !response.body) return json(fallback);
 
     const contentType = response.headers.get('Content-Type') ?? '';
     if (!contentType.includes('html')) return json(fallback);
@@ -77,6 +79,46 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     clearTimeout(timer);
   }
 };
+
+const MAX_REDIRECTS = 5;
+
+/**
+ * Fetches a URL following redirects manually so every hop's hostname can be
+ * checked against the SSRF blocklist before we dereference it. Returns the
+ * final `Response` (or null after the redirect cap). A response whose final
+ * location resolves to a blocked host is treated as a miss (checked internally).
+ */
+async function fetchWithSafeRedirects(
+  url: string,
+  init: { signal: AbortSignal; headers: Record<string, string> },
+): Promise<Response | null> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    const res = await fetch(current, { ...init, redirect: 'manual' });
+    const status = res.status;
+    if (status >= 300 && status < 400) {
+      const loc = res.headers.get('Location');
+      if (!loc) return res;
+      const next = safeJoin(current, loc);
+      const parsed = parseUrl(next);
+      if (!parsed) return null;
+      if (BLOCKED_HOSTS.test(parsed.hostname)) return null; // refuse hop → treat as miss
+      current = next;
+      await res.arrayBuffer().catch(() => null); // release body
+      continue;
+    }
+    return res;
+  }
+  return null;
+}
+
+function safeJoin(base: string, loc: string): string {
+  try {
+    return new URL(loc, base).toString();
+  } catch {
+    return loc;
+  }
+}
 
 async function extract(response: Response, baseUrl: string): Promise<Metadata> {
   let title = '';

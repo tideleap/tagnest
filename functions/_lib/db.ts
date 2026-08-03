@@ -168,17 +168,22 @@ export async function attachTags(
   const counts = new Map<string, number>();
 
   if (tagIds.length > 0) {
-    const countRows = await env.DB.prepare(
-      `SELECT bt.tag_id, COUNT(*) AS c
-         FROM bookmark_tags bt
-         JOIN bookmarks b ON b.id = bt.bookmark_id
-        WHERE b.user_id = ? AND b.deleted_at IS NULL
-          AND bt.tag_id IN (${tagIds.map(() => '?').join(',')})
-        GROUP BY bt.tag_id`,
-    )
-      .bind(userId, ...tagIds)
-      .all<Row>();
-    for (const r of countRows.results) counts.set(r.tag_id as string, Number(r.c));
+    // The per-tag usage count must stay within D1's 100 bound-param limit for a
+    // single statement. A page of 100 bookmarks, each with a distinct tag, would
+    // overflow `IN (...)`; chunk the tag-id list exactly like ensureTags does.
+    const countRows = await queryInChunks<Row, Row>(
+      env.DB,
+      tagIds,
+      [userId],
+      (ph) => `SELECT bt.tag_id, COUNT(*) AS c
+                 FROM bookmark_tags bt
+                 JOIN bookmarks b ON b.id = bt.bookmark_id
+                WHERE b.user_id = ? AND b.deleted_at IS NULL
+                  AND bt.tag_id IN (${ph})
+                GROUP BY bt.tag_id`,
+      (r) => r,
+    );
+    for (const r of countRows) counts.set(r.tag_id as string, Number(r.c));
   }
 
   for (const row of links.results) {

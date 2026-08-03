@@ -204,7 +204,7 @@ export interface JobPatch {
   error?: string | null;
 }
 
-export async function updateJob(env: Env, jobId: string, patch: JobPatch): Promise<void> {
+export async function updateJob(env: Env, userId: string, jobId: string, patch: JobPatch): Promise<void> {
   const sets: string[] = ['updated_at = ?'];
   const params: unknown[] = [nowIso()];
 
@@ -224,8 +224,10 @@ export async function updateJob(env: Env, jobId: string, patch: JobPatch): Promi
     }
   }
 
-  params.push(jobId);
-  await env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE id = ?`)
+  // Scope the update to the owning user so the core layer is safe even if a
+  // future caller forgets its own ownership check (defense in depth).
+  params.push(userId, jobId);
+  await env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE user_id = ? AND id = ?`)
     .bind(...params)
     .run();
 }

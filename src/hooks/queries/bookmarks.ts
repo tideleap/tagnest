@@ -102,6 +102,11 @@ export function useToggleFavorite() {
         },
       );
 
+      // Keep the single-bookmark view (BookmarkEditor) in step too; without
+      // this, an open editor would show a stale isFavorite and could write the
+      // old value back on save, silently undoing the toggle.
+      qc.setQueryData<Bookmark>(keys.bookmark(id), (old) => (old ? { ...old, isFavorite } : old));
+
       return { snapshot };
     },
 
@@ -110,8 +115,9 @@ export function useToggleFavorite() {
       toast.error('操作失败', e.message);
     },
 
-    onSettled: () => {
+    onSettled: (_a, _b, vars) => {
       void qc.invalidateQueries({ queryKey: keys.stats });
+      void qc.invalidateQueries({ queryKey: keys.bookmark(vars.id) });
     },
   });
 }

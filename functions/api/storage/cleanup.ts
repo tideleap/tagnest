@@ -1,6 +1,7 @@
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { json } from '../../_lib/http';
+import { nowIso } from '../../_lib/ids';
 import {
   loadAllBookmarkSnapshotRefs,
   serializeSnapshotKeys,
@@ -60,12 +61,16 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     if (dropKeys.length === 0) continue;
 
     // Rewrite the bookmark's snapshot columns, dropping the orphan references.
+    // updated_at uses nowIso() (ISO-8601) like every other write, not
+    // datetime('now') — SQLite's space-separated format would compare as
+    // earlier than the ISO strings the rest of the schema uses, scrambling
+    // the updated_desc sort and keyset cursors.
     await ctx.env.DB.prepare(
       `UPDATE bookmarks
-          SET snapshot_key = ?, snapshot_keys = ?, updated_at = datetime('now')
+          SET snapshot_key = ?, snapshot_keys = ?, updated_at = ?
         WHERE id = ? AND user_id = ?`,
     )
-      .bind(newLatestKey, serializeSnapshotKeys(keepKeys), ref.id, userId)
+      .bind(newLatestKey, serializeSnapshotKeys(keepKeys), nowIso(), ref.id, userId)
       .run();
 
     rewritten++;

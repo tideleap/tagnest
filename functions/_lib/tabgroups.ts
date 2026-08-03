@@ -315,27 +315,38 @@ export async function reorderItems(
   // Reordering only the visible window is fine, but every id named must be a
   // real item in THIS group — otherwise a caller could renumber rows they
   // don't own (the UPDATE is scoped by user_id, but failing loudly is safer).
-  const owned = await env.DB.prepare(
-    `SELECT id FROM tab_items WHERE group_id = ? AND user_id = ? AND id IN (${ids
-      .map(() => '?')
-      .join(',')})`,
-  )
-    .bind(groupId, userId, ...ids)
-    .all<{ id: string }>();
+  // The IN-list is chunked to stay within D1's 100 bound-param statement cap.
+  const owned: string[] = [];
+  const CHUNK = 97; // 2 lead params (group_id, user_id) + ids <= 100
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const res = await env.DB.prepare(
+      `SELECT id FROM tab_items WHERE group_id = ? AND user_id = ? AND id IN (${slice
+        .map(() => '?')
+        .join(',')})`,
+    )
+      .bind(groupId, userId, ...slice)
+      .all<{ id: string }>();
+    for (const r of res.results) owned.push(r.id);
+  }
 
-  const ownedSet = new Set(owned.results.map((r) => r.id));
+  const ownedSet = new Set(owned);
   const unknown = ids.filter((id) => !ownedSet.has(id));
   if (unknown.length > 0) {
     throw badRequest(`有 ${unknown.length} 个条目不存在或不属于该分组`);
   }
 
   const positions = computePositions(ids);
-  await env.DB.batch(
-    [...positions.entries()].map(([id, position]) =>
-      env.DB.prepare(
-        `UPDATE tab_items SET position = ? WHERE id = ? AND group_id = ? AND user_id = ?`,
-      ).bind(position, id, groupId, userId),
-    ),
+  // One UPDATE per row; a single batch() is capped at 100 statements, so flush
+  // in groups of 90 to survive a large (up to MAX_ITEMS=500) reorder.
+  const updates = [...positions.entries()].map(([id, position]) =>
+    env.DB.prepare(
+      `UPDATE tab_items SET position = ? WHERE id = ? AND group_id = ? AND user_id = ?`,
+    ).bind(position, id, groupId, userId),
   );
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
+    await env.DB.batch(updates.slice(i, i + BATCH_LIMIT));
+  }
   return ids.length;
 }

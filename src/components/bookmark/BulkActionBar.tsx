@@ -24,7 +24,11 @@ export function BulkActionBar({ scope, allIds }: { scope: BookmarkScope; allIds:
 
   const ids = [...selected];
   const inTrash = scope === 'trash';
-  const allSelected = allIds.length > 0 && ids.length >= allIds.length;
+  // True only when EVERY id on the current page is selected. Comparing counts
+  // is wrong once the selection spans pages — after selecting page 1 fully and
+  // part of page 2, `ids.length >= allIds.length` would already be true and flip
+  // the button to "取消全选" even though page 2 has unselected rows.
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
 
   const run = (fn: () => void) => {
     fn();

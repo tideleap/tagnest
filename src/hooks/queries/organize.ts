@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AiEngineKind,
@@ -186,6 +186,15 @@ export function useOrganizeRun() {
     cancelled.current = false;
     setState(IDLE);
   }, []);
+
+  // If the user leaves the page mid-run, stop the long-poll loop — otherwise it
+  // keeps firing /ai/jobs/:id/run in the background, invalidating caches and
+  // setState-ing an unmounted component, burning API quota for nothing.
+  useEffect(() => {
+    return () => {
+      cancelled.current = true;
+    };
+  }, [cancelled]);
 
   const start = useCallback(
     async (target: AiJobTarget, bookmarkIds?: string[]) => {

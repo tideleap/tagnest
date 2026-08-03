@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ImgHTMLAttributes, ReactNode } from 'react';
 import { cx } from '@/lib/cx';
 
@@ -23,6 +23,13 @@ export interface RemoteImageProps extends Omit<ImgHTMLAttributes<HTMLImageElemen
  */
 export function RemoteImage({ src, alt = '', fallback, className, style, ...rest }: RemoteImageProps) {
   const [failed, setFailed] = useState(false);
+
+  // A previously-failed src must not poison a NEW src on the same instance —
+  // e.g. a bookmark whose snapshot/cover loads after an earlier placeholder
+  // failed. Reset the failure flag whenever the source changes.
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   if (failed && fallback) return <>{fallback}</>;
 

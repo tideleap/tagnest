@@ -57,7 +57,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   // Nothing left: settle the job and tell the client to stop looping.
   if (slice.length === 0) {
-    if (job.status !== 'done') await updateJob(ctx.env, jobId, { status: 'done' });
+    if (job.status !== 'done') await updateJob(ctx.env, userId, jobId, { status: 'done' });
     const settled = await getJob(ctx.env, userId, jobId);
     const result: AiJobRunResult = {
       job: toApiJob(settled ?? { ...job, status: 'done' }),
@@ -70,7 +70,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     return json(result);
   }
 
-  if (job.status === 'queued') await updateJob(ctx.env, jobId, { status: 'running' });
+  if (job.status === 'queued') await updateJob(ctx.env, userId, jobId, { status: 'running' });
 
   // Config is re-read per chunk on purpose: changing the model or the tag
   // budget mid-run takes effect on the next chunk instead of being frozen at
@@ -98,7 +98,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const processed = job.processed + slice.length;
   const finished = processed >= ids.length;
 
-  await updateJob(ctx.env, jobId, {
+  await updateJob(ctx.env, userId, jobId, {
     processed,
     suggested: job.suggested + written,
     failed: job.failed + missing,

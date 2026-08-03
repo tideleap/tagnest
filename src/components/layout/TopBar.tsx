@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, Menu as MenuIcon, Moon, Plus, Search, Settings, Sun, X } from 'lucide-react';
 import { Avatar, Button, IconButton, Input, Kbd, Menu } from '@/components/ui';
 import { useAuth } from '@/stores/auth';
-import { useOverlay, useTheme } from '@/stores/ui';
+import { useOverlay, useTheme, THEMES } from '@/stores/ui';
 import { useDebounced } from '@/hooks/useDebounced';
 
 export function TopBar() {
@@ -35,7 +35,23 @@ export function TopBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- react only to the debounced query, not to each URL param change
   }, [debounced]);
 
-  const isDark = document.documentElement.dataset.theme === 'dark';
+  // The quick moon/sun toggle switches between the light and dark theme
+  // FAMILIES while respecting a named theme the user picked in Settings. It
+  // must not read the resolved `data-theme` (which collapses aurora/blossom/
+  // starlight to a plain light/dark), nor drop `system` to a hard two-state.
+  // `system` resolves by OS preference; the toggle then maps to the concrete
+  // theme that keeps the current light-or-dark leaning.
+  const currentMode = themeMode;
+  const currentFamily = THEMES.find((t) => t.value === currentMode)?.family ?? 'system';
+  const resolvedDark =
+    currentFamily === 'dark'
+      ? true
+      : currentFamily === 'light'
+        ? false
+        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = resolvedDark;
+
+  const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');
 
   return (
     <header className="glass sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line/40 px-3 sm:px-4 xl:px-6">
@@ -95,7 +111,7 @@ export function TopBar() {
         <IconButton
           label={isDark ? '切换到浅色' : '切换到深色'}
           icon={isDark ? <Sun size={17} /> : <Moon size={17} />}
-          onClick={() => setThemeMode(isDark ? 'light' : 'dark')}
+          onClick={toggleTheme}
         />
 
         <Menu

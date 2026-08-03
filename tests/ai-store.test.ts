@@ -232,7 +232,7 @@ describe('jobs — create / read / update', () => {
     const fetched = await getJob(env, 'u1', job.id);
     expect(fetched?.id).toBe(job.id);
 
-    await updateJob(env, job.id, { status: 'running', processed: 1, engine: 'mixed' });
+    await updateJob(env, 'u1', job.id, { status: 'running', processed: 1, engine: 'mixed' });
     const updated = await getJob(env, 'u1', job.id);
     expect(updated?.status).toBe('running');
     expect(updated?.processed).toBe(1);

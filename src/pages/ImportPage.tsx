@@ -117,7 +117,7 @@ export function ImportPage() {
                   选择文件
                 </Button>
                 <p className="text-2xs text-ink-faint">
-                  支持 .html / .json / .csv，单个文件最大 10 MB
+                  支持 .html / .json / .csv，单个文件最大 20 MB
                 </p>
               </div>
             )}

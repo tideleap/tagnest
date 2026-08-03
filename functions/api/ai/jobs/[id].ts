@@ -33,7 +33,7 @@ export const onRequestDelete: PagesFunction<Env, string, RequestData> = async (c
   if (!job) throw notFound('整理任务不存在');
 
   if (job.status === 'queued' || job.status === 'running') {
-    await updateJob(ctx.env, jobId, { status: 'cancelled' });
+    await updateJob(ctx.env, userId, jobId, { status: 'cancelled' });
   }
 
   const updated = await getJob(ctx.env, userId, jobId);

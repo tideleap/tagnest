@@ -9,6 +9,20 @@ interface LocationState {
   from?: string;
 }
 
+/**
+ * Accepts only internal, same-origin relative paths as a post-login redirect
+ * target. An attacker who can inject `location.state.from` (e.g. via history
+ * state) must not be able to turn the login redirect into an open redirect to
+ * an external host. Absolute URLs, protocol-relative `//host`, and backslashes
+ * are all rejected in favour of the default library page.
+ */
+function safeFromTarget(from: unknown): string | undefined {
+  if (typeof from !== 'string' || from.length === 0) return undefined;
+  if (!from.startsWith('/')) return undefined; // no "https://…" or "//host"
+  if (from.startsWith('//')) return undefined; // protocol-relative
+  return from;
+}
+
 export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -29,7 +43,7 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
   }, [mode]);
 
   if (status === 'authenticated') {
-    const from = (location.state as LocationState | null)?.from;
+    const from = safeFromTarget((location.state as LocationState | null)?.from);
     return <Navigate to={from ?? '/library/inbox'} replace />;
   }
 

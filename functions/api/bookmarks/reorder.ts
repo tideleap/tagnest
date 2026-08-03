@@ -1,6 +1,7 @@
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
+import { D1_IN_CHUNK } from '../../_lib/db';
 
 /**
  * Persists a drag-and-drop arrangement.
@@ -17,7 +18,10 @@ import { badRequest, json, readJson } from '../../_lib/http';
  */
 
 const STEP = 1000;
-const MAX_IDS = 500;
+// One UPDATE per row goes into a single DB.batch, which D1 caps at 100
+// statements; and the ownership `IN (...)` is bounded by the 100-param ceiling.
+// `D1_IN_CHUNK` (99) keeps both comfortably within limits.
+const MAX_IDS = D1_IN_CHUNK;
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);

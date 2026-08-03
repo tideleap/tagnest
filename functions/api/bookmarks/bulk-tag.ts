@@ -2,7 +2,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
-import { ensureTags } from '../../_lib/db';
+import { D1_IN_CHUNK, ensureTags } from '../../_lib/db';
 import { readIds } from './trash';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
@@ -48,25 +48,43 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   }
 
   if (removeIds.length > 0) {
+    // D1 caps bound params at 100/statement. Removing a tag from many bookmarks
+    // means `bookmark_id IN (...) AND tag_id = ?`; chunk the bookmark list so
+    // each DELETE stays `<= D1_IN_CHUNK + 1` params (the tag id).
+    for (const tagId of removeIds) {
+      for (let i = 0; i < ownedIds.length; i += Math.min(D1_IN_CHUNK - 1, ownedIds.length)) {
+        const slice = ownedIds.slice(i, i + D1_IN_CHUNK - 1);
+        if (slice.length === 0) break;
+        const idsPh = slice.map(() => '?').join(',');
+        statements.push(
+          ctx.env.DB.prepare(
+            `DELETE FROM bookmark_tags
+              WHERE bookmark_id IN (${idsPh}) AND tag_id = ?`,
+          ).bind(...slice, tagId),
+        );
+      }
+    }
+  }
+
+  // A single `batch()` is capped at 100 statements, and this handler can build
+  // hundreds (add N tags to M bookmarks, or remove across many rows) — plus the
+  // updated_at bump, whose IN-list must also stay within 100 bound params.
+  const ts = nowIso();
+  for (let i = 0; i < ownedIds.length; i += D1_IN_CHUNK - 2) {
+    const slice = ownedIds.slice(i, i + D1_IN_CHUNK - 2);
     statements.push(
       ctx.env.DB.prepare(
-        `DELETE FROM bookmark_tags
-          WHERE bookmark_id IN (${ownedIds.map(() => '?').join(',')})
-            AND tag_id IN (${removeIds.map(() => '?').join(',')})`,
-      ).bind(...ownedIds, ...removeIds),
+        `UPDATE bookmarks SET updated_at = ?
+          WHERE user_id = ? AND id IN (${slice.map(() => '?').join(',')})`,
+      ).bind(ts, userId, ...slice),
     );
   }
 
-  statements.push(
-    ctx.env.DB.prepare(
-      `UPDATE bookmarks SET updated_at = ?
-        WHERE user_id = ? AND id IN (${ownedIds.map(() => '?').join(',')})`,
-    ).bind(nowIso(), userId, ...ownedIds),
-  );
-
-  // D1 batches run in a single transaction, so a partially tagged selection
-  // is not a state the client can observe.
-  await ctx.env.DB.batch(statements);
+  // Flush in groups of 90 so we never trip D1's 100-statement batch cap.
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < statements.length; i += BATCH_LIMIT) {
+    await ctx.env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
+  }
 
   return json({ updated: ownedIds.length });
 };

@@ -2,12 +2,18 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
+import { D1_IN_CHUNK } from '../../_lib/db';
 
-/** Shared by the bulk endpoints; caps the batch so one request cannot lock the table. */
+/**
+ * Shared by the bulk endpoints; caps the batch at D1's per-statement bound-param
+ * limit (99), so a single `IN (...)` never overflows the 100-param ceiling.
+ * Keeps the accumulation loop below the limit: any earlier slice blindly added
+ * up to 500 ids, which would fatally 500 on D1.
+ */
 export function readIds(body: Record<string, unknown>): string[] {
   const raw = body.ids;
   if (!Array.isArray(raw) || raw.length === 0) throw badRequest('未选择任何书签');
-  const ids = [...new Set(raw.map(String).filter(Boolean))].slice(0, 500);
+  const ids = [...new Set(raw.map(String).filter(Boolean))].slice(0, D1_IN_CHUNK);
   if (ids.length === 0) throw badRequest('未选择任何书签');
   return ids;
 }

@@ -2,6 +2,7 @@ import type { User } from '../../shared/types';
 import type { Ctx, Env } from './env';
 import { base64UrlDecode, base64UrlEncode, isoFromNow, newId, nowIso, randomToken } from './ids';
 import { ApiException, unauthorized } from './http';
+import { sha256Hex } from './crypto';
 
 /* ------------------------------------------------------------------ *
  * Password hashing
@@ -155,11 +156,6 @@ export async function verifyAccessToken(token: string, env: Env): Promise<string
 
 export const REFRESH_COOKIE = 'tn_rt';
 
-async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', encoder.encode(input));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 export async function createSession(
   env: Env,
   userId: string,
@@ -238,7 +234,13 @@ export function readCookie(request: Request, name: string): string | null {
     const idx = part.indexOf('=');
     if (idx === -1) continue;
     if (part.slice(0, idx).trim() === name) {
-      return decodeURIComponent(part.slice(idx + 1).trim());
+      try {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      } catch {
+        // Malformed percent-encoding (e.g. `tn_rt=%zz`) would throw URIError
+        // and propagate as a 500; a bad cookie must be treated as absent.
+        return null;
+      }
     }
   }
   return null;
