@@ -25,6 +25,11 @@ id = "e0090e3806074150badd3bf531b4fdb6"
 # dashboard (APAC region). Absent during local dev; the snapshot pipeline
 # degrades gracefully (cards fall back to the remote coverUrl + circle badge)
 # when this binding is missing.
+#
+# NOTE: to generate snapshots you MUST also define SNAPSHOT_API_URL (and
+# optional SNAPSHOT_API_KEY). Pages binds env vars per-deployment — add them,
+# then trigger a fresh deploy, or the already-running Functions keep reporting
+# `snapshot_not_configured`. Verify the chain with `scripts/verify-snapshot.mjs`.
 [[r2_buckets]]
 binding = "SNAPSHOT_BUCKET"
 bucket_name = "tagnest-media"
