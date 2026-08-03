@@ -142,33 +142,6 @@ function CircleBadge({
   );
 }
 
-/**
- * Grid-card cover image.
- *
- * Tall 4:3 preview (ZIYK proportion) so the cover owns the top half of the
- * card. A bookmark without a cover gets a soft brand wash with the circle
- * badge centred. The image gently scales on hover while the card lifts.
- */
-function Cover({ bookmark }: { bookmark: Bookmark }) {
-  if (!bookmark.coverUrl) {
-    return (
-      <div className="relative -mx-5 -mt-5 mb-4 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/40">
-        <CircleBadge bookmark={bookmark} size={64} />
-      </div>
-    );
-  }
-  return (
-    <div className="relative -mx-5 -mt-5 mb-4 aspect-[4/3] overflow-hidden rounded-t-lg bg-sunken">
-      <RemoteImage
-        src={bookmark.coverUrl}
-        alt=""
-        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
-        fallback={<></>}
-      />
-    </div>
-  );
-}
-
 /** Compact single-line host — right-aligned, muted, truncated. */
 function CompactHost({ bookmark }: { bookmark: Bookmark }) {
   return (
@@ -327,7 +300,7 @@ function BookmarkCardBase({
         'card-halo group relative flex bg-surface',
         'card-lift border border-line hover:border-line-strong',
         isGrid
-          ? 'h-full flex-col rounded-lg p-5'
+          ? 'h-full flex-col rounded-lg p-3'
           : 'items-center rounded-lg',
         isCompact ? 'gap-2.5 py-1.5 pl-2.5 pr-2' : 'gap-3.5 py-3.5 pl-3.5 pr-3',
         selected && 'border-brand bg-brand-soft/30',
@@ -360,62 +333,54 @@ function BookmarkCardBase({
       ) : (
         <>
           {isGrid ? (
-            /* ---- Grid: ZIYK-style card.
-                    Tall cover → big coloured circle badge → bold title →
-                    description → #hashtag pills → bottom row with a left label
-                    and a prominent red stat pill on the right. ---- */
+            /* ---- Grid: ZIYK-style card optimized for a dense 6-column grid.
+                    A large centred circle badge acts as the hero visual; title,
+                    compact #hashtag pills and the red stat pill are stacked below.
+                    No duplicate badge, no tall cover — cards stay readable at
+                    ~170 px wide. ---- */
             <>
-              <Cover bookmark={b} />
+              <div className="relative -mx-3 -mt-3 mb-3 flex aspect-[16/10] items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/30">
+                <CircleBadge bookmark={b} size={56} />
+              </div>
 
-              <div className="flex min-w-0 flex-1 flex-col gap-4">
-                {/* Focal block — big circle icon + bold title + description */}
-                <div className="flex items-start gap-3.5">
-                  <CircleBadge bookmark={b} size={48} />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold leading-snug text-ink">
-                      <button
-                        type="button"
-                        onClick={open}
-                        className="text-left text-base underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
-                      >
-                        {b.title || displayHost(b.url)}
-                      </button>
-                    </h3>
-                    {(b.description || b.note) && (
-                      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-soft">
-                        {b.note || b.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                <h3 className="font-bold leading-snug text-ink">
+                  <button
+                    type="button"
+                    onClick={open}
+                    className="text-left text-sm underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
+                  >
+                    {b.title || displayHost(b.url)}
+                  </button>
+                </h3>
 
                 {b.tags.length > 0 && (
-                  <ul className="flex flex-wrap gap-2">
-                    {b.tags.slice(0, 3).map((tag) => (
+                  <ul className="flex flex-wrap gap-1">
+                    {b.tags.slice(0, 2).map((tag) => (
                       <li key={tag.id}>
                         <button
                           type="button"
                           onClick={() => onTagClick(tag.id)}
-                          className="inline-flex items-center rounded-md bg-sunken px-2 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-brand-soft hover:text-brand-ink"
+                          className="inline-flex items-center rounded bg-sunken px-1.5 py-0.5 text-2xs font-medium text-ink-soft transition-colors hover:bg-brand-soft hover:text-brand-ink"
                         >
                           #{tag.name}
                         </button>
                       </li>
                     ))}
-                    {b.tags.length > 3 && (
-                      <li className="self-center text-xs text-ink-faint">+{b.tags.length - 3}</li>
+                    {b.tags.length > 2 && (
+                      <li className="self-center text-2xs text-ink-faint">+{b.tags.length - 2}</li>
                     )}
                   </ul>
                 )}
 
                 {/* Bottom row — left label + right red stat pill / actions */}
-                <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3">
-                  <span className="shrink-0 text-xs font-medium text-ink-faint">TagNest</span>
+                <div className="mt-auto flex items-center justify-between gap-1 border-t border-line pt-2">
+                  <span className="shrink-0 text-2xs font-medium text-ink-faint">TagNest</span>
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-1">
                     {b.visitCount > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#ff4d6d] px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-                        <Heart size={12} className="fill-white" aria-hidden />
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-[#ff4d6d] px-1.5 py-0.5 text-2xs font-semibold text-white shadow-sm">
+                        <Heart size={10} className="fill-white" aria-hidden />
                         <span className="tabular-nums">{b.visitCount}</span>
                       </span>
                     )}

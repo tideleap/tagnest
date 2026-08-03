@@ -322,7 +322,7 @@ export function LibraryPage() {
           {isGrid ? (
             // Grid density defers to CSS columns — virtualizing a responsive
             // grid buys little and breaks keyboard order.
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {items.map((b) => (
                 <li
                   key={b.id}
