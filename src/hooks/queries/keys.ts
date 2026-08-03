@@ -22,6 +22,9 @@ export const keys = {
   aiSuggestions: (jobId?: string | null) => ['ai-suggestions', jobId ?? 'all'] as const,
   aiSuggestionsRoot: ['ai-suggestions'] as const,
   apiKeys: ['api-keys'] as const,
+  /** Storage management: R2 usage, export preview, snapshot cleanup. */
+  storageUsage: ['storage-usage'] as const,
+  exportPreview: ['export-preview'] as const,
   shares: ['shares'] as const,
   tabGroups: ['tab-groups'] as const,
   tabGroup: (id: string) => ['tab-group', id] as const,

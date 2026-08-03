@@ -564,6 +564,37 @@ export async function updateBookmarkSnapshots(
     .run();
 }
 
+/**
+ * A bookmark's snapshot references as stored in the DB — used by the snapshot
+ * maintenance scan. `latestKey` is the single `snapshot_key` (newest), while
+ * `snapshotKeys` is the retained history (oldest → newest).
+ */
+export interface BookmarkSnapshotRefs {
+  id: string;
+  latestKey: string | null;
+  snapshotKeys: string[];
+}
+
+/**
+ * Loads every bookmark's snapshot references for a user (both live and trashed,
+ * so cleanup can reconcile the whole history even for soft-deleted items).
+ */
+export async function loadAllBookmarkSnapshotRefs(
+  env: Env,
+  userId: string,
+): Promise<BookmarkSnapshotRefs[]> {
+  const rows = await env.DB.prepare(
+    `SELECT id, snapshot_key, snapshot_keys FROM bookmarks WHERE user_id = ? AND (snapshot_key IS NOT NULL OR snapshot_keys IS NOT NULL)`,
+  )
+    .bind(userId)
+    .all<Row>();
+  return rows.results.map((r) => ({
+    id: r.id as string,
+    latestKey: (r.snapshot_key as string | null) ?? null,
+    snapshotKeys: parseSnapshotKeys(r.snapshot_keys),
+  }));
+}
+
 /** Reads the user's snapshot retention limit (default 5; -1 = unlimited). */
 export async function loadSnapshotRetentionLimit(env: Env, userId: string): Promise<number> {
   const row = await env.DB.prepare(

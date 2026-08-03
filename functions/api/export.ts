@@ -12,18 +12,40 @@ interface ExportRow {
   title: string;
   description: string | null;
   note: string | null;
+  ai_summary: string | null;
   is_favorite: number;
   is_archived: number;
+  visit_count: number;
+  last_visited_at: string | null;
+  manual_order: number;
+  snapshot_key: string | null;
+  snapshot_keys: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
   tags: string | null;
 }
 
+/** GROUP_CONCAT separator; ASCII 31 cannot appear in a tag name. */
+const SEP = String.fromCharCode(31);
+const tagsOf = (row: ExportRow) => (row.tags ? row.tags.split(SEP).filter(Boolean) : []);
+
 /**
- * Full-library export.
+ * Full-library export with configurable scope and payload.
  *
- * HTML output is the Netscape format, so the file re-imports into any browser
- * — the point of an export is that the data is not trapped here.
+ * HTML output is Netscape format so the file re-imports into any browser; JSON
+ * is the "TMarks standard" shape — `{application, version, exportedAt,
+ * bookmarks:[…]}` — extended with every requested field set. Queries use a
+ * keyset cursor and are paginated (100 rows/request) so a very large library
+ * cannot blow memory.
+ *
+ * Options (query params, `1`/`true` or `0`/`false`):
+ *   format         json | html | csv            (default json)
+ *   includeTrash   1/0  include soft-deleted bookmarks (default 1)
+ *   includeTags    1/0  embed each bookmark's tags        (default 1)
+ *   includeMetadata 1/0 embed note / description / ai_summary (default 1)
+ *   includeVisits  1/0  embed visit_count + last_visited_at (default 1)
+ *   pretty         1/0  pretty-print JSON                  (default 0)
  */
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -32,26 +54,22 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const format = (params.get('format') ?? 'json') as Format;
   if (!FORMATS.includes(format)) throw badRequest('不支持的导出格式');
 
-  const includeArchived = params.get('includeArchived') !== 'false';
+  const flag = (name: string, def: boolean) => {
+    const v = params.get(name);
+    if (v == null) return def;
+    return v === '1' || v === 'true';
+  };
+  const includeTrash = flag('includeTrash', true);
+  const includeTags = flag('includeTags', true);
+  const includeMetadata = flag('includeMetadata', true);
+  const includeVisits = flag('includeVisits', true);
+  const pretty = flag('pretty', false);
 
-  const rows = await ctx.env.DB.prepare(
-    `SELECT b.id, b.url, b.title, b.description, b.note, b.is_favorite, b.is_archived,
-            b.created_at, b.updated_at,
-            (SELECT GROUP_CONCAT(t.name, CHAR(31))
-               FROM bookmark_tags bt JOIN tags t ON t.id = bt.tag_id
-              WHERE bt.bookmark_id = b.id) AS tags
-       FROM bookmarks b
-      WHERE b.user_id = ? AND b.deleted_at IS NULL
-        ${includeArchived ? '' : 'AND b.is_archived = 0'}
-      ORDER BY b.created_at DESC`,
-  )
-    .bind(userId)
-    .all<ExportRow>();
+  const rows = await collectRows(ctx.env, userId, includeTrash);
 
   const stamp = new Date().toISOString().slice(0, 10);
   const filename = `tagnest-${stamp}.${format}`;
-
-  const { body, type } = render(format, rows.results);
+  const { body, type } = render(format, rows, { includeTags, includeMetadata, includeVisits, pretty });
 
   return new Response(body, {
     headers: {
@@ -62,14 +80,85 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   });
 };
 
-// GROUP_CONCAT needs a separator that cannot appear in a tag name; ASCII 31
-// (unit separator) is the safe choice.
-const SEP = String.fromCharCode(31);
+/**
+ * Pages through all of a user's bookmarks (optionally including trashed ones)
+ * using a keyset cursor, aggregating tag names per bookmark with GROUP_CONCAT.
+ * Row shape matches `ExportRow`; ORDER BY is deterministic on (created_at, id).
+ */
+async function collectRows(
+  env: Env,
+  userId: string,
+  includeTrash: boolean,
+): Promise<ExportRow[]> {
+  const trashClause = includeTrash ? '' : 'AND b.deleted_at IS NULL';
+  const pageSize = 100;
+  const all: ExportRow[] = [];
+  let cursorCreated: string | null = null;
+  let cursorId: string | null = null;
 
-const tagsOf = (row: ExportRow) => (row.tags ? row.tags.split(SEP).filter(Boolean) : []);
+  for (;;) {
+    const result: D1Result<ExportRow> = await env.DB.prepare(
+      `SELECT b.id, b.url, b.title, b.description, b.note, b.ai_summary,
+              b.is_favorite, b.is_archived, b.visit_count, b.last_visited_at,
+              b.manual_order, b.snapshot_key, b.snapshot_keys,
+              b.created_at, b.updated_at, b.deleted_at,
+              (SELECT GROUP_CONCAT(t.name, CHAR(31))
+                 FROM bookmark_tags bt JOIN tags t ON t.id = bt.tag_id
+                WHERE bt.bookmark_id = b.id) AS tags
+         FROM bookmarks b
+        WHERE b.user_id = ?
+          ${trashClause}
+          ${cursorCreated && cursorId ? `AND (b.created_at < ? OR (b.created_at = ? AND b.id < ?))` : ''}
+        ORDER BY b.created_at DESC, b.id DESC
+        LIMIT ${pageSize}`,
+    )
+      .bind(
+        userId,
+        ...(cursorCreated && cursorId
+          ? [cursorCreated, cursorCreated, cursorId]
+          : []),
+      )
+      .all<ExportRow>();
+    const rows = result.results;
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    const last = rows[rows.length - 1];
+    cursorCreated = last.created_at;
+    cursorId = last.id;
+    // Safety: if a page somehow returned no rows after the first empty exit
+    // guard, stop rather than loop forever.
+  }
+  return all;
+}
 
-function render(format: Format, rows: ExportRow[]): { body: string; type: string } {
+function render(
+  format: Format,
+  rows: ExportRow[],
+  opts: { includeTags: boolean; includeMetadata: boolean; includeVisits: boolean; pretty: boolean },
+): { body: string; type: string } {
   if (format === 'json') {
+    const bookmarkJson = rows.map((r) => {
+      const b: Record<string, unknown> = {
+        url: r.url,
+        title: r.title,
+        isFavorite: r.is_favorite === 1,
+        isArchived: r.is_archived === 1,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+      if (opts.includeTags) b.tags = tagsOf(r);
+      if (opts.includeMetadata) {
+        b.description = r.description;
+        b.note = r.note;
+        b.aiSummary = r.ai_summary;
+      }
+      if (opts.includeVisits) {
+        b.visitCount = r.visit_count;
+        b.lastVisitedAt = r.last_visited_at;
+      }
+      return b;
+    });
+
     return {
       type: 'application/json; charset=utf-8',
       body: JSON.stringify(
@@ -77,20 +166,10 @@ function render(format: Format, rows: ExportRow[]): { body: string; type: string
           application: 'TagNest',
           version: 1,
           exportedAt: new Date().toISOString(),
-          bookmarks: rows.map((r) => ({
-            url: r.url,
-            title: r.title,
-            description: r.description,
-            note: r.note,
-            tags: tagsOf(r),
-            isFavorite: r.is_favorite === 1,
-            isArchived: r.is_archived === 1,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at,
-          })),
+          bookmarks: bookmarkJson,
         },
         null,
-        2,
+        opts.pretty ? 2 : undefined,
       ),
     };
   }
