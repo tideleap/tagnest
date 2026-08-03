@@ -22,6 +22,7 @@ import { IconButton, Skeleton, TagChip } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
 import { useStats, useTags } from '@/hooks/queries';
 import { Logo } from '@/components/decor/Logo';
+import { TagGlobe } from '@/components/tags/TagGlobe';
 
 /**
  * How labels behave at the current width.
@@ -211,26 +212,32 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
             还没有标签。给书签打上标签后会出现在这里。
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-2 px-2.5">
-            {topTags.map((tag) => (
-              <li key={tag.id}>
-                <button
-                  type="button"
-                  onClick={() => toggleTag(tag.id)}
-                  aria-pressed={activeTagIds.includes(tag.id)}
-                  className="max-w-full text-left"
-                >
-                  <TagChip
-                    name={tag.name}
-                    colorIndex={tag.colorIndex}
-                    count={tag.count}
-                    size="sm"
-                    active={activeTagIds.includes(tag.id)}
-                  />
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="min-w-0 px-2">
+            {/* 3D globe — visual peek; clicks open a tag detail modal. The flat
+                chip list below stays in the DOM as the keyboard / screen-reader
+                path, and both lead to the same filtering. */}
+            <TagGlobe tags={topTags} />
+            <ul className="flex flex-wrap gap-2 pb-1">
+              {topTags.map((tag) => (
+                <li key={tag.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggleTag(tag.id)}
+                    aria-pressed={activeTagIds.includes(tag.id)}
+                    className="max-w-full text-left"
+                  >
+                    <TagChip
+                      name={tag.name}
+                      colorIndex={tag.colorIndex}
+                      count={tag.count}
+                      size="sm"
+                      active={activeTagIds.includes(tag.id)}
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
