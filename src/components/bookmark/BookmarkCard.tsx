@@ -4,8 +4,8 @@ import {
   ArchiveRestore,
   Copy,
   ExternalLink,
-  Eye,
   GripVertical,
+  Heart,
   MoreHorizontal,
   Pencil,
   RotateCcw,
@@ -37,6 +37,35 @@ export interface BookmarkCardProps {
   draggable?: boolean;
   onDragStartCard?: (id: string) => void;
   isDragOver?: boolean;
+}
+
+/**
+ * Deterministic ZIYK-style colour for a circle badge.
+ * Picks from a saturated palette based on the host/title so the same
+ * bookmark always renders the same colour, and neighbours feel varied.
+ */
+const CIRCLE_PALETTE = [
+  '#8b5cf6', // violet
+  '#3b82f6', // blue
+  '#06b6d4', // cyan
+  '#14b8a6', // teal
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#f97316', // orange
+  '#ef4444', // red
+  '#ec4899', // pink
+  '#d946ef', // fuchsia
+  '#6366f1', // indigo
+];
+
+function circleColorFor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % CIRCLE_PALETTE.length;
+  return CIRCLE_PALETTE[idx];
 }
 
 /**
@@ -84,22 +113,52 @@ function FaviconBadge({
 }
 
 /**
+ * CircleBadge — ZIYK-style large coloured circle with a white initial.
+ * Used in grid view as the dominant visual anchor.
+ */
+function CircleBadge({
+  bookmark,
+  size = 48,
+  className,
+}: {
+  bookmark: Bookmark;
+  size?: number;
+  className?: string;
+}) {
+  const seed = bookmark.title || displayHost(bookmark.url);
+  const initial = seed.trim().charAt(0) || '?';
+  const bg = circleColorFor(seed);
+  return (
+    <span
+      className={cx(
+        'flex shrink-0 items-center justify-center rounded-full font-bold text-white shadow-sm',
+        className,
+      )}
+      style={{ width: size, height: size, backgroundColor: bg, fontSize: size * 0.42 }}
+      aria-hidden
+    >
+      {initial}
+    </span>
+  );
+}
+
+/**
  * Grid-card cover image.
  *
- * Only rendered when a `coverUrl` exists; a bookmark without one gets a calm
- * brand wash instead of a blank tile. The image gently scales on hover (zoom)
- * while the card lifts — a subtle but perceptible "peek closer" cue.
+ * Tall 4:3 preview (ZIYK proportion) so the cover owns the top half of the
+ * card. A bookmark without a cover gets a soft brand wash with the circle
+ * badge centred. The image gently scales on hover while the card lifts.
  */
 function Cover({ bookmark }: { bookmark: Bookmark }) {
   if (!bookmark.coverUrl) {
     return (
-      <div className="mb-3 -mx-4 -mt-4 flex h-28 items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/50">
-        <FaviconBadge bookmark={bookmark} size={44} />
+      <div className="relative -mx-5 -mt-5 mb-4 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/40">
+        <CircleBadge bookmark={bookmark} size={64} />
       </div>
     );
   }
   return (
-    <div className="relative mb-3 -mx-4 -mt-4 h-32 overflow-hidden rounded-t-lg bg-sunken">
+    <div className="relative -mx-5 -mt-5 mb-4 aspect-[4/3] overflow-hidden rounded-t-lg bg-sunken">
       <RemoteImage
         src={bookmark.coverUrl}
         alt=""
@@ -268,7 +327,7 @@ function BookmarkCardBase({
         'card-halo group relative flex bg-surface',
         'card-lift border border-line hover:border-line-strong',
         isGrid
-          ? 'h-full flex-col rounded-lg p-4'
+          ? 'h-full flex-col rounded-lg p-5'
           : 'items-center rounded-lg',
         isCompact ? 'gap-2.5 py-1.5 pl-2.5 pr-2' : 'gap-3.5 py-3.5 pl-3.5 pr-3',
         selected && 'border-brand bg-brand-soft/30',
@@ -301,28 +360,29 @@ function BookmarkCardBase({
       ) : (
         <>
           {isGrid ? (
-            /* ---- Grid: enlarged content block with a clear visual hierarchy
-                    (favicon + title + description → tags → stat row). The cover
-                    stays compact up top so the content owns the card. ---- */
+            /* ---- Grid: ZIYK-style card.
+                    Tall cover → big coloured circle badge → bold title →
+                    description → #hashtag pills → bottom row with a left label
+                    and a prominent red stat pill on the right. ---- */
             <>
               <Cover bookmark={b} />
 
-              <div className="flex min-w-0 flex-1 flex-col gap-3">
-                {/* Focal block — big icon + bold title + description */}
-                <div className="flex items-start gap-3">
-                  <FaviconBadge bookmark={b} size={40} />
+              <div className="flex min-w-0 flex-1 flex-col gap-4">
+                {/* Focal block — big circle icon + bold title + description */}
+                <div className="flex items-start gap-3.5">
+                  <CircleBadge bookmark={b} size={48} />
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold leading-snug text-ink">
+                    <h3 className="font-bold leading-snug text-ink">
                       <button
                         type="button"
                         onClick={open}
-                        className="text-left text-sm underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
+                        className="text-left text-base underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
                       >
                         {b.title || displayHost(b.url)}
                       </button>
                     </h3>
                     {(b.description || b.note) && (
-                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-soft">
+                      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-soft">
                         {b.note || b.description}
                       </p>
                     )}
@@ -330,45 +390,40 @@ function BookmarkCardBase({
                 </div>
 
                 {b.tags.length > 0 && (
-                  <ul className="flex flex-wrap gap-1">
+                  <ul className="flex flex-wrap gap-2">
                     {b.tags.slice(0, 3).map((tag) => (
                       <li key={tag.id}>
-                        <TagChip
-                          name={tag.name}
-                          colorIndex={tag.colorIndex}
-                          size="sm"
+                        <button
+                          type="button"
                           onClick={() => onTagClick(tag.id)}
-                        />
+                          className="inline-flex items-center rounded-md bg-sunken px-2 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-brand-soft hover:text-brand-ink"
+                        >
+                          #{tag.name}
+                        </button>
                       </li>
                     ))}
                     {b.tags.length > 3 && (
-                      <li className="self-center text-2xs text-ink-faint">+{b.tags.length - 3}</li>
+                      <li className="self-center text-xs text-ink-faint">+{b.tags.length - 3}</li>
                     )}
                   </ul>
                 )}
 
-                {/* Stat row — time · host · visits on the left, actions on the right */}
-                <div className="mt-1 flex items-center justify-between gap-2 border-t border-line pt-2.5">
-                  <div className="flex min-w-0 items-center gap-2 text-2xs text-ink-faint">
-                    <time dateTime={b.createdAt} className="shrink-0">
-                      {relativeTime(b.createdAt)}
-                    </time>
-                    <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
-                    <span className="min-w-0 truncate">{displayHost(b.url)}</span>
+                {/* Bottom row — left label + right red stat pill / actions */}
+                <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3">
+                  <span className="shrink-0 text-xs font-medium text-ink-faint">TagNest</span>
+
+                  <div className="flex shrink-0 items-center gap-2">
                     {b.visitCount > 0 && (
-                      <>
-                        <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
-                        <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-brand-ink tabular-nums">
-                          <Eye size={12} aria-hidden />
-                          {b.visitCount}
-                        </span>
-                      </>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#ff4d6d] px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                        <Heart size={12} className="fill-white" aria-hidden />
+                        <span className="tabular-nums">{b.visitCount}</span>
+                      </span>
                     )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    {grip}
-                    {star}
-                    {more}
+                    <div className="flex items-center gap-0.5">
+                      {grip}
+                      {star}
+                      {more}
+                    </div>
                   </div>
                 </div>
               </div>
