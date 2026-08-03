@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useEffect, useMemo } from 'react';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
   ChevronsLeft,
@@ -157,6 +157,30 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
   // Only the busiest tags earn a slot; the rest live on the tags page.
   const topTags = (tags ?? []).filter((t) => t.count > 0).slice(0, 8);
 
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const activeTagIds = useMemo(
+    () =>
+      (params.get('tagIds') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [params],
+  );
+
+  // Clicking a常用标签 toggles it in/out of the multi-tag `?tagIds=` filter,
+  // staying in the library. Existing selections are preserved (accumulative).
+  const toggleTag = (id: string) => {
+    const has = activeTagIds.includes(id);
+    const nextTagIds = has ? activeTagIds.filter((t) => t !== id) : [...activeTagIds, id];
+
+    const next = new URLSearchParams(params);
+    if (nextTagIds.length > 0) next.set('tagIds', nextTagIds.join(','));
+    else next.delete('tagIds');
+    navigate(`/library/all?${next.toString()}`, { replace: true });
+    onNavigate?.();
+  };
+
   return (
     <nav aria-label="书签分区" className="flex h-full flex-col px-2 py-3">
       <ul className="flex flex-col gap-1">
@@ -190,17 +214,20 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
           <ul className="flex flex-wrap gap-2 px-2.5">
             {topTags.map((tag) => (
               <li key={tag.id}>
-                <NavLink to={`/tags/${tag.id}`} onClick={onNavigate}>
-                  {({ isActive }) => (
-                    <TagChip
-                      name={tag.name}
-                      colorIndex={tag.colorIndex}
-                      count={tag.count}
-                      size="sm"
-                      active={isActive}
-                    />
-                  )}
-                </NavLink>
+                <button
+                  type="button"
+                  onClick={() => toggleTag(tag.id)}
+                  aria-pressed={activeTagIds.includes(tag.id)}
+                  className="max-w-full text-left"
+                >
+                  <TagChip
+                    name={tag.name}
+                    colorIndex={tag.colorIndex}
+                    count={tag.count}
+                    size="sm"
+                    active={activeTagIds.includes(tag.id)}
+                  />
+                </button>
               </li>
             ))}
           </ul>

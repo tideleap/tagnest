@@ -10,10 +10,11 @@ import {
   Rows3,
   Search,
   Star,
+  X,
   Trash2,
 } from 'lucide-react';
-import type { BookmarkScope, BookmarkSort } from '@shared/types';
-import { Button, EmptyState, SegmentedControl, Select, Skeleton } from '@/components/ui';
+import type { BookmarkScope, BookmarkSort, Tag } from '@shared/types';
+import { Button, EmptyState, SegmentedControl, Select, Skeleton, TagChip } from '@/components/ui';
 import { BookmarkCard } from '@/components/bookmark/BookmarkCard';
 import { BulkActionBar } from '@/components/bookmark/BulkActionBar';
 import { useOverlay, useSelection, useView } from '@/stores/ui';
@@ -89,27 +90,68 @@ const ROW_ESTIMATE: Record<ViewMode, number> = { list: 112, grid: 176, compact: 
 
 export function LibraryPage() {
   const navigate = useNavigate();
-  const { scope: scopeParam, tagId } = useParams();
-  const [params] = useSearchParams();
+  const { scope: scopeParam } = useParams();
+  const [params, setParams] = useSearchParams();
 
   const scope: BookmarkScope = VALID_SCOPES.includes(scopeParam as BookmarkScope)
     ? (scopeParam as BookmarkScope)
     : 'all';
 
   const query = params.get('q') ?? '';
+
+  // Multi-tag filter lives in the URL search param `?tagIds=a,b,c` so it can be
+  // cleared in place and is shareable. Parsed into a stable array for the query
+  // key (avoids infinite re-fetch from a fresh array literal each render).
+  const tagIds = useMemo(
+    () =>
+      (params.get('tagIds') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [params],
+  );
+
   const { viewMode, sort, setViewMode, setSort } = useView();
   const setEditingBookmarkId = useOverlay((s) => s.setEditingBookmarkId);
   const setQuickAddOpen = useOverlay((s) => s.setQuickAddOpen);
   const { selected, toggle, selectMany, clear } = useSelection();
 
   const { data: tags } = useTags();
-  const activeTag = tagId ? tags?.find((t) => t.id === tagId) : undefined;
+
+  // Resolve the selected tag ids into live Tag objects (fall back to id-only
+  // stubs if tags haven't loaded) for the header chips.
+  const activeTags: Tag[] = useMemo(() => {
+    const map = new Map((tags ?? []).map((t) => [t.id, t]));
+    return tagIds
+      .map((id) => map.get(id))
+      .filter((t): t is Tag => Boolean(t));
+  }, [tags, tagIds]);
+
+  /** Rewrites `?tagIds=` to the given ids, preserving q and everything else. */
+  const setTagFilter = useCallback(
+    (nextIds: string[]) => {
+      const next = new URLSearchParams(params);
+      if (nextIds.length > 0) next.set('tagIds', nextIds.join(','));
+      else next.delete('tagIds');
+      setParams(next, { replace: true });
+    },
+    [params, setParams],
+  );
+
+  /** Toggle a tag in/out of the multi-filter (accumulative click behavior). */
+  const toggleTag = useCallback(
+    (id: string) => {
+      const has = tagIds.includes(id);
+      setTagFilter(has ? tagIds.filter((t) => t !== id) : [...tagIds, id]);
+    },
+    [tagIds, setTagFilter],
+  );
 
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useBookmarks({
-      scope: tagId ? 'all' : scope,
+      scope: tagIds.length > 0 ? 'all' : scope,
       q: query || undefined,
-      tagIds: tagId ? [tagId] : undefined,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
       sort,
     });
 
@@ -117,7 +159,7 @@ export function LibraryPage() {
   const total = data?.pages[0]?.total ?? 0;
 
   // Leaving a page with rows still ticked makes the next page act haunted.
-  useEffect(() => clear, [scope, tagId, query, clear]);
+  useEffect(() => clear, [scope, tagIds, query, clear]);
 
   const toggleFavorite = useToggleFavorite();
   const updateBookmark = useUpdateBookmark();
@@ -139,7 +181,7 @@ export function LibraryPage() {
   useEffect(() => {
     setDragId(null);
     setOverId(null);
-  }, [sort, scope, tagId, query]);
+  }, [sort, scope, tagIds, query]);
 
   const handleReorder = useCallback(
     (targetId: string) => {
@@ -214,7 +256,11 @@ export function LibraryPage() {
 
   const meta = SCOPE_META[scope];
   const HeaderIcon = meta.icon;
-  const title = activeTag ? `#${activeTag.name}` : query ? `搜索：${query}` : meta.title;
+  const title = activeTags.length > 0
+    ? `${activeTags.length} 个标签`
+    : query
+      ? `搜索：${query}`
+      : meta.title;
 
   const cardHandlers = {
     onToggleSelect: handleToggleSelect,
@@ -227,7 +273,7 @@ export function LibraryPage() {
     onRestore: (id: string) => restoreBookmarks.mutate([id]),
     onPurge: (id: string) => deleteForever.mutate([id]),
     onVisit: (id: string) => recordVisit.mutate(id),
-    onTagClick: (id: string) => navigate(`/tags/${id}`),
+    onTagClick: toggleTag,
   };
 
   return (
@@ -265,6 +311,32 @@ export function LibraryPage() {
         </div>
       </header>
 
+      {activeTags.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {activeTags.map((t) => (
+            <TagChip
+              key={t.id}
+              name={t.name}
+              colorIndex={t.colorIndex}
+              size="sm"
+              active
+              onClick={() => toggleTag(t.id)}
+              onRemove={() => toggleTag(t.id)}
+            />
+          ))}
+          {activeTags.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setTagFilter([])}
+              className="inline-flex h-5.5 items-center gap-1 rounded-full border border-line px-2 text-2xs font-medium text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            >
+              <X size={11} aria-hidden />
+              清除全部
+            </button>
+          )}
+        </div>
+      )}
+
       {isError && (
         <div
           role="alert"
@@ -297,8 +369,12 @@ export function LibraryPage() {
         ) : (
           <EmptyState
             icon={<HeaderIcon size={22} />}
-            title={activeTag ? `标签 #${activeTag.name} 下还没有书签` : meta.empty}
-            description={activeTag ? '给书签加上这个标签后会出现在这里。' : meta.hint}
+            title={activeTags.length > 0 ? `这些标签下还没有书签` : meta.empty}
+            description={
+              activeTags.length > 0
+                ? `同时匹配 ${activeTags.map((t) => `#${t.name}`).join('、')} 的书签会出现在这里。`
+                : meta.hint
+            }
             action={
               scope === 'all' || scope === 'inbox' ? (
                 <div className="flex gap-2">

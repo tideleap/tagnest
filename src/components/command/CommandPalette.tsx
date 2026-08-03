@@ -175,7 +175,7 @@ export function CommandPalette() {
         hint: `${t.count} 项`,
         icon: <TagIcon size={15} />,
         group: '标签',
-        run: () => navigate(`/tags/${t.id}`),
+        run: () => navigate(`/library/all?tagIds=${encodeURIComponent(t.id)}`),
       }));
 
     const bookmarkCommands: Command[] = (results?.pages[0]?.items ?? []).map((b) => ({

@@ -130,7 +130,7 @@ export function TagsPage() {
 
                 <button
                   type="button"
-                  onClick={() => navigate(`/tags/${tag.id}`)}
+                  onClick={() => navigate(`/library/all?tagIds=${encodeURIComponent(tag.id)}`)}
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block truncate text-sm font-medium text-ink">{tag.name}</span>

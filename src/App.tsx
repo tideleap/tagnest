@@ -1,11 +1,24 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '@/stores/auth';
 import { useTheme } from '@/stores/ui';
 import { Spinner, Toaster } from '@/components/ui';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import { LibraryPage } from '@/pages/LibraryPage';
+
+/**
+ * Old `/tags/:tagId` deep-link → new `?tagIds=` search filter.
+ *
+ * The tag-filter view used to live at `/tags/:tagId` (a path param). It now
+ * lives at `/library/all?tagIds=` (a search param, so it is multi-tag and can
+ * be cleared in place). This redirect preserves any saved/bookmarked old URL by
+ * rewriting the path param into the search param before reaching the library.
+ */
+function OldTagRedirect() {
+  const { tagId } = useParams();
+  return <Navigate to={`/library/all?tagIds=${encodeURIComponent(tagId ?? '')}`} replace />;
+}
 
 // Split off everything that isn't the first screen a signed-in user sees.
 const AuthPage = lazy(() => import('@/pages/AuthPage').then((m) => ({ default: m.AuthPage })));
@@ -96,7 +109,8 @@ export function App() {
             <Route path="/library/:scope" element={<LibraryPage />} />
             <Route path="/organize" element={<OrganizePage />} />
             <Route path="/tags" element={<TagsPage />} />
-            <Route path="/tags/:tagId" element={<LibraryPage />} />
+            {/* Old single-tag filter URL → new multi-tag search param. */}
+            <Route path="/tags/:tagId" element={<OldTagRedirect />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/tab-groups" element={<TabGroupsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

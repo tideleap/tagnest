@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useUserSettings } from '@/hooks/queries';
 
 /**
@@ -7,28 +7,21 @@ import { useUserSettings } from '@/hooks/queries';
  *
  *   1. Search:  when enabled, clear the `?q` search filter after the configured
  *               delay of inactivity.
- *   2. Tags:    when enabled, exit the tag-filter route (return to the library)
- *               after the configured delay of inactivity.
+ *   2. Tags:    when enabled, clear the multi-tag `?tagIds` filter after the
+ *               configured delay of inactivity.
  *
- * "Inactivity" means no user interaction (keyboard, pointer, wheel, scroll,
- * touch) for the whole of the delay window. Any activity resets the clock, so a
- * user who is browsing/spacing the input never gets their filters yanked away.
+ * Both clear in place — they delete the search param rather than navigating, so
+ * the user stays on the library page. "Inactivity" means no user interaction
+ * (keyboard, pointer, wheel, scroll, touch) for the whole delay window; any
+ * activity resets the clock.
  *
- * This is mounted once in AppLayout and follows the app's convention of wiring
- * window-level listeners inside a useEffect with proper teardown. It reads the
- * live settings via `useUserSettings` so toggling in the Settings page takes
- * effect on the next render without a reload.
- *
- * The timer ticks every second rather than churning setTimeout per keystroke;
- * delays are seconds-scale (default 15/30) so a coarse poll is both cheaper and
- * unambiguous. When there is nothing to clear (feature off, delay 0, or no
- * active filter), the ticker no-ops.
+ * Mounted once in AppLayout; reads live settings via `useUserSettings`. The
+ * timer ticks each second (delays are seconds-scale) and no-ops when there is
+ * nothing to clear.
  */
 export function useAutoClear() {
   const { data: settings } = useUserSettings();
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  const location = useLocation();
 
   const lastActivity = useRef<number>(Date.now());
   const clearedSearch = useRef(false);
@@ -61,9 +54,9 @@ export function useAutoClear() {
     const searchOn = Boolean(settings?.searchAutoClearEnabled) && searchDelay > 0;
     const tagsOn = Boolean(settings?.tagsAutoClearEnabled) && tagsDelay > 0;
 
-    const hasSearch = params.get('q') !== null && params.get('q') !== '';
-    // Tag-filter route: /tags/:tagId
-    const isTagRoute = location.pathname.startsWith('/tags/');
+    const qParam = params.get('q');
+    const hasSearch = qParam !== null && qParam !== '';
+    const hasTagFilter = Boolean((params.get('tagIds') ?? '').trim());
 
     const tick = () => {
       const now = Date.now();
@@ -77,15 +70,18 @@ export function useAutoClear() {
         }
       }
 
-      if (tagsOn && isTagRoute && !clearedTags.current) {
+      if (tagsOn && hasTagFilter && !clearedTags.current) {
         if (now - lastActivity.current >= tagsDelay * 1000) {
           clearedTags.current = true;
-          navigate('/library/all', { replace: true });
+          // Delete the tag filter in place — no navigation away.
+          const next = new URLSearchParams(params);
+          next.delete('tagIds');
+          setParams(next, { replace: true });
         }
       }
     };
 
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
-  }, [settings, params, location.pathname, navigate, setParams]);
+  }, [settings, params, setParams]);
 }
