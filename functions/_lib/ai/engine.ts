@@ -2,6 +2,11 @@ import { heuristicCandidates, type RawCandidate } from './heuristics';
 import { BATCH_SIZE, buildTaggingPrompt, parseTaggingResponse } from './prompt';
 import { callProvider, isFatal, isRetryable } from './providers';
 import { resolveCandidates } from './taxonomy';
+import {
+  sameHostBoost,
+  scoreTagCandidate,
+  vocabularyEntryFor,
+} from './scoring';
 import type { AiConfig, EnrichInput, LocalConfig, TagCandidate, Vocabulary } from './types';
 
 /**
@@ -154,16 +159,39 @@ export async function suggestForBookmarks(
     modelError = '未配置可用的模型，本次使用本地规则整理';
   }
 
-  // ---- Merge, normalise, rank ----------------------------------------
+  // ---- Merge, normalise, rank, and score -----------------------------
   const results: SuggestionResult[] = inputs.map((input, index) => {
     const raw: RawCandidate[] = [
       ...(modelTags.get(index) ?? []),
       ...(heuristics.get(index) ?? []),
     ];
 
+    // Base resolution: normalise against the user's taxonomy, merge duplicate
+    // engines, and rank by agreement (as before).
+    const resolved = raw.length > 0 ? resolveCandidates(raw, vocab, local.maxTags) : [];
+
+    // Multi-dimensional scoring pass: for each candidate, fold in the user's
+    // tag-usage frequency, the page's own lexical evidence, and the same-host
+    // neighbourhood signal. Drop anything that falls below the confidence
+    // floor — a pipeline that forces weak associations on the user is worse
+    // than one that proposes fewer, better tags.
+    const hostBoostCache = (name: string) => sameHostBoost(inputs, index, name);
+    const scored: TagCandidate[] = [];
+    for (const candidate of resolved) {
+      const vocabEntry = vocabularyEntryFor(vocab, candidate.tagId, candidate.name);
+      const boosted = scoreTagCandidate(
+        candidate,
+        input,
+        hostBoostCache(candidate.name),
+        vocabEntry,
+      );
+      if (boosted) scored.push(boosted);
+    }
+    scored.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
+
     return {
       bookmarkId: input.id,
-      tags: raw.length > 0 ? resolveCandidates(raw, vocab, local.maxTags) : [],
+      tags: scored.slice(0, Math.max(1, local.maxTags)),
       summary: summaries.get(index) ?? null,
     };
   });
