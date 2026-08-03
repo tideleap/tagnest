@@ -35,7 +35,10 @@ export interface Env {
   SNAPSHOT_BUCKET?: R2Bucket;
   /**
    * Base URL of the third-party screenshot API used to generate a snapshot
-   * image. Optional; when set, a snapshot can be generated for a bookmark.
+   * image. Optional — when unset the snapshot lib falls back to a built-in
+   * free provider (see DEFAULT_SNAPSHOT_API_URL in snapshots.ts). After a
+   * dashboard change, a FRESH deploy is required for Pages to bind it (env
+   * vars are applied per-deployment).
    * Supports a `{url}` token that is replaced with the (encoded) target URL.
    */
   SNAPSHOT_API_URL?: string;

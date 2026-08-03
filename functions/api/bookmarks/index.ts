@@ -130,11 +130,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     }),
   );
 
-  // Website snapshot generation runs out-of-band too. When a screenshot API is
-  // configured, kick off a best-effort snapshot so the card's "preview image"
-  // shows the real site instead of a plain circle badge on the next render.
-  // Guarded by ctx.waitUntil so a slow/failed provider never blocks saving.
-  if (ctx.env.SNAPSHOT_API_URL && ctx.env.SNAPSHOT_BUCKET) {
+  // Website snapshot generation runs out-of-band too. When the R2 bucket is
+  // bound (SNAPSHOT_BUCKET), kick off a best-effort snapshot so the card's
+  // "preview image" shows the real site instead of a plain circle badge on the
+  // next render. SNAPSHOT_API_URL is optional — when unset the snapshot lib
+  // falls back to a built-in free web-screenshot provider. Guarded by
+  // ctx.waitUntil so a slow/failed provider never blocks saving.
+  if (ctx.env.SNAPSHOT_BUCKET) {
     ctx.waitUntil(
       (async () => {
         try {

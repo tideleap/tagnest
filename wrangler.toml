@@ -22,14 +22,14 @@ id = "e0090e3806074150badd3bf531b4fdb6"
 
 # Website snapshots ("website preview image") live in R2. The bucket must be
 # created before deploy. Use the existing bucket created in the Cloudflare
-# dashboard (APAC region). Absent during local dev; the snapshot pipeline
-# degrades gracefully (cards fall back to the remote coverUrl + circle badge)
-# when this binding is missing.
+# dashboard (APAC region). Snapshot generation falls back to a built-in free
+# web-screenshot provider when SNAPSHOT_API_URL is unset, so snapshots work as
+# soon as this bucket binding is live.
 #
-# NOTE: to generate snapshots you MUST also define SNAPSHOT_API_URL (and
-# optional SNAPSHOT_API_KEY). Pages binds env vars per-deployment — add them,
-# then trigger a fresh deploy, or the already-running Functions keep reporting
-# `snapshot_not_configured`. Verify the chain with `scripts/verify-snapshot.mjs`.
+# To override the provider, define SNAPSHOT_API_URL (and optional
+# SNAPSHOT_API_KEY) as a Pages production variable. Pages binds env vars
+# per-deployment — add them, then trigger a fresh deploy. Verify the chain with
+# `scripts/verify-snapshot.mjs`.
 [[r2_buckets]]
 binding = "SNAPSHOT_BUCKET"
 bucket_name = "tagnest-media"

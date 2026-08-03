@@ -25,8 +25,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const bookmark = await loadBookmark(ctx.env, userId, id);
   if (!bookmark) throw notFound('书签不存在');
 
-  if (!ctx.env.SNAPSHOT_API_URL) {
-    throw badRequestCode('snapshot_not_configured', '网站快照功能未配置，无法生成预览图');
+  // SNAPSHOT_API_URL is optional: when unset, the snapshot lib falls back to a
+  // built-in free web-screenshot provider (see DEFAULT_SNAPSHOT_API_URL). Only
+  // the R2 bucket is required here — a served image needs somewhere to live.
+  if (!ctx.env.SNAPSHOT_BUCKET) {
+    throw badRequestCode('snapshot_not_configured', '网站快照存储未配置，无法生成预览图');
   }
 
   let bytes: Uint8Array;

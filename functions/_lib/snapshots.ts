@@ -22,6 +22,30 @@ export const SNAPSHOT_EXT = 'webp';
 /** Max bytes accepted from a third-party snapshot service (≈ 4 MB). */
 export const MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Default snapshot provider used when SNAPSHOT_API_URL is not configured on an
+ * instance. Points at a no-key service that answers a GET with the raw image
+ * bytes (`image/webp`), which is exactly what `fetchSnapshotFromApi` expects.
+ *
+ * This is a best-effort ON-BY-DEFAULT fallback so snapshots work out of the
+ * box on a fresh deploy. Operators who want a governed provider — or none at
+ * all — should set `SNAPSHOT_API_URL` explicitly (an explicit value always
+ * wins). To disable the default while leaving the feature otherwise armed via
+ * `SNAPSHOT_API_URL`, simply configure your own value.
+ */
+export const DEFAULT_SNAPSHOT_API_URL =
+  'https://api.sitelookeratter.com/screenshot?url={url}&format=webp&device=desktop';
+
+/**
+ * Resolves the provider URL to call, honouring an explicit SNAPSHOT_API_URL
+ * first and falling back to the built-in free default. `null` only when the
+ * caller explicitly disabled the default by passing an empty string.
+ */
+export function resolveSnapshotApiUrl(configured?: string): string | null {
+  if (configured) return configured;
+  return DEFAULT_SNAPSHOT_API_URL;
+}
+
 function snapshotObjectKey(userId: string, bookmarkId: string): string {
   return `snapshots/${userId}/${bookmarkId}.${SNAPSHOT_EXT}`;
 }
@@ -50,8 +74,9 @@ export async function fetchSnapshotFromApi(
   targetUrl: string,
   opts: { apiUrl?: string; apiKey?: string; fetchFn?: typeof fetch },
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const { apiUrl, apiKey, fetchFn = fetch } = opts;
+  const { apiUrl: configuredUrl, apiKey, fetchFn = fetch } = opts;
 
+  const apiUrl = resolveSnapshotApiUrl(configuredUrl);
   if (!apiUrl) {
     throw new Error('SNAPSHOT_API_URL 未配置，无法生成网站快照');
   }

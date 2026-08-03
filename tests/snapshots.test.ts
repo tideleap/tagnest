@@ -59,10 +59,23 @@ const userId = 'user_abc';
 const bookmarkId = 'bookmark_123';
 
 describe('fetchSnapshotFromApi', () => {
-  it('rejects when no API URL is configured', async () => {
-    await expect(
-      fetchSnapshotFromApi('https://example.com', { fetchFn: mockFetch() }),
-    ).rejects.toThrow('SNAPSHOT_API_URL 未配置');
+  it('falls back to the built-in default provider when no API URL is configured', async () => {
+    const fetchFn = mockFetch();
+    await fetchSnapshotFromApi('https://example.com', { fetchFn });
+    const [calledUrl] = fetchFn.mock.calls[0] as unknown as [string];
+    expect(calledUrl).toContain('api.sitelookeratter.com/screenshot');
+    expect(calledUrl).toContain('https%3A%2F%2Fexample.com');
+  });
+
+  it('prefers an explicitly configured API URL', async () => {
+    const fetchFn = mockFetch();
+    await fetchSnapshotFromApi('https://a.com', {
+      apiUrl: 'https://shot.dev/?url={url}&format=webp',
+      fetchFn,
+    });
+    const [calledUrl] = fetchFn.mock.calls[0] as unknown as [string];
+    expect(calledUrl).toContain('shot.dev');
+    expect(calledUrl).toContain('https%3A%2F%2Fa.com');
   });
 
   it('replaces the {url} token with the encoded target', async () => {
