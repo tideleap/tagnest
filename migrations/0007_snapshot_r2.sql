@@ -1,0 +1,13 @@
+-- 0007_snapshot_r2.sql
+--
+-- Website snapshots (2-step "website preview image" feature).
+--
+-- A generated screenshot of a bookmark's site is stored in Cloudflare R2 and
+-- the card shows that first-party image instead of the raw remote coverUrl.
+-- This column holds the R2 object key (e.g. `snapshots/{userId}/{bookmarkId}.
+-- webp`); NULL until a snapshot has been generated and uploaded.
+--
+-- Kept as a plain TEXT column (not NOT NULL) so existing bookmarks and any
+-- bookmark without a snapshot are unaffected. The value is written exclusively
+-- by the backend snapshot pipeline, never from the client.
+ALTER TABLE bookmarks ADD COLUMN snapshot_key TEXT;

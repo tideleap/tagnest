@@ -130,5 +130,31 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     }),
   );
 
+  // Website snapshot generation runs out-of-band too. When a screenshot API is
+  // configured, kick off a best-effort snapshot so the card's "preview image"
+  // shows the real site instead of a plain circle badge on the next render.
+  // Guarded by ctx.waitUntil so a slow/failed provider never blocks saving.
+  if (ctx.env.SNAPSHOT_API_URL && ctx.env.SNAPSHOT_BUCKET) {
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const { fetchSnapshotFromApi, putSnapshot } = await import('../../_lib/snapshots');
+          const { bytes, contentType } = await fetchSnapshotFromApi(url, {
+            apiUrl: ctx.env.SNAPSHOT_API_URL,
+            apiKey: ctx.env.SNAPSHOT_API_KEY,
+          });
+          const key = await putSnapshot(ctx.env, userId, inserted.id, bytes, contentType);
+          await ctx.env.DB.prepare(
+            `UPDATE bookmarks SET snapshot_key = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+          )
+            .bind(key, nowIso(), inserted.id, userId)
+            .run();
+        } catch {
+          // Best-effort: a failed snapshot must never affect bookmark creation.
+        }
+      })(),
+    );
+  }
+
   return json(created, { status: 201 });
 };

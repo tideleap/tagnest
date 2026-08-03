@@ -30,6 +30,13 @@ export interface Bookmark {
   description: string | null;
   faviconUrl: string | null;
   coverUrl: string | null;
+  /**
+   * R2 object key for the generated website snapshot (e.g.
+   * `snapshots/{userId}/{bookmarkId}.webp`). When present the card shows this
+   * first-party image instead of the raw remote `coverUrl`. Null until a
+   * snapshot has been generated and stored.
+   */
+  snapshotKey: string | null;
   /** User-authored note, markdown-ish plain text. */
   note: string | null;
   /** Reserved for the AI feature; always null until a model is wired up. */
@@ -81,6 +88,8 @@ export interface BookmarkInput {
   note?: string | null;
   faviconUrl?: string | null;
   coverUrl?: string | null;
+  /** R2 key of a generated website snapshot, if one exists. */
+  snapshotKey?: string | null;
   isFavorite?: boolean;
   isArchived?: boolean;
   tagNames?: string[];

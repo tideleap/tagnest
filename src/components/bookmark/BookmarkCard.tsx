@@ -338,10 +338,39 @@ function BookmarkCardBase({
                     compact #hashtag pills and the red stat pill are stacked below.
                     No duplicate badge, no tall cover — cards stay readable at
                     ~170 px wide. ---- */
-            <>
-              <div className="relative -mx-3 -mt-3 mb-3 flex aspect-[16/10] items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/30">
-                <CircleBadge bookmark={b} size={56} />
-              </div>
+            <>              {/* Top hero strip — first-party R2 website snapshot when one
+                  exists, else the raw remote cover, else a circle badge. */}
+              {b.snapshotKey ? (
+                <div className="relative -mx-3 -mt-3 mb-3 aspect-[16/10] overflow-hidden rounded-t-lg bg-sunken">
+                  <RemoteImage
+                    src={`/api/snapshots/${b.snapshotKey}`}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    fallback={
+                      <div className="flex h-full w-full items-center justify-center bg-brand-soft/30">
+                        <CircleBadge bookmark={b} size={56} />
+                      </div>
+                    }
+                  />
+                </div>
+              ) : b.coverUrl ? (
+                <div className="relative -mx-3 -mt-3 mb-3 aspect-[16/10] overflow-hidden rounded-t-lg bg-sunken">
+                  <RemoteImage
+                    src={b.coverUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    fallback={
+                      <div className="flex h-full w-full items-center justify-center bg-brand-soft/30">
+                        <CircleBadge bookmark={b} size={56} />
+                      </div>
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="relative -mx-3 -mt-3 mb-3 flex aspect-[16/10] items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/30">
+                  <CircleBadge bookmark={b} size={56} />
+                </div>
+              )}
 
               <div className="flex min-w-0 flex-1 flex-col gap-2.5">
                 <h3 className="font-bold leading-snug text-ink">

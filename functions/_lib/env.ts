@@ -27,6 +27,23 @@ export interface Env {
    * deployments that skip the binding; every read path degrades to D1.
    */
   SHARE_CACHE?: KVNamespace;
+  /**
+   * R2 bucket holding generated website snapshots. Absent in local dev and on
+   * deployments that skip the binding; the snapshot pipeline degrades to a
+   * plain (no-snapshot) bookmark when it is missing.
+   */
+  SNAPSHOT_BUCKET?: R2Bucket;
+  /**
+   * Base URL of the third-party screenshot API used to generate a snapshot
+   * image. Optional; when set, a snapshot can be generated for a bookmark.
+   * Supports a `{url}` token that is replaced with the (encoded) target URL.
+   */
+  SNAPSHOT_API_URL?: string;
+  /**
+   * Optional auth secret sent as `Authorization: Bearer <key>` to the snapshot
+   * API. Absent when the service needs no auth.
+   */
+  SNAPSHOT_API_KEY?: string;
   /** Minimum severity emitted by the structured logger (default 'info'). */
   LOG_LEVEL?: string;
 }

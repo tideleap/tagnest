@@ -59,6 +59,10 @@ const MIGRATION_PROBES = {
   // the representative marker and treat its presence as "already applied".
   '0006_ai_tagging.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('bookmark_tags') WHERE name='source'`,
+  // 0007 adds bookmarks.snapshot_key via ALTER TABLE (not idempotent). Probe
+  // that column's presence as the "already applied" marker.
+  '0007_snapshot_r2.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='snapshot_key'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

@@ -80,6 +80,7 @@ export function mapBookmark(row: Row, tags: Tag[]): Bookmark {
     description: (row.description as string | null) ?? null,
     faviconUrl: (row.favicon_url as string | null) ?? null,
     coverUrl: (row.cover_url as string | null) ?? null,
+    snapshotKey: (row.snapshot_key as string | null) ?? null,
     note: (row.note as string | null) ?? null,
     aiSummary: (row.ai_summary as string | null) ?? null,
     isFavorite: bool(row.is_favorite),
@@ -95,7 +96,7 @@ export function mapBookmark(row: Row, tags: Tag[]): Bookmark {
 }
 
 const BOOKMARK_COLUMNS = `
-  b.id, b.url, b.title, b.description, b.favicon_url, b.cover_url, b.note,
+  b.id, b.url, b.title, b.description, b.favicon_url, b.cover_url, b.snapshot_key, b.note,
   b.ai_summary, b.is_favorite, b.is_archived, b.visit_count, b.last_visited_at,
   b.manual_order, b.created_at, b.updated_at, b.deleted_at
 `;
