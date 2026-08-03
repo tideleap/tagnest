@@ -39,6 +39,11 @@ export {
 } from './queries/ai';
 
 export {
+  useUserSettings,
+  useUpdateUserSettings,
+} from './queries/settings';
+
+export {
   useAiOverview,
   useAiSuggestions,
   useAiTaxonomyAudit,

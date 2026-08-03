@@ -63,6 +63,11 @@ const MIGRATION_PROBES = {
   // that column's presence as the "already applied" marker.
   '0007_snapshot_r2.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='snapshot_key'`,
+  // 0008 creates user_settings and adds bookmarks.snapshot_keys (both DDL).
+  // Probe the new bookmark column as the representative marker (the ALTER is
+  // the non-idempotent part; CREATE TABLE IF NOT EXISTS is safe to re-run).
+  '0008_snapshot_retention.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='snapshot_keys'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

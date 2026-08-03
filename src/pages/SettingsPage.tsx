@@ -1,5 +1,6 @@
 import { NavLink, useParams } from 'react-router-dom';
 import {
+  Camera,
   Info,
   KeyRound,
   Keyboard,
@@ -14,6 +15,7 @@ import { ApiKeysSection } from './settings/ApiKeysSection';
 import { SharesSection } from './settings/SharesSection';
 import { AppearanceSection } from './settings/AppearanceSection';
 import { AiSection } from './settings/AiSection';
+import { SnapshotsSection } from './settings/SnapshotsSection';
 import { ShortcutsSection } from './settings/ShortcutsSection';
 import { AboutSection } from './settings/AboutSection';
 
@@ -23,6 +25,7 @@ const SECTIONS = [
   { id: 'shares', label: '分享', icon: Share2 },
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
+  { id: 'snapshots', label: '快照', icon: Camera },
   { id: 'shortcuts', label: '快捷键', icon: Keyboard },
   { id: 'about', label: '关于', icon: Info },
 ] as const;
@@ -65,6 +68,7 @@ export function SettingsPage() {
         {active === 'shares' && <SharesSection />}
         {active === 'appearance' && <AppearanceSection />}
         {active === 'ai' && <AiSection />}
+        {active === 'snapshots' && <SnapshotsSection />}
         {active === 'shortcuts' && <ShortcutsSection />}
         {active === 'about' && <AboutSection />}
       </div>

@@ -1,15 +1,20 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { badRequestCode, json, notFound } from '../../../_lib/http';
-import { nowIso } from '../../../_lib/ids';
-import { loadBookmark } from '../../../_lib/db';
+import {
+  loadBookmark,
+  loadSnapshotRetentionLimit,
+  loadSnapshotState,
+  updateBookmarkSnapshots,
+} from '../../../_lib/db';
 import {
   captureWithBrowserRun,
   classifySnapshotError,
+  deleteSnapshots,
   fetchSnapshotFromApi,
-  putSnapshot,
   resolveSnapshotProvider,
   snapshotServePath,
+  storeSnapshotWithRetention,
 } from '../../../_lib/snapshots';
 
 /**
@@ -72,21 +77,36 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     throw e;
   }
 
-  let key: string;
+  // Load current snapshot state for retention (the full list to keep/prune).
+  const state = await loadSnapshotState(ctx.env, userId, id);
+  if (!state) throw notFound('书签不存在');
+
+  const retentionLimit = await loadSnapshotRetentionLimit(ctx.env, userId);
+
+  let stored: { key: string; keep: string[]; drop: string[] };
   try {
-    key = await putSnapshot(ctx.env, userId, id, bytes, contentType);
+    stored = await storeSnapshotWithRetention(ctx.env, {
+      userId,
+      bookmarkId: id,
+      existingKeys: state.snapshotKeys,
+      bytes,
+      contentType,
+      retentionLimit,
+    });
   } catch {
     throw badRequestCode('snapshot_storage_unavailable', '图片存储服务暂不可用，请稍后重试');
   }
 
-  await ctx.env.DB.prepare(
-    `UPDATE bookmarks SET snapshot_key = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-  )
-    .bind(key, nowIso(), id, userId)
-    .run();
+  try {
+    await updateBookmarkSnapshots(ctx.env, userId, id, stored.key, stored.keep);
+    if (stored.drop.length > 0) await deleteSnapshots(ctx.env, stored.drop);
+  } catch {
+    throw badRequestCode('snapshot_storage_unavailable', '图片存储服务暂不可用，请稍后重试');
+  }
 
   return json({
-    snapshotKey: key,
-    url: snapshotServePath(userId, id),
+    snapshotKey: stored.key,
+    snapshotKeys: stored.keep,
+    url: snapshotServePath(stored.key),
   });
 };

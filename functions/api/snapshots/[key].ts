@@ -7,10 +7,11 @@ import { getSnapshot, snapshotContentType } from '../../_lib/snapshots';
  *
  * Streams a stored website-snapshot object back with an aggressive cache header
  * so repeated card renders hit the edge/browser cache instead of R2. The key
- * is the full object path (`snapshots/{userId}/{bookmarkId}.webp`) and doubles
- * as the access token; a valid key implies a legitimately generated snapshot.
+ * is the full object path (`snapshots/{userId}/{bookmarkId}-{ts}.webp`) and
+ * doubles as the access token; a valid key implies a legitimately generated
+ * snapshot.
  */
-const KEY_PATTERN = /^snapshots\/[\w-]+\/[\w-]+\.webp$/;
+const KEY_PATTERN = /^snapshots\/[\w-]+\/[\w-]+(?:-\d+)?\.webp$/;
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const raw = ctx.params.key as string;

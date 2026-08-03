@@ -4,9 +4,14 @@ import {
   classifySnapshotError,
   fetchSnapshotFromApi,
   getSnapshot,
+  planRetention,
   putSnapshot,
   resolveSnapshotProvider,
+  snapshotObjectKey,
   snapshotServePath,
+  snapshotTimestamp,
+  sortSnapshotsNewestFirst,
+  storeSnapshotWithRetention,
 } from '../functions/_lib/snapshots';
 
 // Minimal in-memory R2Bucket-like stub covering the surface the snapshots lib
@@ -189,7 +194,7 @@ describe('captureWithBrowserRun', () => {
 });
 
 describe('putSnapshot / getSnapshot', () => {
-  it('stores bytes under the namespace key and reads them back', async () => {
+  it('stores bytes under a versioned key and reads them back', async () => {
     const bucket = memR2();
     const bytes = new Uint8Array([9, 8, 7]);
     const key = await putSnapshot(
@@ -198,8 +203,9 @@ describe('putSnapshot / getSnapshot', () => {
       bookmarkId,
       bytes,
       'image/webp',
+      1000,
     );
-    expect(key).toBe(`snapshots/${userId}/${bookmarkId}.webp`);
+    expect(key).toBe(`snapshots/${userId}/${bookmarkId}-1000.webp`);
     expect(bucket._keys()).toEqual([key]);
 
     const obj = await getSnapshot({ SNAPSHOT_BUCKET: bucket }, key);
@@ -223,10 +229,115 @@ describe('putSnapshot / getSnapshot', () => {
 });
 
 describe('snapshotServePath', () => {
-  it('builds the unauthenticated image path from owner + bookmark', () => {
-    expect(snapshotServePath(userId, bookmarkId)).toBe(
-      `/api/snapshots/${encodeURIComponent(`snapshots/${userId}/${bookmarkId}.webp`)}`,
+  it('builds the unauthenticated image path from a full key', () => {
+    const key = `snapshots/${userId}/${bookmarkId}-123.webp`;
+    expect(snapshotServePath(key)).toBe(
+      `/api/snapshots/${encodeURIComponent(key)}`,
     );
+  });
+});
+
+describe('snapshotObjectKey / snapshotTimestamp', () => {
+  it('embeds the timestamp and recovers it', () => {
+    const key = snapshotObjectKey(userId, bookmarkId, 1712345678901);
+    expect(key).toBe(`snapshots/${userId}/${bookmarkId}-1712345678901.webp`);
+    expect(snapshotTimestamp(key)).toBe(1712345678901);
+  });
+
+  it('snapshotTimestamp returns 0 for a malformed or legacy bare key', () => {
+    expect(snapshotTimestamp(`snapshots/${userId}/${bookmarkId}.webp`)).toBe(0);
+    expect(snapshotTimestamp('not-a-key')).toBe(0);
+  });
+});
+
+describe('sortSnapshotsNewestFirst', () => {
+  it('orders by descending timestamp', () => {
+    const a = snapshotObjectKey(userId, bookmarkId, 100);
+    const b = snapshotObjectKey(userId, bookmarkId, 300);
+    const c = snapshotObjectKey(userId, bookmarkId, 200);
+    expect(sortSnapshotsNewestFirst([a, b, c])).toEqual([b, c, a]);
+  });
+});
+
+describe('planRetention', () => {
+  it('keeps everything when under the limit', () => {
+    const key = snapshotObjectKey(userId, bookmarkId, 100);
+    const { keep, drop } = planRetention([], key, 5);
+    expect(keep).toEqual([key]);
+    expect(drop).toEqual([]);
+  });
+
+  it('prunes the oldest when the limit is exceeded', () => {
+    const a = snapshotObjectKey(userId, bookmarkId, 100);
+    const d = snapshotObjectKey(userId, bookmarkId, 200);
+    const e = snapshotObjectKey(userId, bookmarkId, 300);
+    const newer = snapshotObjectKey(userId, bookmarkId, 400);
+    // existing(a=oldest) then add d,e,newer with limit 3 → keep d,e,newer; drop a
+    const { keep, drop } = planRetention([a, d, e], newer, 3);
+    expect(keep).toEqual([d, e, newer]);
+    expect(drop).toEqual([a]);
+  });
+
+  it('pins to the newest when the limit is 1', () => {
+    const oldK = snapshotObjectKey(userId, bookmarkId, 10);
+    const newK = snapshotObjectKey(userId, bookmarkId, 20);
+    const { keep, drop } = planRetention([oldK], newK, 1);
+    expect(drop).toEqual([oldK]);
+    expect(keep).toEqual([newK]);
+  });
+
+  it('never prunes when the limit is -1 (unlimited)', () => {
+    const a = snapshotObjectKey(userId, bookmarkId, 10);
+    const b = snapshotObjectKey(userId, bookmarkId, 20);
+    const { keep, drop } = planRetention([a], b, -1);
+    expect(keep).toEqual([a, b]);
+    expect(drop).toEqual([]);
+  });
+});
+
+describe('storeSnapshotWithRetention', () => {
+  it('writes a new version, keeps under limit, returns empty drop', async () => {
+    const bucket = memR2();
+    const existing = [snapshotObjectKey(userId, bookmarkId, 100)];
+    await bucket.put(existing[0], new Uint8Array(3), { httpMetadata: { contentType: 'image/webp' } });
+    const out = await storeSnapshotWithRetention(
+      { SNAPSHOT_BUCKET: bucket },
+      {
+        userId,
+        bookmarkId,
+        existingKeys: existing,
+        bytes: new Uint8Array([1, 2, 3]),
+        contentType: 'image/webp',
+        retentionLimit: 5,
+        tsMs: 200,
+      },
+    );
+    expect(out.key).toBe(snapshotObjectKey(userId, bookmarkId, 200));
+    expect(out.keep).toEqual([...existing, out.key]);
+    expect(out.drop).toEqual([]);
+    expect(bucket._keys()).toEqual([...existing, out.key]);
+  });
+
+  it('prunes the oldest object when the limit is exceeded', async () => {
+    const bucket = memR2();
+    const a = snapshotObjectKey(userId, bookmarkId, 100);
+    const b = snapshotObjectKey(userId, bookmarkId, 200);
+    for (const k of [a, b]) await bucket.put(k, new Uint8Array(3), { httpMetadata: { contentType: 'image/webp' } });
+
+    const out = await storeSnapshotWithRetention(
+      { SNAPSHOT_BUCKET: bucket },
+      {
+        userId,
+        bookmarkId,
+        existingKeys: [a, b],
+        bytes: new Uint8Array([9]),
+        contentType: 'image/webp',
+        retentionLimit: 2,
+        tsMs: 300,
+      },
+    );
+    expect(out.drop).toEqual([a]); // oldest pruned
+    expect(out.keep).toEqual([b, out.key]);
   });
 });
 

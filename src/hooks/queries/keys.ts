@@ -14,6 +14,8 @@ export const keys = {
   tags: ['tags'] as const,
   stats: ['stats'] as const,
   aiSettings: ['ai-settings'] as const,
+  /** User-level application settings (snapshot retention, …). */
+  userSettings: ['user-settings'] as const,
   aiOverview: ['ai-overview'] as const,
   aiTaxonomy: ['ai-taxonomy'] as const,
   /** Pending proposals; scoped by run so "review what I just made" is cacheable. */

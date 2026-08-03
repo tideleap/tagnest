@@ -81,6 +81,7 @@ export function mapBookmark(row: Row, tags: Tag[]): Bookmark {
     faviconUrl: (row.favicon_url as string | null) ?? null,
     coverUrl: (row.cover_url as string | null) ?? null,
     snapshotKey: (row.snapshot_key as string | null) ?? null,
+    snapshotKeys: parseSnapshotKeys(row.snapshot_keys),
     note: (row.note as string | null) ?? null,
     aiSummary: (row.ai_summary as string | null) ?? null,
     isFavorite: bool(row.is_favorite),
@@ -95,8 +96,25 @@ export function mapBookmark(row: Row, tags: Tag[]): Bookmark {
   };
 }
 
+/** Parses the `snapshot_keys` JSON column into a string[], tolerating bad rows. */
+export function parseSnapshotKeys(raw: unknown): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(String(raw));
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Serializes an ordered snapshot key list for the `snapshot_keys` column. */
+export function serializeSnapshotKeys(keys: string[]): string | null {
+  return keys.length > 0 ? JSON.stringify(keys) : null;
+}
+
 const BOOKMARK_COLUMNS = `
-  b.id, b.url, b.title, b.description, b.favicon_url, b.cover_url, b.snapshot_key, b.note,
+  b.id, b.url, b.title, b.description, b.favicon_url, b.cover_url, b.snapshot_key,
+  b.snapshot_keys, b.note,
   b.ai_summary, b.is_favorite, b.is_archived, b.visit_count, b.last_visited_at,
   b.manual_order, b.created_at, b.updated_at, b.deleted_at
 `;
@@ -500,4 +518,60 @@ export async function loadBookmark(
   if (!row) return null;
   const tags = await attachTags(env, userId, [id]);
   return mapBookmark(row, tags.get(id) ?? []);
+}
+
+/**
+ * Loads the JSON `snapshot_keys` list for a bookmark (oldest → newest), plus
+ * its current latest `snapshot_key`. Used by the snapshot pipeline to append a
+ * new capture and run retention pruning. Returns null when the bookmark is not
+ * found.
+ */
+export async function loadSnapshotState(
+  env: Env,
+  userId: string,
+  bookmarkId: string,
+): Promise<{ snapshotKey: string | null; snapshotKeys: string[] } | null> {
+  const row = await env.DB.prepare(
+    `SELECT snapshot_key, snapshot_keys FROM bookmarks WHERE id = ? AND user_id = ? LIMIT 1`,
+  )
+    .bind(bookmarkId, userId)
+    .first<Row>();
+  if (!row) return null;
+  return {
+    snapshotKey: (row.snapshot_key as string | null) ?? null,
+    snapshotKeys: parseSnapshotKeys(row.snapshot_keys),
+  };
+}
+
+/**
+ * Persists the snapshot state after a capture: the latest key (for the card's
+ * `snapshot_key`) and the full retained list (`snapshot_keys`, oldest→newest).
+ * Consistent update of both columns in one statement avoids a torn state.
+ */
+export async function updateBookmarkSnapshots(
+  env: Env,
+  userId: string,
+  bookmarkId: string,
+  latestKey: string,
+  snapshotKeys: string[],
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE bookmarks
+        SET snapshot_key = ?, snapshot_keys = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?`,
+  )
+    .bind(latestKey, serializeSnapshotKeys(snapshotKeys), nowIso(), bookmarkId, userId)
+    .run();
+}
+
+/** Reads the user's snapshot retention limit (default 5; -1 = unlimited). */
+export async function loadSnapshotRetentionLimit(env: Env, userId: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT snapshot_retention_limit FROM user_settings WHERE user_id = ? LIMIT 1`,
+  )
+    .bind(userId)
+    .first<{ snapshot_retention_limit: number | null }>();
+  const n = Number(row?.snapshot_retention_limit);
+  if (Number.isInteger(n) && (n === -1 || n >= 1)) return n;
+  return 5;
 }

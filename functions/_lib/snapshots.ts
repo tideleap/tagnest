@@ -42,8 +42,29 @@ export function resolveSnapshotProvider(env: Pick<Env, 'SNAPSHOT_API_URL' | 'BRO
   return 'none';
 }
 
-function snapshotObjectKey(userId: string, bookmarkId: string): string {
-  return `snapshots/${userId}/${bookmarkId}.${SNAPSHOT_EXT}`;
+/**
+ * Builds an R2 object key for a single snapshot capture.
+ *
+ * Format: `snapshots/{userId}/{bookmarkId}-{tsMs}.webp`
+ *
+ * The `-{tsMs}` suffix (unix epoch millis) makes each capture a distinct
+ * object so a bookmark can keep a history of snapshots. The bookmark's own id
+ * (NOT the userId) sits after the user separator, mirroring the pre-retention
+ * layout while disambiguating versions by timestamp.
+ */
+export function snapshotObjectKey(userId: string, bookmarkId: string, tsMs: number): string {
+  return `snapshots/${userId}/${bookmarkId}-${tsMs}.${SNAPSHOT_EXT}`;
+}
+
+/** Extracts the capture timestamp from a versioned snapshot key (or 0). */
+export function snapshotTimestamp(key: string): number {
+  const m = /\/([\w-]+)-(\d+)\.webp$/.exec(key);
+  return m ? Number(m[2]) || 0 : 0;
+}
+
+/** Sorts retained snapshot keys newest-first (largest timestamp first). */
+export function sortSnapshotsNewestFirst(keys: string[]): string[] {
+  return [...keys].sort((a, b) => snapshotTimestamp(b) - snapshotTimestamp(a));
 }
 
 /** Content type used both when storing and when serving. */
@@ -52,12 +73,33 @@ export function snapshotContentType(): string {
 }
 
 /**
- * Path a browser uses to fetch the snapshot image (unauthenticated GET). The
- * endpoint resolves the key to an object by its userId/owner and serves it.
+ * Path a browser uses to fetch a specific snapshot image (unauthenticated GET).
+ * The key is the full object path and doubles as the access token. The endpoint
+ * serves the object without ownership re-check (fail-closed auth allowlist for
+ * `/api/snapshots/` is enforced by the middleware).
  */
-export function snapshotServePath(userId: string, bookmarkId: string): string {
-  const key = snapshotObjectKey(userId, bookmarkId);
+export function snapshotServePath(key: string): string {
   return `/api/snapshots/${encodeURIComponent(key)}`;
+}
+
+/**
+ * Produces the retained snapshot list after appending a newly captured key,
+ * honouring the retention limit (`limit < 0` = unlimited). Returns both the
+ * keys to keep (oldest → newest) and the keys that must be deleted from R2.
+ *
+ * Pure function — no I/O — so the retention policy is unit-testable.
+ */
+export function planRetention(
+  existing: string[],
+  newKey: string,
+  limit: number,
+): { keep: string[]; drop: string[] } {
+  const all = [...existing, newKey];
+  if (limit < 0 || all.length <= limit) return { keep: all, drop: [] };
+  const sorted = sortSnapshotsNewestFirst(all);
+  const keep = sorted.slice(0, limit).reverse(); // restore oldest→newest order
+  const dropped = new Set(sorted.slice(limit).map((k) => k));
+  return { keep, drop: [...dropped] };
 }
 
 /**
@@ -145,8 +187,10 @@ export async function captureWithBrowserRun(
 }
 
 /**
- * Stores raw image bytes into the bucket under the bookmark's key.
- * Returns the object key so the caller can persist it as `snapshot_key`.
+ * Stores raw image bytes into the bucket under a versioned key for the
+ * bookmark, returning the object key the caller should persist. Each call
+ * writes a NEW object (timestamp-suffixed), so calling it repeatedly keeps a
+ * distinct capture per invocation rather than overwriting the previous one.
  */
 export async function putSnapshot(
   env: Pick<Env, 'SNAPSHOT_BUCKET'>,
@@ -154,13 +198,49 @@ export async function putSnapshot(
   bookmarkId: string,
   bytes: Uint8Array,
   contentType: string,
+  tsMs: number = Date.now(),
 ): Promise<string> {
   if (!env.SNAPSHOT_BUCKET) {
     throw new Error('SNAPSHOT_BUCKET 未绑定，无法存储网站快照');
   }
-  const key = snapshotObjectKey(userId, bookmarkId);
+  const key = snapshotObjectKey(userId, bookmarkId, tsMs);
   await env.SNAPSHOT_BUCKET.put(key, bytes, { httpMetadata: { contentType } });
   return key;
+}
+
+/** Deletes one or more stored snapshot objects by key. Best-effort helper. */
+export async function deleteSnapshots(
+  env: Pick<Env, 'SNAPSHOT_BUCKET'>,
+  keys: string | string[],
+): Promise<void> {
+  if (!env.SNAPSHOT_BUCKET || keys.length === 0) return;
+  await env.SNAPSHOT_BUCKET.delete(keys);
+}
+
+/**
+ * Stores a captured image as a new versioned snapshot and applies the
+ * retention policy: returns the new object key and the retention decision
+ * (which keys to keep — including the new one — and which oldest ones to drop).
+ *
+ * Pure over the R2 write; the caller owns the DB update (persist `keep` as
+ * `snapshot_keys` + the new key as `snapshot_key`, and delete `drop` via
+ * `deleteSnapshots`). Kept separate from the DB so it stays unit-testable.
+ */
+export async function storeSnapshotWithRetention(
+  env: Pick<Env, 'SNAPSHOT_BUCKET'>,
+  opts: {
+    userId: string;
+    bookmarkId: string;
+    existingKeys: string[];
+    bytes: Uint8Array;
+    contentType: string;
+    retentionLimit: number;
+    tsMs?: number;
+  },
+): Promise<{ key: string; keep: string[]; drop: string[] }> {
+  const { userId, bookmarkId, existingKeys, bytes, contentType, retentionLimit, tsMs } = opts;
+  const key = await putSnapshot(env, userId, bookmarkId, bytes, contentType, tsMs);
+  return { key, ...planRetention(existingKeys, key, retentionLimit) };
 }
 
 /** Fetches the stored object bytes for a key, or null when absent. */

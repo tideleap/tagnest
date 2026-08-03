@@ -3,7 +3,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
-import { ensureTags, listBookmarks, loadBookmark, setBookmarkTags } from '../../_lib/db';
+import { ensureTags, listBookmarks, loadBookmark, loadSnapshotRetentionLimit, loadSnapshotState, setBookmarkTags, updateBookmarkSnapshots } from '../../_lib/db';
 import { canonicalUrl, faviconFor, titleFallback, urlKey } from '../../_lib/urlkey';
 import { createLogger } from '../../_lib/logger';
 import { enrichBookmark } from '../../_lib/ai';
@@ -144,9 +144,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
         try {
           const {
             captureWithBrowserRun,
+            deleteSnapshots,
             fetchSnapshotFromApi,
-            putSnapshot,
             resolveSnapshotProvider,
+            storeSnapshotWithRetention,
           } = await import('../../_lib/snapshots');
           const provider = resolveSnapshotProvider(ctx.env);
           const { bytes, contentType } =
@@ -156,12 +157,19 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
                   apiKey: ctx.env.SNAPSHOT_API_KEY,
                 })
               : await captureWithBrowserRun(ctx.env, url);
-          const key = await putSnapshot(ctx.env, userId, inserted.id, bytes, contentType);
-          await ctx.env.DB.prepare(
-            `UPDATE bookmarks SET snapshot_key = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-          )
-            .bind(key, nowIso(), inserted.id, userId)
-            .run();
+
+          const state = await loadSnapshotState(ctx.env, userId, inserted.id);
+          const retentionLimit = await loadSnapshotRetentionLimit(ctx.env, userId);
+          const stored = await storeSnapshotWithRetention(ctx.env, {
+            userId,
+            bookmarkId: inserted.id,
+            existingKeys: state?.snapshotKeys ?? [],
+            bytes,
+            contentType,
+            retentionLimit,
+          });
+          await updateBookmarkSnapshots(ctx.env, userId, inserted.id, stored.key, stored.keep);
+          if (stored.drop.length > 0) await deleteSnapshots(ctx.env, stored.drop);
         } catch {
           // Best-effort: a failed snapshot must never affect bookmark creation.
         }

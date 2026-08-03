@@ -7,6 +7,8 @@ import {
   queryInChunks,
   D1_IN_CHUNK,
   D1_MAX_PARAMS,
+  parseSnapshotKeys,
+  serializeSnapshotKeys,
 } from '../functions/_lib/db';
 import type { BookmarkSort } from '../shared/types';
 import type { Env } from '../functions/_lib/env';
@@ -109,6 +111,25 @@ describe('queryInChunks — D1 100-bound-parameter limit', () => {
     expect(boundCounts.length).toBeGreaterThan(1);
     // All input values came back.
     expect(rows.sort()).toEqual(values.slice().sort());
+  });
+});
+
+describe('snapshot_keys serialization', () => {
+  it('round-trips an ordered list through the JSON column', () => {
+    const keys = ['snapshots/u/b-1.webp', 'snapshots/u/b-2.webp'];
+    expect(parseSnapshotKeys(serializeSnapshotKeys(keys))).toEqual(keys);
+  });
+
+  it('serializes an empty list to null and parses null to []', () => {
+    expect(serializeSnapshotKeys([])).toBeNull();
+    expect(parseSnapshotKeys(null)).toEqual([]);
+    expect(parseSnapshotKeys(undefined)).toEqual([]);
+  });
+
+  it('tolerates malformed JSON / non-array / non-string values', () => {
+    expect(parseSnapshotKeys('{not json')).toEqual([]);
+    expect(parseSnapshotKeys('"a-string"')).toEqual([]);
+    expect(parseSnapshotKeys('[1, "ok", false]')).toEqual(['ok']);
   });
 });
 

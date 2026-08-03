@@ -11,6 +11,19 @@ export interface User {
   createdAt: string;
 }
 
+/**
+ * Per-user preferences. Modelled on `ai_settings`: a `user_settings` row is
+ * upserted on first write; the GET path returns defaulted values when no row
+ * exists yet. Add new knobs as nullable/defaulted fields so old rows upgrade.
+ */
+export interface UserSettings {
+  /**
+   * How many snapshots up to which a bookmark may retain. Default 5.
+   * -1 means unlimited (never prune). 0 is invalid and rejected by the API.
+   */
+  snapshotRetentionLimit: number;
+}
+
 export interface Tag {
   id: string;
   name: string;
@@ -31,12 +44,18 @@ export interface Bookmark {
   faviconUrl: string | null;
   coverUrl: string | null;
   /**
-   * R2 object key for the generated website snapshot (e.g.
-   * `snapshots/{userId}/{bookmarkId}.webp`). When present the card shows this
-   * first-party image instead of the raw remote `coverUrl`. Null until a
+   * R2 object key for the NEWEST generated website snapshot (e.g.
+   * `snapshots/{userId}/{bookmarkId}-{ts}.webp`). When present the card shows
+   * this first-party image instead of the raw remote `coverUrl`. Null until a
    * snapshot has been generated and stored.
    */
   snapshotKey: string | null;
+  /**
+   * R2 object keys of ALL currently retained snapshots for this bookmark,
+   * ordered oldest → newest. When the retention limit is exceeded the oldest
+   * entries are pruned. Empty array when no snapshot has been captured.
+   */
+  snapshotKeys: string[];
   /** User-authored note, markdown-ish plain text. */
   note: string | null;
   /** Reserved for the AI feature; always null until a model is wired up. */

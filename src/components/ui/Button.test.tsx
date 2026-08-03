@@ -12,7 +12,9 @@ describe('Button', () => {
   it('applies the primary variant class', () => {
     render(<Button variant="primary">主要</Button>);
     const btn = screen.getByRole('button', { name: '主要' });
-    expect(btn.className).toContain('bg-brand');
+    // Primary now uses the modern gradient treatment (brand-grad) rather than
+    // the old flat bg-brand token; assert on the gradient marker.
+    expect(btn.className).toContain('brand-grad');
   });
 
   it('disables interaction while loading and shows a spinner', () => {
