@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys';
+import { useAutoClear } from '@/hooks/useAutoClear';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileTabBar } from './MobileTabBar';
@@ -33,6 +34,7 @@ export function AppLayout() {
   const { commandOpen, quickAddOpen, editingBookmarkId } = useOverlay();
 
   useGlobalHotkeys();
+  useAutoClear();
 
   return (
     <div className="relative flex min-h-dvh bg-canvas">

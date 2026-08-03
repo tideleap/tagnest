@@ -68,6 +68,10 @@ const MIGRATION_PROBES = {
   // the non-idempotent part; CREATE TABLE IF NOT EXISTS is safe to re-run).
   '0008_snapshot_retention.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='snapshot_keys'`,
+  // 0009 adds four auto-clear columns to user_settings (ALTER, non-idempotent).
+  // Probe one representative column as the "already applied" marker.
+  '0009_auto_clear_settings.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('user_settings') WHERE name='search_auto_clear_delay'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

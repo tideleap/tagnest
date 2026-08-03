@@ -8,6 +8,7 @@ import {
   Palette,
   Share2,
   Sparkles,
+  Timer,
   User,
 } from 'lucide-react';
 import { cx } from '@/lib/cx';
@@ -16,6 +17,7 @@ import { ApiKeysSection } from './settings/ApiKeysSection';
 import { SharesSection } from './settings/SharesSection';
 import { AppearanceSection } from './settings/AppearanceSection';
 import { AiSection } from './settings/AiSection';
+import { AutoClearSection } from './settings/AutoClearSection';
 import { SnapshotsSection } from './settings/SnapshotsSection';
 import { StorageSection } from './settings/StorageSection';
 import { ShortcutsSection } from './settings/ShortcutsSection';
@@ -29,6 +31,7 @@ const SECTIONS = [
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'snapshots', label: '快照', icon: Camera },
   { id: 'storage', label: '存储', icon: Database },
+  { id: 'autoclear', label: '自动清空', icon: Timer },
   { id: 'shortcuts', label: '快捷键', icon: Keyboard },
   { id: 'about', label: '关于', icon: Info },
 ] as const;
@@ -73,6 +76,7 @@ export function SettingsPage() {
         {active === 'ai' && <AiSection />}
         {active === 'snapshots' && <SnapshotsSection />}
         {active === 'storage' && <StorageSection />}
+        {active === 'autoclear' && <AutoClearSection />}
         {active === 'shortcuts' && <ShortcutsSection />}
         {active === 'about' && <AboutSection />}
       </div>

@@ -22,6 +22,20 @@ export interface UserSettings {
    * -1 means unlimited (never prune). 0 is invalid and rejected by the API.
    */
   snapshotRetentionLimit: number;
+  /**
+   * "自动清空" (auto-clear on idle) — Search module.
+   * When enabled, the search box clears itself after `searchAutoClearDelay`
+   * seconds of inactivity. Defaults: on, 15s.
+   */
+  searchAutoClearEnabled: boolean;
+  searchAutoClearDelay: number;
+  /**
+   * "自动清空" — Tag-filter module.
+   * When enabled, the active tag filter is cleared after `tagsAutoClearDelay`
+   * seconds of inactivity. Defaults: on, 30s.
+   */
+  tagsAutoClearEnabled: boolean;
+  tagsAutoClearDelay: number;
 }
 
 export interface Tag {
