@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   Copy,
   ExternalLink,
+  Eye,
   GripVertical,
   MoreHorizontal,
   Pencil,
@@ -299,92 +300,143 @@ function BookmarkCardBase({
         </>
       ) : (
         <>
-          {/* ---- Non-grid: left favicon badge + stacked content.
-                  Grid omits the left rail — the badge lives under the cover. */}
-          {!isGrid && (
-            <div className="flex shrink-0 flex-col items-center gap-1.5">
-              {grip}
-              <FaviconBadge bookmark={b} size={40} />
-            </div>
-          )}
+          {isGrid ? (
+            /* ---- Grid: enlarged content block with a clear visual hierarchy
+                    (favicon + title + description → tags → stat row). The cover
+                    stays compact up top so the content owns the card. ---- */
+            <>
+              <Cover bookmark={b} />
 
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            {isGrid && (
-              <>
-                <Cover bookmark={b} />
-                <div className="mb-0.5 flex items-center gap-2">
-                  <FaviconBadge bookmark={b} size={22} />
-                  <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                {/* Focal block — big icon + bold title + description */}
+                <div className="flex items-start gap-3">
+                  <FaviconBadge bookmark={b} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold leading-snug text-ink">
+                      <button
+                        type="button"
+                        onClick={open}
+                        className="text-left text-sm underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
+                      >
+                        {b.title || displayHost(b.url)}
+                      </button>
+                    </h3>
+                    {(b.description || b.note) && (
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-soft">
+                        {b.note || b.description}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </>
-            )}
 
-            <h3 className="min-w-0 font-medium leading-snug text-ink">
-              <button
-                type="button"
-                onClick={open}
-                className={cx(
-                  'text-left underline-offset-2 transition-colors hover:text-brand-ink hover:underline',
-                  isGrid ? 'line-clamp-2 text-sm' : 'line-clamp-2 text-sm',
+                {b.tags.length > 0 && (
+                  <ul className="flex flex-wrap gap-1">
+                    {b.tags.slice(0, 3).map((tag) => (
+                      <li key={tag.id}>
+                        <TagChip
+                          name={tag.name}
+                          colorIndex={tag.colorIndex}
+                          size="sm"
+                          onClick={() => onTagClick(tag.id)}
+                        />
+                      </li>
+                    ))}
+                    {b.tags.length > 3 && (
+                      <li className="self-center text-2xs text-ink-faint">+{b.tags.length - 3}</li>
+                    )}
+                  </ul>
                 )}
-              >
-                {b.title || displayHost(b.url)}
-              </button>
-            </h3>
 
-            {!isCompact && (b.description || b.note) && (
-              <p className={cx('text-xs leading-relaxed text-ink-soft', isGrid ? 'line-clamp-2' : 'line-clamp-2')}>
-                {b.note || b.description}
-              </p>
-            )}
+                {/* Stat row — time · host · visits on the left, actions on the right */}
+                <div className="mt-1 flex items-center justify-between gap-2 border-t border-line pt-2.5">
+                  <div className="flex min-w-0 items-center gap-2 text-2xs text-ink-faint">
+                    <time dateTime={b.createdAt} className="shrink-0">
+                      {relativeTime(b.createdAt)}
+                    </time>
+                    <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
+                    <span className="min-w-0 truncate">{displayHost(b.url)}</span>
+                    {b.visitCount > 0 && (
+                      <>
+                        <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
+                        <span className="inline-flex shrink-0 items-center gap-0.5 font-medium text-brand-ink tabular-nums">
+                          <Eye size={12} aria-hidden />
+                          {b.visitCount}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {grip}
+                    {star}
+                    {more}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* ---- List: left favicon rail + stacked content ---- */
+            <>
+              <div className="flex shrink-0 flex-col items-center gap-1.5">
+                {grip}
+                <FaviconBadge bookmark={b} size={40} />
+              </div>
 
-            {/* Meta row — host · relative time · visits, kept on one muted line */}
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-ink-faint">
-              {!isGrid && <span className="truncate">{displayHost(b.url)}</span>}
-              {!isGrid && <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />}
-              <time dateTime={b.createdAt} className="shrink-0">
-                {relativeTime(b.createdAt)}
-              </time>
-              {b.visitCount > 0 && !isCompact && (
-                <>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <h3 className="font-semibold leading-snug text-ink">
+                  <button
+                    type="button"
+                    onClick={open}
+                    className="text-left text-sm underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
+                  >
+                    {b.title || displayHost(b.url)}
+                  </button>
+                </h3>
+
+                {(b.description || b.note) && (
+                  <p className="line-clamp-2 text-xs leading-relaxed text-ink-soft">
+                    {b.note || b.description}
+                  </p>
+                )}
+
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-ink-faint">
+                  <span className="truncate">{displayHost(b.url)}</span>
                   <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
-                  <span className="shrink-0 tabular-nums">{b.visitCount} 次访问</span>
-                </>
-              )}
-            </div>
+                  <time dateTime={b.createdAt} className="shrink-0">
+                    {relativeTime(b.createdAt)}
+                  </time>
+                  {b.visitCount > 0 && (
+                    <>
+                      <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
+                      <span className="shrink-0 tabular-nums">{b.visitCount} 次访问</span>
+                    </>
+                  )}
+                </div>
 
-            {b.tags.length > 0 && !isCompact && (
-              <ul className="mt-1.5 flex flex-wrap gap-1">
-                {b.tags.slice(0, isGrid ? 3 : 4).map((tag) => (
-                  <li key={tag.id}>
-                    <TagChip
-                      name={tag.name}
-                      colorIndex={tag.colorIndex}
-                      size="sm"
-                      onClick={() => onTagClick(tag.id)}
-                    />
-                  </li>
-                ))}
-                {b.tags.length > (isGrid ? 3 : 4) && (
-                  <li className="self-center text-2xs text-ink-faint">
-                    +{b.tags.length - (isGrid ? 3 : 4)}
-                  </li>
+                {b.tags.length > 0 && (
+                  <ul className="mt-1.5 flex flex-wrap gap-1">
+                    {b.tags.slice(0, 4).map((tag) => (
+                      <li key={tag.id}>
+                        <TagChip
+                          name={tag.name}
+                          colorIndex={tag.colorIndex}
+                          size="sm"
+                          onClick={() => onTagClick(tag.id)}
+                        />
+                      </li>
+                    ))}
+                    {b.tags.length > 4 && (
+                      <li className="self-center text-2xs text-ink-faint">+{b.tags.length - 4}</li>
+                    )}
+                  </ul>
                 )}
-              </ul>
-            )}
-          </div>
+              </div>
 
-          {/* Actions — bottom-right on grid (with divider), right on list */}
-          <div
-            className={cx(
-              'flex shrink-0 items-center gap-0.5 self-start',
-              isGrid && 'mt-2 justify-end border-t border-line pt-2.5',
-            )}
-          >
-            {isGrid && grip}
-            {star}
-            {more}
-          </div>
+              <div className="flex shrink-0 items-center gap-0.5 self-start">
+                {star}
+                {more}
+              </div>
+            </>
+          )}
         </>
       )}
 
