@@ -25,6 +25,9 @@ export class MockDb {
   auth_attempts: MockRow[] = [];
   users: MockRow[] = [];
   ai_jobs: MockRow[] = [];
+  collections: MockRow[] = [];
+  collection_bookmarks: MockRow[] = [];
+  bookmarks: MockRow[] = [];
 
   prepare(sql: string): Statement {
     // Arrow-function methods capture `this` (the MockDb instance) lexically, so
@@ -206,7 +209,147 @@ export class MockDb {
       return [];
     }
 
+    // --- collections (design plan module) --------------------------
+    if (
+      u.startsWith(
+        'SELECT C.ID, C.NAME, C.COLOR_INDEX, C.CREATED_AT, C.UPDATED_AT, COUNT(CB.BOOKMARK_ID) AS COUNT FROM COLLECTIONS C',
+      )
+    ) {
+      // `getCollectionRow` filters by id + user; the list query only by user.
+      if (u.includes('WHERE C.ID = ? AND C.USER_ID = ?')) {
+        const collId = params[0] as string;
+        const userId = params[1] as string;
+        const coll = this.collections.find((c) => c.id === collId && c.user_id === userId);
+        return coll ? [this.toCollectionRow(coll)] : [];
+      }
+      const userId = params[0] as string;
+      return this.collections
+        .filter((c) => c.user_id === userId)
+        .map((c) => this.toCollectionRow(c))
+        .sort((a, b) =>
+          String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()),
+        );
+    }
+    if (u.startsWith('SELECT ID FROM COLLECTIONS WHERE USER_ID = ? AND NAME COLLATE NOCASE = ?')) {
+      const userId = params[0] as string;
+      const name = String(params[1]).toLowerCase();
+      if (u.includes('AND ID != ?')) {
+        const id = params[2] as string;
+        return this.collections
+          .filter(
+            (c) =>
+              c.user_id === userId && String(c.name).toLowerCase() === name && c.id !== id,
+          )
+          .slice(0, 1)
+          .map((c) => ({ id: c.id }));
+      }
+      return this.collections
+        .filter((c) => c.user_id === userId && String(c.name).toLowerCase() === name)
+        .slice(0, 1)
+        .map((c) => ({ id: c.id }));
+    }
+    if (u.startsWith('INSERT INTO COLLECTIONS')) {
+      const [id, user_id, name, color_index, created_at, updated_at] = params as string[];
+      this.collections.push({ id, user_id, name, color_index: Number(color_index), created_at, updated_at });
+      return [];
+    }
+    if (u.startsWith('UPDATE COLLECTIONS SET NAME = ?')) {
+      const [name, color_index, updated_at, id, user_id] = params as string[];
+      const coll = this.collections.find((c) => c.id === id && c.user_id === user_id);
+      if (coll) {
+        coll.name = name;
+        coll.color_index = Number(color_index);
+        coll.updated_at = updated_at;
+      }
+      return [];
+    }
+    if (u.startsWith('DELETE FROM COLLECTIONS WHERE ID = ?')) {
+      const [id, user_id] = params as string[];
+      this.collections = this.collections.filter(
+        (c) => !(c.id === id && c.user_id === user_id),
+      );
+      return [];
+    }
+
+    // --- collection_bookmarks -----------------------------------------
+    if (u.startsWith('SELECT COALESCE(MAX(POSITION), -1) AS M FROM COLLECTION_BOOKMARKS')) {
+      const collectionId = params[0] as string;
+      const positions = this.collection_bookmarks
+        .filter((cb) => cb.collection_id === collectionId)
+        .map((cb) => Number(cb.position));
+      const m = positions.length ? Math.max(...positions) : -1;
+      return [{ m }];
+    }
+    if (u.startsWith('INSERT OR IGNORE INTO COLLECTION_BOOKMARKS')) {
+      const [collection_id, bookmark_id, position, created_at] = params as string[];
+      if (
+        !this.collection_bookmarks.find(
+          (cb) => cb.collection_id === collection_id && cb.bookmark_id === bookmark_id,
+        )
+      ) {
+        this.collection_bookmarks.push({ collection_id, bookmark_id, position: Number(position), created_at });
+      }
+      return [];
+    }
+    if (u.startsWith('DELETE FROM COLLECTION_BOOKMARKS')) {
+      if (u.includes('AND BOOKMARK_ID = ?')) {
+        const [collection_id, bookmark_id] = params as string[];
+        this.collection_bookmarks = this.collection_bookmarks.filter(
+          (cb) => !(cb.collection_id === collection_id && cb.bookmark_id === bookmark_id),
+        );
+      } else {
+        const [collection_id] = params as string[];
+        this.collection_bookmarks = this.collection_bookmarks.filter(
+          (cb) => cb.collection_id !== collection_id,
+        );
+      }
+      return [];
+    }
+
+    // --- bookmarks (collection membership join + add guard) ----------
+    if (
+      u.startsWith(
+        'SELECT B.ID, B.URL, B.TITLE, B.FAVICON_URL FROM COLLECTION_BOOKMARKS CB JOIN BOOKMARKS B',
+      )
+    ) {
+      const userId = params[0] as string;
+      const collId = params[1] as string;
+      const joined = this.collection_bookmarks
+        .filter((cb) => cb.collection_id === collId)
+        .map((cb) =>
+          this.bookmarks.find(
+            (b) => b.id === cb.bookmark_id && b.deleted_at == null && b.user_id === userId,
+          ),
+        )
+        .filter((b): b is MockRow => Boolean(b))
+        .map((b) => ({ id: b.id, url: b.url, title: b.title, favicon_url: b.favicon_url }));
+      return joined.sort((a, b) => {
+        const pa = this.collection_bookmarks.find((cb) => cb.bookmark_id === a.id)?.position ?? 0;
+        const pb = this.collection_bookmarks.find((cb) => cb.bookmark_id === b.id)?.position ?? 0;
+        if (Number(pa) !== Number(pb)) return Number(pa) - Number(pb);
+        return String(b.created_at).localeCompare(String(a.created_at));
+      });
+    }
+    if (u.startsWith('SELECT ID FROM BOOKMARKS WHERE ID = ? AND USER_ID = ? AND DELETED_AT IS NULL')) {
+      const [id, userId] = params as string[];
+      return this.bookmarks
+        .filter((b) => b.id === id && b.user_id === userId && b.deleted_at == null)
+        .slice(0, 1)
+        .map((b) => ({ id: b.id }));
+    }
+
     return [];
+  }
+
+  private toCollectionRow(c: MockRow): MockRow {
+    return {
+      id: c.id,
+      name: c.name,
+      color_index: c.color_index,
+      created_at: c.created_at,
+      updated_at: c.updated_at,
+      count: this.collection_bookmarks.filter((cb) => cb.collection_id === c.id).length,
+    };
   }
 }
 

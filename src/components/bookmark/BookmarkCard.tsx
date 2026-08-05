@@ -5,6 +5,7 @@ import {
   Camera,
   Copy,
   ExternalLink,
+  FolderPlus,
   GripVertical,
   Heart,
   Images,
@@ -17,9 +18,10 @@ import {
 import type { Bookmark } from '@shared/types';
 import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
-import { Button, IconButton, Menu, Modal, TagChip, RemoteImage } from '@/components/ui';
+import { Button, IconButton, Menu, Modal, TagChip, RemoteImage, tagColorVars } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { useBookmarkSnapshots, useGenerateSnapshot } from '@/hooks/queries/snapshots';
+import { useAddToCollection, useCollections } from '@/hooks/queries';
 import type { ViewMode } from '@/stores/ui';
 
 export interface BookmarkCardProps {
@@ -175,6 +177,12 @@ function BookmarkCardBase({
 }: BookmarkCardProps) {
   const inTrash = b.deletedAt !== null;
 
+  // "加入集合" — collections the user can add this bookmark to. TanStack Query
+  // dedupes the shared key across every card, so this is a single fetch.
+  const { data: collections } = useCollections();
+  const addToCollection = useAddToCollection();
+  const [showAddToCollection, setShowAddToCollection] = useState(false);
+
   // F3 — the snapshot backend has been orphaned on the frontend until now.
   // `generate` fires POST /bookmarks/:id/snapshot; the history query backs the
   // viewer modal and only runs once it is actually opened.
@@ -238,6 +246,13 @@ function BookmarkCardBase({
         { id: 'open', label: '打开链接', icon: <ExternalLink size={15} />, onSelect: open },
         { id: 'edit', label: '编辑', icon: <Pencil size={15} />, onSelect: () => onEdit(b.id) },
         { id: 'copy', label: '复制链接', icon: <Copy size={15} />, onSelect: () => void copyUrl() },
+        {
+          id: 'add-to-collection',
+          label: '加入集合',
+          icon: <FolderPlus size={15} />,
+          separatorBefore: true,
+          onSelect: () => setShowAddToCollection(true),
+        },
         {
           id: 'snapshot',
           label: '生成网页快照',
@@ -570,6 +585,56 @@ function BookmarkCardBase({
           还没有快照
         </div>
       )}
+    </Modal>
+
+    <Modal
+      open={showAddToCollection}
+      onClose={() => setShowAddToCollection(false)}
+      title="加入集合"
+      size="sm"
+      footer={
+        <Button variant="ghost" onClick={() => setShowAddToCollection(false)}>
+          完成
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-1">
+        {(collections ?? []).length === 0 ? (
+          <p className="px-1 py-6 text-center text-xs leading-relaxed text-ink-faint">
+            还没有集合。先在「集合」页新建一个，再回来把书签归进去。
+          </p>
+        ) : (
+          <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto scrollbar-slim">
+            {(collections ?? []).map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    addToCollection.mutate(
+                      { collectionId: c.id, bookmarkId: b.id },
+                      {
+                        onSuccess: () => {
+                          toast.success(`已加入「${c.name}」`);
+                          setShowAddToCollection(false);
+                        },
+                      },
+                    );
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-surface-hover"
+                >
+                  <span
+                    style={tagColorVars(c.colorIndex)}
+                    className="h-4 w-4 shrink-0 rounded-full bg-[var(--tag-dot)]"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{c.count}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Modal>
     </>
   );

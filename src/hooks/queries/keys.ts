@@ -32,6 +32,9 @@ export const keys = {
   shares: ['shares'] as const,
   tabGroups: ['tab-groups'] as const,
   tabGroup: (id: string) => ['tab-group', id] as const,
+  /** User-curated named bookmark sets (design plan module). */
+  collections: ['collections'] as const,
+  collection: (id: string) => ['collection', id] as const,
 };
 
 export const PAGE_SIZE = 40;

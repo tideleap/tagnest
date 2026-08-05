@@ -88,3 +88,13 @@ export {
   useRemoveTabItem,
   useReorderTabItems,
 } from './queries/tabgroups';
+
+export {
+  useCollections,
+  useCollection,
+  useCreateCollection,
+  useRenameCollection,
+  useDeleteCollection,
+  useAddToCollection,
+  useRemoveFromCollection,
+} from './queries/collections';

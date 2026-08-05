@@ -446,3 +446,34 @@ export interface GroupWithItems {
   group: TabGroup;
   items: TabItem[];
 }
+
+/* ------------------------------------------------------------------ *
+ * Collections (design plan module) — a user-curated NAMED set of
+ * bookmarks. Distinct from tags (free-form vocabulary) and from tab
+ * groups (ordered scratch sets); collections are the persistent,
+ * shareable "reading list" primitive.
+ * ------------------------------------------------------------------ */
+
+export interface Collection {
+  id: string;
+  name: string;
+  /** Palette slot 0-7, shared with tags. */
+  colorIndex: number;
+  /** Bookmarks currently in the collection. */
+  count: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Minimal bookmark shape served inside a collection detail view. */
+export interface CollectionBookmarkItem {
+  id: string;
+  url: string;
+  title: string;
+  faviconUrl: string | null;
+}
+
+export interface CollectionWithBookmarks {
+  collection: Collection;
+  bookmarks: CollectionBookmarkItem[];
+}

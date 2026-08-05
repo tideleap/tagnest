@@ -136,71 +136,71 @@
  * long reading sessions easier on the eye.
  */
 :root {
-  --p-canvas: #fbfaf8;
-  --p-canvas: oklch(0.985 0.003 85);
-  --p-surface: #ffffff;
-  --p-surface: oklch(1 0 0);
-  --p-surface-hover: #f7f6f3;
-  --p-surface-hover: oklch(0.972 0.004 85);
-  --p-sunken: #f2f0ec;
-  --p-sunken: oklch(0.955 0.005 85);
+  /* Canvas / surface — cool slate, indigo-aligned (design plan #F8FAFC / #FFFFFF) */
+  --p-canvas: #F8FAFC;
+  --p-canvas: oklch(0.984 0.003 247.9);
+  --p-surface: #FFFFFF;
+  --p-surface: oklch(1 0 89.9);
+  --p-surface-hover: #F1F5F9;
+  --p-surface-hover: oklch(0.968 0.007 247.9);
+  --p-sunken: #E2E8F0;
+  --p-sunken: oklch(0.929 0.013 255.5);
 
-  --p-ink: #231e19;
-  --p-ink: oklch(0.24 0.012 65);
-  --p-ink-soft: #6a635e;
-  --p-ink-soft: oklch(0.505 0.012 65);
-  --p-ink-faint: #97918b;
-  --p-ink-faint: oklch(0.66 0.011 65);
-  --p-ink-inverse: #fbfaf8;
-  --p-ink-inverse: oklch(0.985 0.003 85);
+  --p-ink: #0F172A;
+  --p-ink: oklch(0.208 0.040 265.8);
+  --p-ink-soft: #475569;
+  --p-ink-soft: oklch(0.446 0.037 257.3);
+  --p-ink-faint: #94A3B8;
+  --p-ink-faint: oklch(0.711 0.035 256.8);
+  --p-ink-inverse: #F8FAFC;
+  --p-ink-inverse: oklch(0.984 0.003 247.9);
 
-  --p-line: #e5e2df;
-  --p-line: oklch(0.915 0.005 75);
-  --p-line-strong: #d0cdc9;
-  --p-line-strong: oklch(0.85 0.007 75);
+  --p-line: #E2E8F0;
+  --p-line: oklch(0.929 0.013 255.5);
+  --p-line-strong: #CBD5E1;
+  --p-line-strong: oklch(0.869 0.020 252.9);
 
-  --p-brand: #c77000;
-  --p-brand: oklch(0.63 0.15 62);
-  --p-brand-hover: #b75e00;
-  --p-brand-hover: oklch(0.575 0.152 60);
-  --p-brand-soft: #fdeed8;
-  --p-brand-soft: oklch(0.955 0.033 78);
-  --p-brand-ink: #813d00;
-  --p-brand-ink: oklch(0.44 0.115 55);
-  --p-on-brand: #ffffff;
-  --p-on-brand: oklch(1 0 0);
+  /* Brand: indigo #4F46E5 (design primary-600) — primary action & active state */
+  --p-brand: #4F46E5;
+  --p-brand: oklch(0.511 0.230 277.0);
+  --p-brand-hover: #4338CA;
+  --p-brand-hover: oklch(0.457 0.215 277.0);
+  --p-brand-soft: #EEF2FF;
+  --p-brand-soft: oklch(0.962 0.018 272.3);
+  --p-brand-ink: #3730A3;
+  --p-brand-ink: oklch(0.398 0.177 277.4);
+  --p-on-brand: #FFFFFF;
+  --p-on-brand: oklch(1 0 89.9);
 
-  /* Vivid accent reserved for hero / dashboard emphasis. A saturated
-   * cinnabar-orange that reads as "the stamp of TagNest" against the warm
-   * neutral canvas. Contrast on paper surfaces exceeds 4.5:1 at bold sizes. */
-  --p-brand-accent: #e64800;
-  --p-brand-accent: oklch(0.62 0.21 42);
+  /* AI accent: violet #7C3AED (design AI 强调) — reserved for AI features */
+  --p-brand-accent: #7C3AED;
+  --p-brand-accent: oklch(0.541 0.247 293.0);
 
-  --p-positive: #249057;
-  --p-positive: oklch(0.58 0.13 155);
-  --p-positive-soft: #def8e7;
-  --p-positive-soft: oklch(0.955 0.035 158);
-  --p-positive-ink: #095c34;
-  --p-positive-ink: oklch(0.42 0.1 155);
+  --p-positive: #16A34A;
+  --p-positive: oklch(0.627 0.170 149.2);
+  --p-positive-soft: #DCFCE7;
+  --p-positive-soft: oklch(0.962 0.043 156.7);
+  --p-positive-ink: #14532D;
+  --p-positive-ink: oklch(0.393 0.090 152.5);
 
-  --p-caution: #d79700;
-  --p-caution: oklch(0.72 0.15 78);
-  --p-caution-soft: #fef1d4;
-  --p-caution-soft: oklch(0.96 0.04 86);
-  --p-caution-ink: #7f4e07;
-  --p-caution-ink: oklch(0.47 0.1 68);
+  --p-caution: #D97706;
+  --p-caution: oklch(0.666 0.157 58.3);
+  --p-caution-soft: #FEF3C7;
+  --p-caution-soft: oklch(0.962 0.058 95.6);
+  --p-caution-ink: #78350F;
+  --p-caution-ink: oklch(0.414 0.105 45.9);
 
-  --p-critical: #d13742;
-  --p-critical: oklch(0.575 0.19 22);
-  --p-critical-hover: #c01a30;
-  --p-critical-hover: oklch(0.52 0.196 22);
-  --p-critical-soft: #ffebeb;
-  --p-critical-soft: oklch(0.958 0.023 20);
-  --p-critical-ink: #9b1d29;
-  --p-critical-ink: oklch(0.45 0.16 22);
+  --p-critical: #DC2626;
+  --p-critical: oklch(0.577 0.215 27.3);
+  --p-critical-hover: #B91C1C;
+  --p-critical-hover: oklch(0.505 0.190 27.5);
+  --p-critical-soft: #FEE2E2;
+  --p-critical-soft: oklch(0.936 0.031 17.7);
+  --p-critical-ink: #7F1D1D;
+  --p-critical-ink: oklch(0.396 0.133 25.7);
 
-  --p-focus: #c77000;
-  --p-focus: oklch(0.63 0.15 62);
+  --p-focus: #4F46E5;
+  --p-focus: oklch(0.511 0.230 277.0);
 
   color-scheme: light;
 }
@@ -212,70 +212,71 @@
  */
 [data-theme='dark'],
 .dark {
-  --p-canvas: #12100e;
-  --p-canvas: oklch(0.175 0.006 70);
-  --p-surface: #1c1a17;
-  --p-surface: oklch(0.218 0.007 70);
-  --p-surface-hover: #25211e;
-  --p-surface-hover: oklch(0.252 0.008 70);
-  --p-sunken: #0d0b09;
-  --p-sunken: oklch(0.152 0.006 70);
+  /* Cool near-black canvas, indigo-aligned (design plan #0B1120 / #111827) */
+  --p-canvas: #0B1120;
+  --p-canvas: oklch(0.180 0.032 266.6);
+  --p-surface: #111827;
+  --p-surface: oklch(0.210 0.032 264.7);
+  --p-surface-hover: #1F2937;
+  --p-surface-hover: oklch(0.278 0.030 256.8);
+  --p-sunken: #030712;
+  --p-sunken: oklch(0.130 0.027 261.7);
 
-  --p-ink: #f1f0ed;
-  --p-ink: oklch(0.955 0.004 85);
-  --p-ink-soft: #aca9a3;
-  --p-ink-soft: oklch(0.735 0.009 78);
-  --p-ink-faint: #7c7872;
-  --p-ink-faint: oklch(0.575 0.01 75);
-  --p-ink-inverse: #161310;
-  --p-ink-inverse: oklch(0.19 0.008 70);
+  --p-ink: #F9FAFB;
+  --p-ink: oklch(0.985 0.002 247.8);
+  --p-ink-soft: #CBD5E1;
+  --p-ink-soft: oklch(0.869 0.020 252.9);
+  --p-ink-faint: #64748B;
+  --p-ink-faint: oklch(0.554 0.041 257.4);
+  --p-ink-inverse: #0B1120;
+  --p-ink-inverse: oklch(0.180 0.032 266.6);
 
-  --p-line: #322e2b;
-  --p-line: oklch(0.305 0.008 72);
-  --p-line-strong: #4b4742;
-  --p-line-strong: oklch(0.4 0.01 72);
+  --p-line: #1F2937;
+  --p-line: oklch(0.278 0.030 256.8);
+  --p-line-strong: #374151;
+  --p-line-strong: oklch(0.373 0.031 259.7);
 
-  --p-brand: #eb9c38;
-  --p-brand: oklch(0.755 0.145 68);
-  --p-brand-hover: #f5b25a;
-  --p-brand-hover: oklch(0.81 0.13 72);
-  --p-brand-soft: #3f2813;
-  --p-brand-soft: oklch(0.3 0.048 62);
-  --p-brand-ink: #f6bb6a;
-  --p-brand-ink: oklch(0.83 0.12 74);
-  --p-on-brand: #1b120b;
-  --p-on-brand: oklch(0.19 0.02 60);
+  /* Brand: indigo, lifted on dark per design plan #818CF8 / #A5B4FC */
+  --p-brand: #818CF8;
+  --p-brand: oklch(0.680 0.158 276.9);
+  --p-brand-hover: #A5B4FC;
+  --p-brand-hover: oklch(0.785 0.104 274.7);
+  --p-brand-soft: #1E1B4B;
+  --p-brand-soft: oklch(0.257 0.086 281.3);
+  --p-brand-ink: #C7D2FE;
+  --p-brand-ink: oklch(0.870 0.062 274.0);
+  --p-on-brand: #0B1120;
+  --p-on-brand: oklch(0.180 0.032 266.6);
 
-  /* Dashboard accent on dark: a luminous amber-orange that keeps contrast
-   * while adding a different temperature to the near-black canvas. */
-  --p-brand-accent: #ff992b;
-  --p-brand-accent: oklch(0.78 0.17 60);
+  /* AI accent on dark: luminous violet #C4B5FD (design AI 强调) */
+  --p-brand-accent: #C4B5FD;
+  --p-brand-accent: oklch(0.811 0.101 293.6);
 
-  --p-positive: #45bf82;
-  --p-positive: oklch(0.72 0.14 158);
-  --p-positive-soft: #113120;
-  --p-positive-soft: oklch(0.285 0.05 158);
-  --p-positive-ink: #75d5a0;
-  --p-positive-ink: oklch(0.8 0.12 158);
+  --p-positive: #22C55E;
+  --p-positive: oklch(0.723 0.192 149.6);
+  --p-positive-soft: #052E16;
+  --p-positive-soft: oklch(0.266 0.063 152.9);
+  --p-positive-ink: #86EFAC;
+  --p-positive-ink: oklch(0.871 0.136 154.4);
 
-  --p-caution: #e6b137;
-  --p-caution: oklch(0.79 0.145 84);
-  --p-caution-soft: #3d2c0f;
-  --p-caution-soft: oklch(0.305 0.05 78);
-  --p-caution-ink: #f1c86c;
-  --p-caution-ink: oklch(0.85 0.12 86);
+  --p-caution: #F59E0B;
+  --p-caution: oklch(0.769 0.165 70.1);
+  --p-caution-soft: #422006;
+  --p-caution-soft: oklch(0.286 0.064 53.8);
+  --p-caution-ink: #FCD34D;
+  --p-caution-ink: oklch(0.879 0.153 91.6);
 
-  --p-critical: #ec5f5d;
-  --p-critical: oklch(0.665 0.175 24);
-  --p-critical-hover: #f77571;
-  --p-critical-hover: oklch(0.715 0.16 24);
-  --p-critical-soft: #45201f;
-  --p-critical-soft: oklch(0.295 0.058 22);
-  --p-critical-ink: #ff988e;
-  --p-critical-ink: oklch(0.79 0.13 26);
+  --p-critical: #EF4444;
+  --p-critical: oklch(0.637 0.208 25.3);
+  --p-critical-hover: #F87171;
+  --p-critical-hover: oklch(0.711 0.166 22.2);
+  --p-critical-soft: #450A0A;
+  --p-critical-soft: oklch(0.258 0.089 26.0);
+  --p-critical-ink: #FCA5A5;
+  --p-critical-ink: oklch(0.808 0.103 19.6);
 
-  --p-focus: #eb9c38;
-  --p-focus: oklch(0.755 0.145 68);
+  --p-focus: #818CF8;
+  --p-focus: oklch(0.680 0.158 276.9);
 
   color-scheme: dark;
 }

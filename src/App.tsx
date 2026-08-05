@@ -38,6 +38,12 @@ const SharePage = lazy(() =>
 const TabGroupsPage = lazy(() =>
   import('@/pages/TabGroupsPage').then((m) => ({ default: m.TabGroupsPage })),
 );
+const CollectionsPage = lazy(() =>
+  import('@/pages/CollectionsPage').then((m) => ({ default: m.CollectionsPage })),
+);
+const CollectionDetail = lazy(() =>
+  import('@/pages/CollectionDetail').then((m) => ({ default: m.CollectionDetail })),
+);
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
@@ -113,6 +119,8 @@ export function App() {
             <Route path="/tags/:tagId" element={<OldTagRedirect />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/tab-groups" element={<TabGroupsPage />} />
+            <Route path="/collections" element={<CollectionsPage />} />
+            <Route path="/collections/:id" element={<CollectionDetail />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/:section" element={<SettingsPage />} />
           </Route>
