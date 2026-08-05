@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, Menu as MenuIcon, Moon, Plus, Search, Settings, Sun, X } from 'lucide-react';
-import { Avatar, Button, IconButton, Input, Kbd, Menu } from '@/components/ui';
+import { Avatar, Button, ConfirmDialog, IconButton, Input, Kbd, Menu } from '@/components/ui';
 import { useAuth } from '@/stores/auth';
 import { useOverlay, useTheme, THEMES } from '@/stores/ui';
 import { useDebounced } from '@/hooks/useDebounced';
@@ -18,6 +18,9 @@ export function TopBar() {
 
   const urlQuery = params.get('q') ?? '';
   const [draft, setDraft] = useState(urlQuery);
+  /** Logging out is one menu click away from the theme toggle — confirm it. */
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const debounced = useDebounced(draft, 250);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -146,13 +149,30 @@ export function TopBar() {
               icon: <LogOut size={15} />,
               tone: 'danger',
               separatorBefore: true,
-              onSelect: () => {
-                void logout().then(() => navigate('/signin', { replace: true }));
-              },
+              onSelect: () => setConfirmLogout(true),
             },
           ]}
         />
       </div>
+
+      <ConfirmDialog
+        open={confirmLogout}
+        onClose={() => setConfirmLogout(false)}
+        onConfirm={() => {
+          setLoggingOut(true);
+          void logout()
+            .then(() => {
+              setConfirmLogout(false);
+              navigate('/signin', { replace: true });
+            })
+            .finally(() => setLoggingOut(false));
+        }}
+        title="退出登录"
+        message="退出后需要重新输入邮箱和密码才能继续使用。未保存的编辑内容会丢失。"
+        confirmLabel="退出登录"
+        tone="danger"
+        loading={loggingOut}
+      />
     </header>
   );
 }

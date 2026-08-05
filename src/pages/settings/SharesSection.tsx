@@ -52,6 +52,16 @@ const SHARE_PALETTE_LABEL: Record<SharePalette, string> = {
   aurora: '极夜青蓝',
 };
 
+/**
+ * Sentinel meaning "leave the stored expiry alone".
+ *
+ * The API reads `expiresInDays: 0` as "never expires" and writes `expires_at`
+ * to NULL. When editing an existing share we therefore have to *omit* the field
+ * entirely, otherwise saving an unrelated change (a new title, say) would
+ * silently promote a link that was meant to lapse into a permanent one.
+ */
+const EXPIRY_KEEP = 'keep';
+
 const SHARE_EXPIRY_OPTIONS = [
   { value: '0', label: '永不过期' },
   { value: '7', label: '7 天' },
@@ -85,7 +95,8 @@ export function SharesSection() {
   const [theme, setTheme] = useState<ShareTheme>('default');
   const [palette, setPalette] = useState<SharePalette>('light');
   const [isActive, setIsActive] = useState(true);
-  const [expiresInDays, setExpiresInDays] = useState(0);
+  /** Raw select value: `EXPIRY_KEEP` or a day count as a string. */
+  const [expiry, setExpiry] = useState('0');
 
   const openCreate = () => {
     setEditing(null);
@@ -98,7 +109,7 @@ export function SharesSection() {
     setTheme('default');
     setPalette('light');
     setIsActive(true);
-    setExpiresInDays(0);
+    setExpiry('0');
     setShowForm(true);
   };
 
@@ -113,7 +124,9 @@ export function SharesSection() {
     setTheme(s.theme);
     setPalette(s.palette);
     setIsActive(s.isActive);
-    setExpiresInDays(0);
+    // Preserve whatever deadline is already stored unless the user picks a new
+    // one; a share with no deadline simply starts on "never expires".
+    setExpiry(s.expiresAt ? EXPIRY_KEEP : '0');
     setShowForm(true);
   };
 
@@ -135,7 +148,8 @@ export function SharesSection() {
       theme,
       palette,
       isActive,
-      expiresInDays,
+      // Omitted entirely on `keep`, so the server leaves `expires_at` untouched.
+      ...(expiry === EXPIRY_KEEP ? {} : { expiresInDays: Number(expiry) }),
     };
     if (editing) {
       update.mutate(
@@ -330,9 +344,26 @@ export function SharesSection() {
           />
           <Select
             label="有效期"
-            value={String(expiresInDays)}
-            onChange={(e) => setExpiresInDays(Number(e.target.value))}
-            options={SHARE_EXPIRY_OPTIONS}
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+            options={
+              editing?.expiresAt
+                ? [
+                    {
+                      value: EXPIRY_KEEP,
+                      label: `保持不变（${relativeTime(editing.expiresAt)}过期）`,
+                    },
+                    ...SHARE_EXPIRY_OPTIONS,
+                  ]
+                : SHARE_EXPIRY_OPTIONS
+            }
+            hint={
+              expiry === EXPIRY_KEEP
+                ? '沿用当前到期时间，本次保存不会改变它。'
+                : expiry === '0'
+                  ? '链接将长期有效，直到你手动停用或删除。'
+                  : `保存后重新计时，自今天起 ${expiry} 天后失效。`
+            }
           />
         </div>
       </Modal>

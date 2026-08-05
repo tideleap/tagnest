@@ -14,6 +14,7 @@ export function toApiJob(row: JobRow): AiJob {
     id: row.id,
     kind: row.kind,
     status: row.status,
+    target: row.scope?.target ?? 'untagged',
     total: row.total,
     processed: row.processed,
     suggested: row.suggested,

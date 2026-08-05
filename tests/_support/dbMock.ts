@@ -23,6 +23,8 @@ interface Statement {
 export class MockDb {
   api_keys: MockRow[] = [];
   auth_attempts: MockRow[] = [];
+  users: MockRow[] = [];
+  ai_jobs: MockRow[] = [];
 
   prepare(sql: string): Statement {
     // Arrow-function methods capture `this` (the MockDb instance) lexically, so
@@ -122,6 +124,85 @@ export class MockDb {
     if (u.startsWith('DELETE FROM AUTH_ATTEMPTS WHERE CREATED_AT')) {
       const before = params[0] as string;
       this.auth_attempts = this.auth_attempts.filter((r) => r.created_at >= before);
+      return [];
+    }
+
+    // --- users (password change) -------------------------------------
+    if (u.startsWith('SELECT EMAIL, PASSWORD_HASH FROM USERS WHERE ID')) {
+      const id = params[0] as string;
+      return this.users
+        .filter((r) => r.id === id)
+        .map((r) => ({ email: r.email, password_hash: r.password_hash }));
+    }
+    if (u.startsWith('UPDATE USERS SET PASSWORD_HASH')) {
+      const [hash, updated_at, id] = params as string[];
+      const row = this.users.find((r) => r.id === id);
+      if (row) {
+        row.password_hash = hash;
+        row.updated_at = updated_at;
+      }
+      return [];
+    }
+
+    // --- ai_jobs (run history) ---------------------------------------
+    if (u.startsWith('INSERT INTO AI_JOBS')) {
+      // Columns: id, user_id, kind, status, scope, total, processed,
+      // suggested, failed, created_at, updated_at. `status` is the literal
+      // 'queued'; processed/suggested/failed are literal 0.
+      const [id, user_id, kind, scope, total, created_at, updated_at] = params as string[];
+      this.ai_jobs.push({
+        id,
+        user_id,
+        kind,
+        status: 'queued',
+        scope,
+        total: Number(total),
+        processed: 0,
+        suggested: 0,
+        failed: 0,
+        engine: null,
+        error: null,
+        created_at,
+        updated_at,
+      });
+      return [];
+    }
+    // Detail lookup: `SELECT * FROM AI_JOBS WHERE ID = ? AND USER_ID = ? LIMIT 1`
+    if (u.startsWith('SELECT * FROM AI_JOBS') && u.includes('AND USER_ID = ? LIMIT 1')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      return this.ai_jobs.filter((r) => r.id === id && r.user_id === userId);
+    }
+    // List: `SELECT * FROM AI_JOBS WHERE USER_ID = ? ORDER BY CREATED_AT DESC LIMIT ?`
+    if (u.startsWith('SELECT * FROM AI_JOBS WHERE USER_ID')) {
+      const userId = params[0] as string;
+      const limit = Number(params[1]);
+      return this.ai_jobs
+        .filter((r) => r.user_id === userId)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .slice(0, limit);
+    }
+    if (u.startsWith('UPDATE AI_JOBS SET')) {
+      // Params: [updated_at, ...present optional fields..., user_id, id].
+      // `updated_at` is always first; the optional columns appear in a fixed
+      // order (status, processed, suggested, failed, engine, error) only when
+      // the caller set them.
+      const columns = ['status', 'processed', 'suggested', 'failed', 'engine', 'error'];
+      const updates: Record<string, unknown> = {};
+      let idx = 1;
+      for (const col of columns) {
+        if (u.includes(`${col.toUpperCase()} = ?`)) {
+          updates[col] = params[idx];
+          idx += 1;
+        }
+      }
+      const userId = params[idx] as string;
+      const id = params[idx + 1] as string;
+      const row = this.ai_jobs.find((r) => r.id === id && r.user_id === userId);
+      if (row) {
+        row.updated_at = params[0];
+        Object.assign(row, updates);
+      }
       return [];
     }
 

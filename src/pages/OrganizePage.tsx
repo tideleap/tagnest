@@ -46,7 +46,12 @@ export function OrganizePage() {
   // Scoped to the current run right after one finishes, so "确认" shows what
   // was just produced rather than everything ever proposed.
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
-  const { data: queue, isLoading: queueLoading } = useAiSuggestions(reviewJobId);
+  const {
+    data: queue,
+    isLoading: queueLoading,
+    isError: queueFailed,
+    refetch: refetchQueue,
+  } = useAiSuggestions(reviewJobId);
 
   // The audit is a full-vocabulary scan; only pay for it on its own tab.
   const { data: audit, isLoading: auditLoading } = useAiTaxonomyAudit(tab === 'audit');
@@ -126,6 +131,8 @@ export function OrganizePage() {
           <SuggestionReview
             suggestions={queue?.suggestions ?? []}
             loading={queueLoading}
+            failed={queueFailed}
+            onRetry={() => void refetchQueue()}
             jobId={reviewJobId}
           />
         </div>

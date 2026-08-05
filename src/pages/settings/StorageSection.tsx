@@ -86,8 +86,7 @@ export function StorageSection() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-ink">{usage.data.display}</p>
               <p className="text-xs text-ink-faint">
-                {usage.data.snapshotCount} 个快照对象 · 共 {usage.data.snapshotCount}{' '}
-                文件占用
+                {usage.data.snapshotCount} 个快照对象 · 共占用 {usage.data.snapshotFmt}
               </p>
             </div>
             <BadgePill>{`${usage.data.quotaFmt}`}</BadgePill>

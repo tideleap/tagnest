@@ -145,6 +145,34 @@ describe('fetchSnapshotFromApi', () => {
     expect(out.bytes.byteLength).toBe(5);
     expect(out.contentType).toBe('image/png');
   });
+
+  it('passes an abort signal so a silent provider cannot hang the request', async () => {
+    const fetchFn = mockFetch();
+    await fetchSnapshotFromApi('https://a.com', { apiUrl: 'https://shot.dev/', fetchFn });
+    const [, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('reports a timeout as "没有响应" rather than leaking an AbortError', async () => {
+    // `fetch` has no default timeout: without the signal this call would sit
+    // there until the platform killed the whole Worker invocation.
+    const fetchFn = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })),
+          );
+        }),
+    );
+
+    await expect(
+      fetchSnapshotFromApi('https://example.com', {
+        apiUrl: 'https://shot.dev/',
+        fetchFn: fetchFn as unknown as typeof fetch,
+        timeoutMs: 10,
+      }),
+    ).rejects.toThrow('没有响应');
+  });
 });
 
 describe('resolveSnapshotProvider', () => {
@@ -352,5 +380,9 @@ describe('classifySnapshotError', () => {
       'r2_unavailable',
     );
     expect(classifySnapshotError(new Error('boom')).kind).toBe('provider_error');
+    expect(classifySnapshotError(new Error('截图服务在 20 秒内没有响应'))).toEqual({
+      kind: 'provider_error',
+      message: '截图服务响应超时，请稍后重试',
+    });
   });
 });

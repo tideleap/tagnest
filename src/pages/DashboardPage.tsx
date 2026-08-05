@@ -35,10 +35,12 @@ function MascotHero({
   total,
   added,
   loading,
+  failed,
 }: {
   total?: number;
   added?: number;
   loading?: boolean;
+  failed?: boolean;
 }) {
   return (
     <section
@@ -71,16 +73,30 @@ function MascotHero({
             我的书签小天地
           </p>
           <h1 className="relative inline-block text-4xl font-extrabold tracking-tight text-ink">
-            {loading ? <Skeleton className="h-11 w-48" /> : `${total ?? 0} 条书签`}
+            {loading ? (
+              <Skeleton className="h-11 w-48" />
+            ) : failed ? (
+              '统计暂不可用'
+            ) : (
+              `${total ?? 0} 条书签`
+            )}
             <Scribble className="text-brand-accent" />
           </h1>
-          <p className="mt-3 max-w-md text-base leading-relaxed text-ink-soft">
-            最近 7 天新增了
-            <span className="mx-1 font-bold tabular-nums text-brand-accent">
-              {loading ? '…' : added ?? 0}
-            </span>
-            条。有收藏的地方，就有家的感觉。
-          </p>
+          {/* A failed stats call must never render as "0 bookmarks" — that reads
+              as "my library is gone" and sends people looking for a backup. */}
+          {failed ? (
+            <p className="mt-3 max-w-md text-base leading-relaxed text-ink-soft">
+              没能读取到统计数据，你的书签都还在。稍后重试即可。
+            </p>
+          ) : (
+            <p className="mt-3 max-w-md text-base leading-relaxed text-ink-soft">
+              最近 7 天新增了
+              <span className="mx-1 font-bold tabular-nums text-brand-accent">
+                {loading ? '…' : added ?? 0}
+              </span>
+              条。有收藏的地方，就有家的感觉。
+            </p>
+          )}
 
           <div className="mt-5 flex flex-wrap gap-2.5">
             <Button variant="primary" size="md" className="btn-ripple" iconLeft={<Plus size={15} aria-hidden />}>
@@ -113,6 +129,7 @@ function AttentionCard({
   hint,
   count,
   loading,
+  failed,
   to,
   color,
   index,
@@ -122,6 +139,7 @@ function AttentionCard({
   hint: string;
   count?: number;
   loading?: boolean;
+  failed?: boolean;
   to: string;
   color: string;
   index: number;
@@ -147,7 +165,11 @@ function AttentionCard({
               </span>
             )}
           </span>
-          <span className="mt-0.5 block truncate text-2xs text-ink-faint">{hint}</span>
+          {/* Hints are derived from the stats payload; with no payload the
+              "all clear" branch would lie ("收件箱已经清空了"). Say so instead. */}
+          <span className="mt-0.5 block truncate text-2xs text-ink-faint">
+            {failed ? '数据暂不可用' : hint}
+          </span>
         </span>
         <ArrowRight
           size={16}
@@ -163,6 +185,7 @@ function StatCard({
   label,
   value,
   loading,
+  failed,
   to,
   color,
   index,
@@ -170,6 +193,7 @@ function StatCard({
   label: string;
   value?: number;
   loading?: boolean;
+  failed?: boolean;
   to: string;
   color: string;
   index: number;
@@ -188,7 +212,7 @@ function StatCard({
           <span className="mascot-idle block h-2 w-2 rounded-full bg-white/90" aria-hidden />
         </span>
         <p className="text-3xl font-extrabold tabular-nums leading-none text-ink">
-          {loading ? <Skeleton className="h-8 w-14" /> : value ?? 0}
+          {loading ? <Skeleton className="h-8 w-14" /> : failed ? '—' : value ?? 0}
         </p>
         <p className="mt-1.5 text-xs font-medium text-ink-soft">{label}</p>
       </Link>
@@ -200,13 +224,14 @@ export function DashboardPage() {
   const stats = useStats();
   const s = stats.data;
   const loading = stats.isLoading;
+  const failed = stats.isError;
 
   // Deterministic per-card palette (stable across renders, no flash).
   const attention = [
     {
       icon: <Inbox size={20} aria-hidden />,
-      label: '待打标书签',
-      hint: s && s.untagged > 0 ? '先收进收件箱整理' : '收件箱是满整理的',
+      label: '收件箱',
+      hint: s && s.untagged > 0 ? '先收进收件箱整理' : '收件箱已经清空了',
       count: s?.untagged,
       to: '/library/inbox',
       color: PASTEL[0],
@@ -221,7 +246,7 @@ export function DashboardPage() {
     },
     {
       icon: <Archive size={20} aria-hidden />,
-      label: '已归档',
+      label: '归档',
       hint: '暂时用不到，先移出主视图',
       count: s?.archived,
       to: '/library/archive',
@@ -230,7 +255,7 @@ export function DashboardPage() {
     {
       icon: <Sparkles size={20} aria-hidden />,
       label: 'AI 整理',
-      hint: s && s.untagged > 0 ? '让 AI 帮待打标书签生成标签' : '全库标签健康检查',
+      hint: s && s.untagged > 0 ? '让 AI 帮未打标书签生成标签' : '全库标签健康检查',
       count: undefined,
       to: '/organize',
       color: PASTEL[3],
@@ -240,7 +265,31 @@ export function DashboardPage() {
   return (
     <div className="relative mx-auto flex max-w-5xl flex-col gap-8 px-4 pb-12 pt-2">
       {/* Overview hero — cartoon, warm, anchored by the mascot. */}
-      <MascotHero total={s?.bookmarks} added={s?.addedLast7Days} loading={loading} />
+      <MascotHero
+        total={s?.bookmarks}
+        added={s?.addedLast7Days}
+        loading={loading}
+        failed={failed}
+      />
+
+      {failed && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-caution bg-caution-soft px-4 py-3"
+        >
+          <p className="min-w-0 flex-1 text-sm text-ink-soft">
+            统计数据加载失败，下面的数字暂时无法显示。这不影响你的书签数据。
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void stats.refetch()}
+            loading={stats.isFetching}
+          >
+            重试
+          </Button>
+        </div>
+      )}
 
       {/* Needs attention — interactive pastel cards. */}
       <section aria-label="需要处理">
@@ -255,7 +304,7 @@ export function DashboardPage() {
         </Reveal>
         <div className="grid gap-3 sm:grid-cols-2">
           {attention.map((a, i) => (
-            <AttentionCard key={a.to} index={i} {...a} loading={loading} />
+            <AttentionCard key={a.to} index={i} {...a} loading={loading} failed={failed} />
           ))}
         </div>
       </section>
@@ -272,10 +321,10 @@ export function DashboardPage() {
           </div>
         </Reveal>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard index={0} label="全部书签" value={s?.bookmarks} loading={loading} to="/library/all" color="#ff6b81" />
-          <StatCard index={1} label="收藏" value={s?.favorites} loading={loading} to="/library/favorites" color="#ffa94d" />
-          <StatCard index={2} label="已归档" value={s?.archived} loading={loading} to="/library/archive" color="#66c2ff" />
-          <StatCard index={3} label="标签" value={s?.tags} loading={loading} to="/tags" color="#69db7c" />
+          <StatCard index={0} label="全部书签" value={s?.bookmarks} loading={loading} failed={failed} to="/library/all" color="#ff6b81" />
+          <StatCard index={1} label="收藏" value={s?.favorites} loading={loading} failed={failed} to="/library/favorites" color="#ffa94d" />
+          <StatCard index={2} label="已归档" value={s?.archived} loading={loading} failed={failed} to="/library/archive" color="#66c2ff" />
+          <StatCard index={3} label="标签" value={s?.tags} loading={loading} failed={failed} to="/tags" color="#69db7c" />
         </div>
       </section>
 

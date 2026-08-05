@@ -23,6 +23,18 @@ export const SNAPSHOT_EXT = 'webp';
 export const MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024;
 
 /**
+ * How long the external screenshot API gets to answer before we abandon it.
+ *
+ * Rendering a page takes seconds, so the budget is generous — but it must
+ * exist. `fetch` has no default timeout: a free screenshot service that
+ * accepts the connection and then goes quiet used to pin the whole request
+ * until the platform killed it, which means the user watched a spinner for
+ * ~30s and got a generic 500, and the `waitUntil` capture on bookmark
+ * creation held an invocation open for nothing.
+ */
+export const SNAPSHOT_FETCH_TIMEOUT_MS = 20_000;
+
+/**
  * Which render source to use for a snapshot, in resolution order:
  *   1. external  — `SNAPSHOT_API_URL` is set; call that third-party service.
  *   2. browser   — no external URL, but the Cloudflare `BROWSER` (Browser Run)
@@ -110,9 +122,15 @@ export function planRetention(
  */
 export async function fetchSnapshotFromApi(
   targetUrl: string,
-  opts: { apiUrl?: string; apiKey?: string; userAgent?: string; fetchFn?: typeof fetch },
+  opts: {
+    apiUrl?: string;
+    apiKey?: string;
+    userAgent?: string;
+    fetchFn?: typeof fetch;
+    timeoutMs?: number;
+  },
 ): Promise<{ bytes: Uint8Array; contentType: string }> {
-  const { apiUrl: configuredUrl, apiKey, fetchFn = fetch } = opts;
+  const { apiUrl: configuredUrl, apiKey, fetchFn = fetch, timeoutMs = SNAPSHOT_FETCH_TIMEOUT_MS } = opts;
 
   if (!configuredUrl) {
     throw new Error('SNAPSHOT_API_URL 未配置，无法用外部服务生成网站快照');
@@ -133,12 +151,30 @@ export async function fetchSnapshotFromApi(
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   if (opts.userAgent) headers['user-agent'] = opts.userAgent;
 
-  const res = await fetchFn(url, { headers, redirect: 'follow' });
-  if (!res.ok) {
-    throw new Error(`截图服务返回 ${res.status} ${res.statusText}`);
-  }
+  // One signal covers the handshake AND the body read: an API that answers
+  // 200 and then stalls mid-image is just as damaging as one that never
+  // answers at all.
+  const signal = AbortSignal.timeout(timeoutMs);
 
-  const buf = new Uint8Array(await res.arrayBuffer());
+  const received = await (async () => {
+    try {
+      const res = await fetchFn(url, { headers, redirect: 'follow', signal });
+      if (!res.ok) {
+        throw new Error(`截图服务返回 ${res.status} ${res.statusText}`);
+      }
+      return {
+        buf: new Uint8Array(await res.arrayBuffer()),
+        rawContentType: res.headers.get('content-type'),
+      };
+    } catch (e) {
+      if (isAbortError(e)) {
+        throw new Error(`截图服务在 ${Math.round(timeoutMs / 1000)} 秒内没有响应`);
+      }
+      throw e;
+    }
+  })();
+
+  const { buf } = received;
   if (buf.byteLength === 0) {
     throw new Error('截图服务返回了空响应');
   }
@@ -146,8 +182,14 @@ export async function fetchSnapshotFromApi(
     throw new Error('截图服务返回的图片过大');
   }
 
-  const contentType = res.headers.get('content-type')?.split(';')[0].trim() || snapshotContentType();
+  const contentType = received.rawContentType?.split(';')[0].trim() || snapshotContentType();
   return { bytes: buf, contentType };
+}
+
+/** True for both `AbortSignal.timeout` (TimeoutError) and manual aborts. */
+function isAbortError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name === 'TimeoutError' || e.name === 'AbortError';
 }
 
 /**
@@ -268,6 +310,7 @@ export function classifySnapshotError(e: unknown): { kind: SnapshotErrorKind; me
   if (msg.includes('SNAPSHOT_API_URL 未配置')) return { kind: 'not_configured', message: '网站快照功能未配置（未设置 SNAPSHOT_API_URL）' };
   if (msg.includes('BROWSER (Browser Run) 未绑定')) return { kind: 'not_configured', message: '网站快照功能未配置（未启用 Cloudflare Browser Run）' };
   if (msg.includes('SNAPSHOT_BUCKET 未绑定')) return { kind: 'r2_unavailable', message: '图片存储服务未配置，请稍后重试' };
+  if (msg.includes('没有响应')) return { kind: 'provider_error', message: '截图服务响应超时，请稍后重试' };
   if (msg.includes('空响应')) return { kind: 'empty', message: '截图服务返回了空响应，请稍后重试' };
   if (msg.includes('图片过大')) return { kind: 'too_large', message: '截图服务返回的图片过大，无法存储' };
   return { kind: 'provider_error', message: msg };

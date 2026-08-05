@@ -232,6 +232,8 @@ export interface AiJob {
   id: string;
   kind: string;
   status: AiJobStatus;
+  /** What the run covered, surfaced so the history row can label it. */
+  target?: AiJobTarget;
   total: number;
   processed: number;
   /** Proposals written so far. */

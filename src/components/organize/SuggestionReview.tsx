@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, ExternalLink, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, Sparkles, X } from 'lucide-react';
 import type { AiSuggestion } from '@shared/types';
 import { Badge, Button, EmptyState, Skeleton } from '@/components/ui';
 import { cx } from '@/lib/cx';
@@ -29,6 +29,9 @@ import { displayHost } from '@/lib/url';
 interface Props {
   suggestions: AiSuggestion[];
   loading?: boolean;
+  /** The queue could not be fetched — distinct from "the queue is empty". */
+  failed?: boolean;
+  onRetry?: () => void;
   /** Restricts bulk actions to one run. */
   jobId?: string | null;
 }
@@ -76,7 +79,7 @@ function groupByBookmark(suggestions: AiSuggestion[]): Group[] {
   return [...map.values()].sort((a, b) => b.top - a.top);
 }
 
-export function SuggestionReview({ suggestions, loading, jobId }: Props) {
+export function SuggestionReview({ suggestions, loading, failed, onRetry, jobId }: Props) {
   const decide = useDecideSuggestions();
   // Locally hidden groups: the server round trip is fast but not instant, and
   // a card that lingers after a click reads as a broken button.
@@ -99,6 +102,25 @@ export function SuggestionReview({ suggestions, loading, jobId }: Props) {
           </li>
         ))}
       </ul>
+    );
+  }
+
+  // A failed fetch must not masquerade as an empty queue: telling the user
+  // "没有待确认的建议" hides the fault and they will never think to retry.
+  if (failed) {
+    return (
+      <EmptyState
+        icon={<AlertTriangle size={22} />}
+        title="建议列表加载失败"
+        description="没能读取到 AI 生成的标签建议，已生成的建议不会丢失。稍后重试即可。"
+        action={
+          onRetry ? (
+            <Button variant="secondary" onClick={onRetry}>
+              重试
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
 

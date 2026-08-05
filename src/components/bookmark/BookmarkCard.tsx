@@ -1,11 +1,13 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
+  Camera,
   Copy,
   ExternalLink,
   GripVertical,
   Heart,
+  Images,
   MoreHorizontal,
   Pencil,
   RotateCcw,
@@ -15,8 +17,9 @@ import {
 import type { Bookmark } from '@shared/types';
 import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
-import { IconButton, Menu, TagChip, RemoteImage } from '@/components/ui';
+import { Button, IconButton, Menu, Modal, TagChip, RemoteImage } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
+import { useBookmarkSnapshots, useGenerateSnapshot } from '@/hooks/queries/snapshots';
 import type { ViewMode } from '@/stores/ui';
 
 export interface BookmarkCardProps {
@@ -172,6 +175,18 @@ function BookmarkCardBase({
 }: BookmarkCardProps) {
   const inTrash = b.deletedAt !== null;
 
+  // F3 — the snapshot backend has been orphaned on the frontend until now.
+  // `generate` fires POST /bookmarks/:id/snapshot; the history query backs the
+  // viewer modal and only runs once it is actually opened.
+  const generate = useGenerateSnapshot();
+  const [showSnapshots, setShowSnapshots] = useState(false);
+  const {
+    data: snapList,
+    isLoading: snapsLoading,
+    isError: snapsError,
+    refetch: refetchSnaps,
+  } = useBookmarkSnapshots(b.id, showSnapshots);
+
   const open = () => {
     onVisit(b.id);
     window.open(b.url, '_blank', 'noopener,noreferrer');
@@ -223,6 +238,24 @@ function BookmarkCardBase({
         { id: 'open', label: '打开链接', icon: <ExternalLink size={15} />, onSelect: open },
         { id: 'edit', label: '编辑', icon: <Pencil size={15} />, onSelect: () => onEdit(b.id) },
         { id: 'copy', label: '复制链接', icon: <Copy size={15} />, onSelect: () => void copyUrl() },
+        {
+          id: 'snapshot',
+          label: '生成网页快照',
+          icon: <Camera size={15} />,
+          separatorBefore: true,
+          disabled: generate.isPending,
+          onSelect: () => generate.mutate(b.id),
+        },
+        ...(b.snapshotKey
+          ? [
+              {
+                id: 'view-snapshots',
+                label: '查看快照历史',
+                icon: <Images size={15} />,
+                onSelect: () => setShowSnapshots(true),
+              },
+            ]
+          : []),
         {
           id: 'archive',
           label: b.isArchived ? '取消归档' : '归档',
@@ -295,7 +328,8 @@ function BookmarkCardBase({
   );
 
   return (
-    <article
+    <>
+      <article
       className={cx(
         'card-halo group relative flex bg-surface',
         'card-lift border border-line hover:border-line-strong',
@@ -495,6 +529,49 @@ function BookmarkCardBase({
         </span>
       )}
     </article>
+
+    <Modal
+      open={showSnapshots}
+      onClose={() => setShowSnapshots(false)}
+      title="网页快照历史"
+      size="lg"
+    >
+      {snapsLoading ? (
+        <div className="flex h-40 items-center justify-center text-sm text-ink-faint">加载中…</div>
+      ) : snapsError ? (
+        <div className="flex h-40 flex-col items-center justify-center gap-2 text-sm text-ink-faint">
+          <span>快照历史加载失败</span>
+          <Button variant="secondary" size="sm" onClick={() => void refetchSnaps()}>
+            重试
+          </Button>
+        </div>
+      ) : snapList && snapList.snapshots.length > 0 ? (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {snapList.snapshots.map((s) => (
+            <li key={s.key} className="overflow-hidden rounded-lg border border-line">
+              <a href={s.url} target="_blank" rel="noreferrer noopener">
+                <RemoteImage
+                  src={s.url}
+                  alt=""
+                  className="aspect-[16/10] w-full bg-sunken object-cover"
+                />
+              </a>
+              <div className="flex items-center justify-between gap-2 px-3 py-2 text-2xs text-ink-faint">
+                <span>{s.capturedAt ? new Date(s.capturedAt).toLocaleString() : '未知时间'}</span>
+                {s.isLatest && (
+                  <span className="rounded-full bg-brand-soft px-1.5 py-0.5 text-brand-ink">最新</span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="flex h-40 items-center justify-center text-sm text-ink-faint">
+          还没有快照
+        </div>
+      )}
+    </Modal>
+    </>
   );
 }
 

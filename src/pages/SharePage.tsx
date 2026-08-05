@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ExternalLink, Link2, Search } from 'lucide-react';
 import type { PublicBookmark, PublicShare, SharePalette, ShareTheme } from '@shared/types';
-import { Button, EmptyState, Spinner, TagChip } from '@/components/ui';
+import { Button, EmptyState, PageHeader, Spinner, TagChip } from '@/components/ui';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -22,7 +22,7 @@ const VALID_PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 's
 export function SharePage() {
   const { slug = '' } = useParams();
 
-  const { data, isLoading, isError, error } = useQuery<PublicShare>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<PublicShare>({
     queryKey: ['public-share', slug],
     queryFn: () => api.get<PublicShare>(`/public/${slug}`),
     retry: false,
@@ -57,18 +57,34 @@ export function SharePage() {
   }
 
   if (isError || !data) {
-    const message =
-      (error as { message?: string } | null)?.message ?? '这个分享链接不存在或已失效。';
+    // Visitors here are typically anonymous and non-technical — someone was
+    // handed a link. A missing share and a flaky backend need different
+    // wording: one is final, the other is worth retrying. Raw exception text
+    // helps neither, so it is never surfaced.
+    const status = (error as { status?: number } | null)?.status;
+    const gone = status === 404 || status === 410;
+
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
         <EmptyState
           icon={<Search size={22} />}
-          title="找不到这个分享"
-          description={message}
+          title={gone ? '找不到这个分享' : '暂时打不开这个分享'}
+          description={
+            gone
+              ? '这个分享链接不存在、已被作者停用，或者已经过了有效期。'
+              : '页面加载失败，可能是网络不稳定。稍后重试通常就能恢复。'
+          }
           action={
-            <Link to="/">
-              <Button variant="primary">前往 TagNest</Button>
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {!gone && (
+                <Button variant="primary" onClick={() => void refetch()} loading={isFetching}>
+                  重试
+                </Button>
+              )}
+              <Link to="/">
+                <Button variant={gone ? 'primary' : 'secondary'}>前往 TagNest</Button>
+              </Link>
+            </div>
           }
         />
       </div>
@@ -78,27 +94,22 @@ export function SharePage() {
   return (
     <div className="min-h-dvh bg-canvas">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <header className="mb-6 border-b border-line pb-5">
-          <h1 className="text-2xl font-bold text-ink">{data.title}</h1>
-          {data.description && (
-            <p className="mt-2 text-sm leading-relaxed text-ink-soft">{data.description}</p>
+        <PageHeader title={data.title} description={data.description ?? undefined} />
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
+          <span>由 {data.owner} 分享</span>
+          <span aria-hidden>·</span>
+          <span className="tabular-nums">{data.total} 个书签</span>
+          {data.tags.length > 0 && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="flex flex-wrap gap-1">
+                {data.tags.map((t) => (
+                  <TagChip key={t.name} name={t.name} colorIndex={t.colorIndex} size="sm" />
+                ))}
+              </span>
+            </>
           )}
-          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
-            <span>由 {data.owner} 分享</span>
-            <span aria-hidden>·</span>
-            <span className="tabular-nums">{data.total} 个书签</span>
-            {data.tags.length > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="flex flex-wrap gap-1">
-                  {data.tags.map((t) => (
-                    <TagChip key={t.name} name={t.name} colorIndex={t.colorIndex} size="sm" />
-                  ))}
-                </span>
-              </>
-            )}
-          </div>
-        </header>
+        </div>
 
         {data.items.length === 0 ? (
           <EmptyState icon={<Link2 size={22} />} title="还没有书签" description="这个分享页暂时是空的。" />

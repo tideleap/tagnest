@@ -5,6 +5,7 @@ import {
   Info,
   KeyRound,
   Keyboard,
+  ListChecks,
   Palette,
   Share2,
   Sparkles,
@@ -20,6 +21,7 @@ import { AiSection } from './settings/AiSection';
 import { AutoClearSection } from './settings/AutoClearSection';
 import { SnapshotsSection } from './settings/SnapshotsSection';
 import { StorageSection } from './settings/StorageSection';
+import { JobsSection } from './settings/JobsSection';
 import { ShortcutsSection } from './settings/ShortcutsSection';
 import { AboutSection } from './settings/AboutSection';
 
@@ -29,6 +31,7 @@ const SECTIONS = [
   { id: 'shares', label: '分享', icon: Share2 },
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
+  { id: 'jobs', label: '任务', icon: ListChecks },
   { id: 'snapshots', label: '快照', icon: Camera },
   { id: 'storage', label: '存储', icon: Database },
   { id: 'autoclear', label: '自动清空', icon: Timer },
@@ -74,6 +77,7 @@ export function SettingsPage() {
         {active === 'shares' && <SharesSection />}
         {active === 'appearance' && <AppearanceSection />}
         {active === 'ai' && <AiSection />}
+        {active === 'jobs' && <JobsSection />}
         {active === 'snapshots' && <SnapshotsSection />}
         {active === 'storage' && <StorageSection />}
         {active === 'autoclear' && <AutoClearSection />}

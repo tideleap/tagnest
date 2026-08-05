@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, CheckSquare, RotateCcw, Tag as TagIcon, Trash2, X } from 'lucide-react';
+import { CheckSquare, RotateCcw, Tag as TagIcon, Trash2, X } from 'lucide-react';
 import type { BookmarkScope } from '@shared/types';
 import { Button, ConfirmDialog, IconButton, Input, Modal, TagChip } from '@/components/ui';
 import { useSelection } from '@/stores/ui';
@@ -86,13 +86,16 @@ export function BulkActionBar({ scope, allIds }: { scope: BookmarkScope; allIds:
               >
                 打标签
               </Button>
+              {/* Same verb and icon the card menu uses: this only soft-deletes,
+                  and an Archive glyph labelled "删除" reads as either an archive
+                  action or an irreversible purge — both wrong. */}
               <Button
                 size="sm"
                 variant="ghost"
-                iconLeft={<Archive size={14} />}
+                iconLeft={<Trash2 size={14} />}
                 onClick={() => run(() => trash.mutate(ids))}
               >
-                删除
+                移入回收站
               </Button>
             </>
           )}

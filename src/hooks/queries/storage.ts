@@ -12,6 +12,8 @@ export interface StorageUsage {
   otherBytes: number;
   quotaBytes: number;
   quotaFmt: string;
+  /** `snapshotBytes` rendered human-readable by the API. */
+  snapshotFmt: string;
   display: string;
 }
 

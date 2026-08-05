@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { ArrowRight, Combine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { AiTaxonomyAudit } from '@shared/types';
-import { Badge, Button, EmptyState, Skeleton } from '@/components/ui';
+import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Skeleton } from '@/components/ui';
 import { useDeleteTag, useMergeTags } from '@/hooks/queries';
 
 /**
@@ -27,6 +28,12 @@ interface Props {
 export function TaxonomyPanel({ audit, loading }: Props) {
   const merge = useMergeTags();
   const deleteTag = useDeleteTag();
+  /**
+   * Tag queued for deletion. Deleting a tag is irreversible, and TagsPage
+   * already gates the same action behind a confirmation — doing it silently
+   * here would leave the user with two different mental models for one verb.
+   */
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
 
   if (loading) {
     return (
@@ -123,20 +130,38 @@ export function TaxonomyPanel({ audit, loading }: Props) {
               <li key={tag.id}>
                 <span className="inline-flex h-7 items-center gap-1 rounded-md border border-line pl-2 pr-1 text-2xs text-ink-soft">
                   {tag.name}
-                  <button
-                    type="button"
-                    aria-label={`删除标签 ${tag.name}`}
-                    onClick={() => deleteTag.mutate(tag.id)}
-                    className="rounded p-1 text-ink-faint transition-colors hover:bg-critical-soft hover:text-critical-ink"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+                  <IconButton
+                    size="sm"
+                    variant="danger"
+                    label={`删除标签 ${tag.name}`}
+                    icon={<Trash2 size={12} />}
+                    onClick={() => setPendingDelete({ id: tag.id, name: tag.name })}
+                    className="h-5 w-5"
+                  />
                 </span>
               </li>
             ))}
           </ul>
         </section>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (pendingDelete) deleteTag.mutate(pendingDelete.id);
+          setPendingDelete(null);
+        }}
+        title="删除标签"
+        message={
+          pendingDelete
+            ? `确定删除标签「${pendingDelete.name}」吗？该标签当前没有关联任何书签，删除后无法撤销。`
+            : ''
+        }
+        confirmLabel="删除"
+        tone="danger"
+        loading={deleteTag.isPending}
+      />
     </div>
   );
 }

@@ -66,6 +66,12 @@ export {
 } from './queries/apiKeys';
 
 export {
+  useAiJobs,
+  useAiJob,
+  useCancelJob,
+} from './queries/aiJobs';
+
+export {
   useShares,
   useCreateShare,
   useUpdateShare,

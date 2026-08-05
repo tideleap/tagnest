@@ -4,6 +4,7 @@ import { badRequest, notFound, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
 import { ensureTags, queryInChunks } from '../../_lib/db';
 import type { ParsedItem } from '../../_lib/import-parsers';
+import { planImportRow } from '../../_lib/import-plan';
 import { faviconFor, titleFallback, urlKey } from '../../_lib/urlkey';
 
 /**
@@ -13,6 +14,13 @@ import { faviconFor, titleFallback, urlKey } from '../../_lib/urlkey';
  * as 10k round trips would exceed the request budget several times over.
  */
 const WRITE_BATCH = 50;
+
+/**
+ * D1 rejects a batch holding more than 100 statements. A full write batch is
+ * 50 bookmarks plus their tag links, which passes 100 as soon as items carry
+ * more than one tag, so every batch is sliced before it reaches the wire.
+ */
+const BATCH_STATEMENT_LIMIT = 100;
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -82,7 +90,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   /* ---- Existing URLs -------------------------------------------- */
 
-  const existing = await loadExistingKeys(ctx.env, userId, items.map((i) => urlKey(i.url)));
+  // key → id of the bookmark that already holds that URL. The id matters:
+  // without it the writer cannot attach tags to a URL it is not allowed to
+  // insert again (see `planImportRow`).
+  const existing = await loadExistingIdsByKey(ctx.env, userId, items.map((i) => urlKey(i.url)));
 
   /* ---- Write (streams progress as batches commit) --------------- */
 
@@ -100,77 +111,94 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       let skipped = 0;
       let failed = 0;
 
+      const tagLink = (bookmarkId: string, tagId: string) =>
+        ctx.env.DB.prepare(
+          `INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)`,
+        ).bind(bookmarkId, tagId);
+
       for (let i = 0; i < items.length; i += WRITE_BATCH) {
         const chunk = items.slice(i, i + WRITE_BATCH);
-        const statements: D1PreparedStatement[] = [];
+        // Grouped per row, not one flat list: when a batch is rejected the
+        // writer replays it row by row, and that only works if it knows which
+        // statements belong together.
+        const rows: { statements: D1PreparedStatement[]; isNew: boolean }[] = [];
 
         for (const item of chunk) {
           const key = urlKey(item.url);
-          if (skipDuplicates && existing.has(key)) {
+          const plan = planImportRow(item, key, {
+            existing,
+            tagIdByLower,
+            extraIds,
+            foldersAsTags,
+            skipDuplicates,
+            newId,
+          });
+
+          if (plan.kind === 'skip') {
             skipped += 1;
             continue;
           }
-          existing.add(key);
 
-          const id = newId();
-          const createdAt = item.addedAt ?? ts;
-
-          statements.push(
-            ctx.env.DB.prepare(
-              // `INSERT OR IGNORE` + the partial UNIQUE index on (user_id,
-              // url_key) WHERE deleted_at IS NULL (migration 0004) make import
-              // idempotent at the database layer: a URL that already exists
-              // live is silently skipped even if it raced past the in-memory
-              // `existing` set (e.g. a concurrent save or a prior partial
-              // import), instead of failing the whole batch.
-              `INSERT OR IGNORE INTO bookmarks
-                 (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
-                  ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
-                  created_at, updated_at, deleted_at)
-               VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 0, 0, 0, NULL, ?, ?, NULL)`,
-            ).bind(
-              id,
-              userId,
-              item.url,
-              key,
-              (item.title || titleFallback(item.url)).slice(0, 300),
-              faviconFor(item.url),
-              createdAt,
-              ts,
-            ),
-          );
-
-          const tagIds = new Set(extraIds);
-          for (const name of item.tagNames) {
-            const tagId = tagIdByLower.get(name.trim().toLowerCase());
-            if (tagId) tagIds.add(tagId);
-          }
-          if (foldersAsTags) {
-            const leaf = item.folderPath[item.folderPath.length - 1];
-            const tagId = leaf ? tagIdByLower.get(leaf.trim().toLowerCase()) : undefined;
-            if (tagId) tagIds.add(tagId);
+          if (plan.kind === 'merge') {
+            // The URL is already live and the schema forbids a second row, so
+            // the honest outcome is "merge this file's tags onto the bookmark
+            // that is already there" — counted as skipped because no new
+            // bookmark was created.
+            rows.push({
+              statements: plan.tagIds.map((t) => tagLink(plan.bookmarkId, t)),
+              isNew: false,
+            });
+            skipped += 1;
+            continue;
           }
 
-          for (const tagId of tagIds) {
-            statements.push(
+          rows.push({
+            statements: [
               ctx.env.DB.prepare(
-                `INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)`,
-              ).bind(id, tagId),
-            );
-          }
+                `INSERT OR IGNORE INTO bookmarks
+                   (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
+                    ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
+                    created_at, updated_at, deleted_at)
+                 VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 0, 0, 0, NULL, ?, ?, NULL)`,
+              ).bind(
+                plan.bookmarkId,
+                userId,
+                item.url,
+                key,
+                (item.title || titleFallback(item.url)).slice(0, 300),
+                faviconFor(item.url),
+                item.addedAt ?? ts,
+                ts,
+              ),
+              ...plan.tagIds.map((t) => tagLink(plan.bookmarkId, t)),
+            ],
+            isNew: true,
+          });
 
           imported += 1;
         }
 
+        const statements = rows.flatMap((r) => r.statements);
         if (statements.length > 0) {
           try {
-            await ctx.env.DB.batch(statements);
+            await runBatched(ctx.env.DB, statements);
           } catch (e) {
-            // One bad batch must not abort the whole import; the user gets a count
-            // of what failed and can retry the file.
-            console.error('[tagnest] import batch failed', e);
-            failed += chunk.length;
-            imported -= chunk.length;
+            // A batch can still be rejected by something outside our control —
+            // most plausibly a URL saved from the extension while the import
+            // was running. Replaying row by row bounds the damage to the one
+            // row that is actually bad instead of the surrounding 49.
+            console.error('[tagnest] import batch failed, retrying row by row', e);
+            for (const row of rows) {
+              try {
+                await runBatched(ctx.env.DB, row.statements);
+              } catch (rowError) {
+                console.error('[tagnest] import row failed', rowError);
+                if (row.isNew) {
+                  failed += 1;
+                  imported -= 1;
+                }
+              }
+            }
           }
         }
 
@@ -208,15 +236,30 @@ async function countTags(env: Env, userId: string): Promise<number> {
   return Number(row?.c ?? 0);
 }
 
-async function loadExistingKeys(env: Env, userId: string, keys: string[]): Promise<Set<string>> {
+/** Splits a statement list so no single `batch()` exceeds D1's 100-statement cap. */
+async function runBatched(db: Env['DB'], statements: D1PreparedStatement[]): Promise<void> {
+  for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
+    await db.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+  }
+}
+
+/** Maps every already-stored `url_key` to the id of the live bookmark holding it. */
+async function loadExistingIdsByKey(
+  env: Env,
+  userId: string,
+  keys: string[],
+): Promise<Map<string, string>> {
   const unique = [...new Set(keys)];
-  const rows = await queryInChunks<{ url_key: string }, string>(
+  const rows = await queryInChunks<
+    { id: string; url_key: string },
+    { id: string; url_key: string }
+  >(
     env.DB,
     unique,
     [userId],
     (ph) =>
-      `SELECT url_key FROM bookmarks WHERE user_id = ? AND deleted_at IS NULL AND url_key IN (${ph})`,
-    (r) => r.url_key,
+      `SELECT id, url_key FROM bookmarks WHERE user_id = ? AND deleted_at IS NULL AND url_key IN (${ph})`,
+    (r) => r,
   );
-  return new Set(rows);
+  return new Map(rows.map((r) => [r.url_key, r.id]));
 }

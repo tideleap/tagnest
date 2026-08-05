@@ -14,7 +14,16 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { BookmarkScope, BookmarkSort, Tag } from '@shared/types';
-import { Button, EmptyState, SegmentedControl, Select, Skeleton, TagChip } from '@/components/ui';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  PageHeader,
+  SegmentedControl,
+  Select,
+  Skeleton,
+  TagChip,
+} from '@/components/ui';
 import { BookmarkCard } from '@/components/bookmark/BookmarkCard';
 import { BulkActionBar } from '@/components/bookmark/BulkActionBar';
 import { useOverlay, useSelection, useView } from '@/stores/ui';
@@ -147,13 +156,22 @@ export function LibraryPage() {
     [tagIds, setTagFilter],
   );
 
-  const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useBookmarks({
-      scope: tagIds.length > 0 ? 'all' : scope,
-      q: query || undefined,
-      tagIds: tagIds.length > 0 ? tagIds : undefined,
-      sort,
-    });
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useBookmarks({
+    scope: tagIds.length > 0 ? 'all' : scope,
+    q: query || undefined,
+    tagIds: tagIds.length > 0 ? tagIds : undefined,
+    sort,
+  });
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
   const total = data?.pages[0]?.total ?? 0;
@@ -176,6 +194,8 @@ export function LibraryPage() {
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  /** Bookmark awaiting an irreversible purge confirmation. */
+  const [purgeId, setPurgeId] = useState<string | null>(null);
 
   // Any change of context invalidates an in-flight drag.
   useEffect(() => {
@@ -271,45 +291,42 @@ export function LibraryPage() {
       updateBookmark.mutate({ id, patch: { isArchived: next } }),
     onTrash: (id: string) => trashBookmarks.mutate([id]),
     onRestore: (id: string) => restoreBookmarks.mutate([id]),
-    onPurge: (id: string) => deleteForever.mutate([id]),
+    // Purging is irreversible, so it goes through the same confirmation gate the
+    // bulk bar already uses — a single misclick must not destroy data.
+    onPurge: (id: string) => setPurgeId(id),
     onVisit: (id: string) => recordVisit.mutate(id),
     onTagClick: toggleTag,
   };
 
+  const purgeTarget = purgeId ? items.find((b) => b.id === purgeId) : undefined;
+
   return (
     <div className="flex h-full flex-col">
-      <header className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <HeaderIcon size={19} className="shrink-0 text-ink-faint" aria-hidden />
-          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-ink">{title}</h1>
-          {!isLoading && (
-            <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-xs tabular-nums text-ink-faint">
-              {total}
-            </span>
-          )}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Select
-            aria-label="排序方式"
-            size="sm"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as BookmarkSort)}
-            options={SORT_OPTIONS}
-            containerClassName="w-32"
-          />
-          <SegmentedControl
-            label="视图密度"
-            size="sm"
-            value={viewMode}
-            onChange={setViewMode}
-            segments={VIEW_SEGMENTS}
-          />
-          {dragEnabled && (
-            <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
-          )}
-        </div>
-      </header>
+      <PageHeader icon={<HeaderIcon size={20} />} title={title}>
+        {!isLoading && (
+          <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-xs tabular-nums text-ink-faint">
+            {total}
+          </span>
+        )}
+        <Select
+          aria-label="排序方式"
+          size="sm"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as BookmarkSort)}
+          options={SORT_OPTIONS}
+          containerClassName="w-32"
+        />
+        <SegmentedControl
+          label="视图密度"
+          size="sm"
+          value={viewMode}
+          onChange={setViewMode}
+          segments={VIEW_SEGMENTS}
+        />
+        {dragEnabled && (
+          <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
+        )}
+      </PageHeader>
 
       {activeTags.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
@@ -337,12 +354,27 @@ export function LibraryPage() {
         </div>
       )}
 
+      {/* Lead with a plain-language line and a way out; the raw exception text
+          is kept, but demoted to an expandable detail for bug reports. */}
       {isError && (
         <div
           role="alert"
           className="mb-3 rounded-md border border-critical bg-critical-soft px-3.5 py-2.5 text-sm text-critical-ink"
         >
-          加载失败：{(error as Error).message}
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="min-w-0 flex-1">
+              没能加载书签列表。可能是网络不稳定，请稍后重试。
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => void refetch()} loading={isFetching}>
+              重试
+            </Button>
+          </div>
+          {error instanceof Error && error.message && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-2xs opacity-80">技术详情</summary>
+              <p className="mt-1 break-words text-2xs opacity-80">{error.message}</p>
+            </details>
+          )}
         </div>
       )}
 
@@ -492,6 +524,24 @@ export function LibraryPage() {
       )}
 
       <BulkActionBar scope={scope} allIds={items.map((b) => b.id)} />
+
+      <ConfirmDialog
+        open={purgeId !== null}
+        onClose={() => setPurgeId(null)}
+        onConfirm={() => {
+          if (purgeId) deleteForever.mutate([purgeId]);
+          setPurgeId(null);
+        }}
+        title="永久删除这条书签？"
+        message={
+          purgeTarget
+            ? `「${purgeTarget.title || purgeTarget.url}」将被彻底移除，无法再恢复。`
+            : '这条书签将被彻底移除，无法再恢复。'
+        }
+        confirmLabel="永久删除"
+        tone="danger"
+        loading={deleteForever.isPending}
+      />
     </div>
   );
 }

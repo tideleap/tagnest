@@ -31,6 +31,10 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     otherBytes: usage.otherBytes,
     quotaBytes,
     quotaFmt,
+    // Pre-formatted alongside the raw byte count, same contract as `quotaFmt`:
+    // the byte figure is what users actually care about when deciding whether
+    // to prune snapshots, and the object count alone cannot convey it.
+    snapshotFmt: formatBytes(usage.snapshotBytes),
     // Human-friendly single-line string for the section header:
     display: `当前使用 ${formatBytes(usage.totalBytes)} / ${quotaFmt}`,
   });
