@@ -72,6 +72,10 @@ const MIGRATION_PROBES = {
   // Probe one representative column as the "already applied" marker.
   '0009_auto_clear_settings.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('user_settings') WHERE name='search_auto_clear_delay'`,
+  // 0011 adds topic + needs_review to tag_suggestions via ALTER (non-idempotent).
+  // Probe one of the new columns as the "already applied" marker.
+  '0011_ai_enhancements.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('tag_suggestions') WHERE name='topic'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
