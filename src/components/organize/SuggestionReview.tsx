@@ -43,6 +43,10 @@ interface Group {
   items: AiSuggestion[];
   /** Highest confidence in the group, used for ordering. */
   top: number;
+  /** Topic phrase for the bookmark (shared by all rows of the group). */
+  topic: string | null;
+  /** Model flagged this proposal as needing a human sanity check. */
+  needsReview: boolean;
 }
 
 /** Below this a proposal is shown but flagged as a guess. */
@@ -70,6 +74,8 @@ function groupByBookmark(suggestions: AiSuggestion[]): Group[] {
       url: item.bookmarkUrl,
       items: [item],
       top: item.confidence,
+      topic: item.topic ?? null,
+      needsReview: item.needsReview,
     });
   }
 
@@ -189,6 +195,22 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, jobId 
                   {displayHost(group.url)}
                   <ExternalLink size={11} aria-hidden />
                 </a>
+                {(group.topic || group.needsReview) && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {group.topic && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-2xs text-ink-soft">
+                        <Sparkles size={11} aria-hidden />
+                        {group.topic}
+                      </span>
+                    )}
+                    {group.needsReview && (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-caution/60 px-1.5 py-0.5 text-2xs text-caution">
+                        <AlertTriangle size={11} aria-hidden />
+                        需复核
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex shrink-0 gap-1.5">

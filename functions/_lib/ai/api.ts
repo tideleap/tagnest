@@ -37,6 +37,8 @@ export function toApiSuggestion(row: SuggestionRow): AiSuggestion {
     confidence: row.confidence,
     source: row.source as AiSuggestion['source'],
     reason: row.reason,
+    topic: row.topic,
+    needsReview: row.needsReview,
     createdAt: row.createdAt,
   };
 }

@@ -39,6 +39,8 @@ export interface SuggestionResult {
   bookmarkId: string;
   tags: TagCandidate[];
   summary: string | null;
+  topic: string | null;
+  needsReview: boolean;
 }
 
 export type EngineKind = 'model' | 'heuristic' | 'mixed' | 'none';
@@ -93,6 +95,10 @@ export async function suggestForBookmarks(
   // ---- Track 2: the model --------------------------------------------
   const modelTags = new Map<number, RawCandidate[]>();
   const summaries = new Map<number, string>();
+  /** Bookmark index → topic phrase (model-supplied, used for clustering). */
+  const topics = new Map<number, string>();
+  /** Bookmark index → whether the model flagged the proposal as uncertain. */
+  const needsReviewFlags = new Map<number, boolean>();
   let modelError: string | null = null;
   let modelContributed = false;
   let fatal = false;
@@ -153,6 +159,10 @@ export async function suggestForBookmarks(
           modelContributed = true;
           summaries.set(globalIndex, item.summary);
         }
+        // Topic + review-flag are per-bookmark attributes; capture them once
+        // regardless of how many tags the model proposed.
+        if (item.topic) topics.set(globalIndex, item.topic);
+        if (item.needsReview) needsReviewFlags.set(globalIndex, true);
       }
     }
   } else if (!config) {
@@ -189,10 +199,18 @@ export async function suggestForBookmarks(
     }
     scored.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
 
+    // Prefer the model's own topic phrase; fall back to the top resolved tag
+    // so the in-job topic distribution is still populated for heuristic-only
+    // runs (e.g. no API key configured).
+    const topic = topics.get(index) ?? (scored.length > 0 ? scored[0].name : null);
+    const needsReview = needsReviewFlags.get(index) ?? false;
+
     return {
       bookmarkId: input.id,
       tags: scored.slice(0, Math.max(1, local.maxTags)),
       summary: summaries.get(index) ?? null,
+      topic,
+      needsReview,
     };
   });
 

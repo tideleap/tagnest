@@ -67,6 +67,10 @@ export interface TagCandidate {
 export interface Enrichment {
   summary: string | null;
   tags: TagCandidate[];
+  /** Topic phrase for the bookmark, used for clustering. */
+  topic: string | null;
+  /** Model's own recommendation for human review. */
+  needsReview: boolean;
 }
 
 /** A tag as the normaliser sees it. */

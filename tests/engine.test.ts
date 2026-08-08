@@ -125,4 +125,35 @@ describe('suggestForBookmarks — two-track orchestration', () => {
     expect(out.engine).toBe('heuristic');
     expect(out.results[0].tags.length).toBeGreaterThan(0);
   });
+
+  it('propagates the model topic and needsReview flag into the result', async () => {
+    const json = JSON.stringify({
+      results: [
+        {
+          i: 1,
+          tags: [{ name: '前端', confidence: 0.9, reason: 'React 文档' }],
+          topic: '前端框架',
+          needsReview: true,
+        },
+      ],
+    });
+    mockedCall.mockResolvedValue({ ok: true, text: json });
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: 'https://example.com/x', title: 'A page' }],
+      { vocab: emptyVocab, config: modelConfig, local: { ...local, heuristicsEnabled: false } },
+    );
+    expect(out.results[0].topic).toBe('前端框架');
+    expect(out.results[0].needsReview).toBe(true);
+  });
+
+  it('falls back to the top tag as topic when the model is absent', async () => {
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: 'https://github.com/foo/bar', title: 'A repo' }],
+      { vocab: emptyVocab, config: null, local },
+    );
+    // Heuristics tag github repos as 开源; with no model there is no topic
+    // phrase, so the top tag doubles as the clustering key.
+    expect(out.results[0].topic).toBe('开源');
+    expect(out.results[0].needsReview).toBe(false);
+  });
 });

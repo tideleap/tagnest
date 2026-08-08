@@ -276,8 +276,8 @@ export async function saveSuggestions(
       statements.push(
         env.DB.prepare(
           `INSERT INTO tag_suggestions
-             (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason, status, created_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?
+             (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason, topic, needs_review, status, created_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?
             WHERE NOT EXISTS (
               SELECT 1 FROM bookmark_tags bt
                WHERE bt.bookmark_id = ? AND bt.tag_id IS NOT NULL AND bt.tag_id = ?
@@ -296,6 +296,8 @@ export async function saveSuggestions(
           tag.confidence,
           tag.source,
           tag.reason,
+          result.topic,
+          result.needsReview ? 1 : 0,
           ts,
           result.bookmarkId,
           tag.tagId,
@@ -338,6 +340,10 @@ export interface SuggestionRow {
   confidence: number;
   source: string;
   reason: string | null;
+  /** Topic phrase for the bookmark, used for in-job clustering. */
+  topic: string | null;
+  /** Model flagged this proposal as needing a human sanity check. */
+  needsReview: boolean;
   createdAt: string;
 }
 
@@ -353,7 +359,7 @@ export async function listPendingSuggestions(
 
   const rows = await env.DB.prepare(
     `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source, s.reason,
-            s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
+            s.topic, s.needs_review, s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
        FROM tag_suggestions s
        JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
       WHERE s.user_id = ? AND s.status = 'pending' ${jobClause}
@@ -373,6 +379,8 @@ export async function listPendingSuggestions(
     confidence: Number(row.confidence ?? 0),
     source: String(row.source ?? 'model'),
     reason: (row.reason as string | null) ?? null,
+    topic: (row.topic as string | null) ?? null,
+    needsReview: Number(row.needs_review ?? 0) === 1,
     createdAt: String(row.created_at),
   }));
 }

@@ -32,6 +32,8 @@ describe('saveSuggestions — write-once, attribute everything', () => {
       {
         bookmarkId: 'b1',
         summary: '摘要内容',
+        topic: '前端框架',
+        needsReview: true,
         tags: [
           { name: '前端', tagId: 'fe', confidence: 0.9, source: 'model', reason: 'r1' },
           { name: '后端', tagId: null, confidence: 0.8, source: 'heuristic', reason: 'r2' },
@@ -44,6 +46,10 @@ describe('saveSuggestions — write-once, attribute everything', () => {
     expect(state.tag_suggestions).toHaveLength(2);
     expect(state.tag_suggestions.every((s) => s.status === 'pending')).toBe(true);
     expect(state.tag_suggestions.map((s) => s.source).sort()).toEqual(['heuristic', 'model']);
+    // The per-bookmark topic + review flag ride along on every tag row so the
+    // query can surface them grouped by bookmark.
+    expect(state.tag_suggestions.every((s) => s.topic === '前端框架')).toBe(true);
+    expect(state.tag_suggestions.every((s) => s.needs_review === 1)).toBe(true);
     expect(state.bookmarks[0].ai_summary).toBe('摘要内容');
   });
 
@@ -183,13 +189,15 @@ describe('countPending / listPendingSuggestions', () => {
         { id: 'b1', user_id: 'u1', url: 'https://a.com', title: '我的页面', description: null, deleted_at: null, ai_summary: null, created_at: '2024' },
       ],
       tag_suggestions: [
-        { id: 's1', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '前端', tag_id: 'fe', confidence: 0.9, source: 'model', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
+        { id: 's1', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '前端', tag_id: 'fe', confidence: 0.9, source: 'model', reason: 'r', topic: '前端框架', needs_review: 1, status: 'pending' as const, decided_at: null, created_at: '2024' },
       ],
     });
     expect(await countPending(env, 'u1')).toBe(1);
     const rows = await listPendingSuggestions(env, 'u1');
     expect(rows[0].bookmarkTitle).toBe('我的页面');
     expect(rows[0].bookmarkUrl).toBe('https://a.com');
+    expect(rows[0].topic).toBe('前端框架');
+    expect(rows[0].needsReview).toBe(true);
     expect(state.tag_suggestions).toHaveLength(1);
   });
 });

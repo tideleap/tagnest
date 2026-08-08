@@ -53,6 +53,10 @@ export interface SuggestionRow {
   confidence: number;
   source: string;
   reason: string | null;
+  /** Topic phrase for the bookmark, used for in-job clustering. */
+  topic?: string | null;
+  /** Model flagged this proposal as needing a human sanity check. */
+  needs_review?: number;
   status: 'pending' | 'accepted' | 'rejected';
   decided_at: string | null;
   created_at: string;
@@ -244,7 +248,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const jobId = jobClause ? String(params[1]) : null;
       const rows = state.tag_suggestions
         .filter((s) => s.user_id === userId && s.status === 'pending' && (!jobClause || s.job_id === jobId))
-        .map((s) => {
+          .map((s) => {
           const b = state.bookmarks.find((x) => x.id === s.bookmark_id);
           return {
             id: s.id,
@@ -256,6 +260,8 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
             confidence: s.confidence,
             source: s.source,
             reason: s.reason,
+            topic: s.topic ?? null,
+            needs_review: s.needs_review ?? 0,
             created_at: s.created_at,
           };
         })
@@ -380,9 +386,11 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         confidence: Number(params[6]),
         source: String(params[7]),
         reason: (params[8] as string | null) ?? null,
+        topic: (params[9] as string | null) ?? null,
+        needs_review: params[10] == null ? 0 : Number(params[10]),
         status: 'pending',
         decided_at: null,
-        created_at: String(params[9]),
+        created_at: String(params[11]),
       });
       return;
     }
