@@ -457,7 +457,7 @@ function BookmarkCardBase({
 
                   <div className="flex shrink-0 items-center gap-1">
                     {b.visitCount > 0 && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-[#ff4d6d] px-1.5 py-0.5 text-2xs font-semibold text-white shadow-sm">
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-critical px-1.5 py-0.5 text-2xs font-semibold text-white shadow-sm">
                         <Heart size={10} className="fill-white" aria-hidden />
                         <span className="tabular-nums">{b.visitCount}</span>
                       </span>

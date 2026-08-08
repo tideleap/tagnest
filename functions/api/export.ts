@@ -253,8 +253,8 @@ async function renderHtmlStream(ctx: ExportCtx): Promise<ReadableStream<Uint8Arr
  * large library never has to fit in worker memory (the previous version glued
  * every row into one string and could OOM on huge exports).
  *
- * HTML is Netscape format (re-imports into any browser); JSON is the "TMarks
- * standard" shape `{application, version, exportedAt, bookmarks:[…]}`.
+ * HTML is Netscape format (re-imports into any browser); JSON is the TagNest
+ * standard shape `{application, version, exportedAt, bookmarks:[…]}`.
  *
  * Options (query params, `1`/`true` or `0`/`false`):
  *   format         json | html | csv            (default json)

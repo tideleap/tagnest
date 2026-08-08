@@ -135,7 +135,7 @@ export function CollectionDetail() {
                 {b.faviconUrl ? (
                   <img src={b.faviconUrl} alt="" className="h-4 w-4 shrink-0 rounded-sm" loading="lazy" />
                 ) : (
-                  <span className="h-4 w-4 shrink-0 rounded-sm bg-surface-sunken" aria-hidden />
+                  <span className="h-4 w-4 shrink-0 rounded-sm bg-sunken" aria-hidden />
                 )}
                 <a
                   href={b.url}
@@ -413,7 +413,7 @@ function AddBookmarkDialog({
                       {b.faviconUrl ? (
                         <img src={b.faviconUrl} alt="" className="h-4 w-4 shrink-0 rounded-sm" />
                       ) : (
-                        <span className="h-4 w-4 shrink-0 rounded-sm bg-surface-sunken" aria-hidden />
+                        <span className="h-4 w-4 shrink-0 rounded-sm bg-sunken" aria-hidden />
                       )}
                       <span className="min-w-0 flex-1 truncate">{b.title || b.url}</span>
                       {added && <span className="shrink-0 text-2xs text-ink-faint">已添加</span>}

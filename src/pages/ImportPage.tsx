@@ -266,7 +266,7 @@ export function ImportPage() {
             </div>
           )}
 
-          <div className="pad-safe-b sticky bottom-0 flex items-center gap-2 border-t border-line bg-canvas py-3">
+          <div className="pad-safe-b sticky bottom-0 z-[35] flex items-center gap-2 border-t border-line bg-canvas py-3">
             <p className="flex-1 text-xs text-ink-soft">
               将导入 <strong className="tabular-nums text-ink">{willImport}</strong> 条书签
             </p>

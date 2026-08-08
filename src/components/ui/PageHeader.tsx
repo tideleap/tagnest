@@ -52,7 +52,7 @@ export function PageHeader({
         <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         {description && <p className="mt-1 text-sm leading-relaxed text-ink-soft">{description}</p>}
       </div>
-      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+      {children && <div className="flex flex-wrap shrink-0 items-center gap-2">{children}</div>}
     </header>
   );
 }

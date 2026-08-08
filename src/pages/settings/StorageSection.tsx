@@ -11,7 +11,7 @@ import {
 import { Card } from './Card';
 
 const EXPORT_FORMAT_OPTIONS = [
-  { value: 'json', label: 'TMarks 标准格式（推荐）' },
+  { value: 'json', label: 'TagNest JSON 格式（推荐）' },
   { value: 'html', label: 'HTML 书签（Netscape）' },
   { value: 'csv', label: 'CSV 表格' },
 ];

@@ -108,8 +108,9 @@ function ToastRow({ item }: { item: Toast }) {
 /**
  * Mounted once at the app root.
  *
- * Placed bottom-centre on phones so it clears the thumb bar, and bottom-right
- * on wider screens where the corner is out of the reading path.
+ * On phones it sits bottom-centre but is lifted above the fixed bottom tab
+ * bar (bottom-[76px]) so it never covers the nav; on wider screens it drops to
+ * the bottom-right corner, out of the reading path.
  */
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
@@ -118,7 +119,7 @@ export function Toaster() {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="pad-safe-b pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:right-0 sm:items-end sm:p-4"
+      className="pad-safe-b pointer-events-none fixed inset-x-0 bottom-[76px] z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:right-0 sm:items-end sm:p-4 md:bottom-0"
     >
       <div className="flex w-full max-w-sm flex-col gap-2">
         {toasts.map((t) => (
