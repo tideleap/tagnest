@@ -81,14 +81,14 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
           value={target}
           onChange={(value) => onTargetChange(value as AiJobTarget)}
           segments={[
-            { value: 'untagged', label: `未打标签${untagged > 0 ? `（${untagged}）` : ''}` },
-            { value: 'all', label: `全部书签${total > 0 ? `（${total}）` : ''}` },
+            { value: 'untagged', label: `未打标签（${untagged}）` },
+            { value: 'all', label: `全部书签（${total}）` },
           ]}
         />
         <p className="text-2xs text-ink-faint">
           {target === 'untagged'
-            ? 'AI 只分析还没有任何标签的书签，命中率最高。'
-            : '重新分析全部书签，已有标签不会被覆盖，只会补充建议。'}
+            ? `AI 只分析还没有任何标签的书签，当前共 ${untagged} 条。`
+            : `重新分析全部 ${total} 条书签，已有标签不会被覆盖，只会补充建议。`}
         </p>
       </div>
 

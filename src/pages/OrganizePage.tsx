@@ -184,7 +184,8 @@ function ContributionBar({
         <div className="h-full bg-brand transition-[width]" style={{ width: `${aiPercent}%` }} />
       </div>
       <p className="text-2xs text-ink-faint">
-        共 {overview.totalBookmarks} 条书签，其中 {overview.untaggedBookmarks} 条还没有任何标签。
+        全部 {overview.totalBookmarks} 条书签 · {overview.untaggedBookmarks} 条未打标签
+        {overview.untaggedBookmarks === 0 && '（当前没有待整理的书签）'}
       </p>
     </section>
   );
