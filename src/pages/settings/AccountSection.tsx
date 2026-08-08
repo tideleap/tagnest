@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { User as UserIcon } from 'lucide-react';
-import { Button, Card, Input, RemoteImage, Skeleton } from '@/components/ui';
+import { Button, Input, RemoteImage, Skeleton } from '@/components/ui';
 import { useAuth } from '@/stores/auth';
 import { useStats } from '@/hooks/queries';
 import { useChangePassword, useUpdateMe, type MePatch } from '@/hooks/queries/auth';
+import { Card } from './Card';
 
 export function AccountSection() {
   const user = useAuth((s) => s.user);
