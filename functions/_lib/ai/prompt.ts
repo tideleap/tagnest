@@ -106,17 +106,23 @@ function taggingSchema(options: { maxTags: number; wantSummary: boolean }): stri
   const resultShape = options.wantSummary
     ? `{"i":1,"tags":[${tagShape}],"summary":"一句话摘要或null","topic":"主题短语","needsReview":false}`
     : `{"i":1,"tags":[${tagShape}],"topic":"主题短语","needsReview":false}`;
-  return [
+  const lines = [
     '输出格式：仅输出一个 JSON 对象，不要代码块、不要解释。',
     `schema: {"results":[${resultShape}]}`,
     '',
     '字段说明：',
     '- i: 书签序号，从 1 开始，与输入顺序一致。',
     `- tags: 0-${options.maxTags} 个标签。confidence 为 0-1。isNew 为 true 表示建议新建标签。`,
-    '- summary: 一句话中文摘要；无法判断填 null。',
-    '- topic: 该书签所属的主题短语，如「前端框架」「机器学习论文」「设计灵感」。',
-    '- needsReview: 当你对标签是否合适没有把握时填 true，即使用户未设置低置信度阈值也会进入人工确认。',
-  ].join('\n');
+  ];
+  // The summary field is only documented when summarisation is on, so a run
+  // that does not want summaries never asks the model to produce one (and
+  // saves the tokens the model would spend on it).
+  if (options.wantSummary) {
+    lines.push('- summary: 一句话中文摘要；无法判断填 null。');
+  }
+  lines.push('- topic: 该书签所属的主题短语，如「前端框架」「机器学习论文」「设计灵感」。');
+  lines.push('- needsReview: 当你对标签是否合适没有把握时填 true，即使用户未设置低置信度阈值也会进入人工确认。');
+  return lines.join('\n');
 }
 
 const DEFAULT_EXAMPLES: Example[] = [

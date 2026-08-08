@@ -129,8 +129,8 @@ describe('parseTaggingResponse — defensive batch parsing', () => {
   it('accepts bare-string tags with a default confidence', () => {
     const out = parseTaggingResponse(JSON.stringify({ results: [{ i: 1, tags: ['React', 'vue'] }] }), 1);
     expect(out[0].tags).toEqual([
-      { name: 'React', confidence: 0.6, reason: '模型建议' },
-      { name: 'vue', confidence: 0.6, reason: '模型建议' },
+      { name: 'React', confidence: 0.6, reason: '模型建议', isNew: true },
+      { name: 'vue', confidence: 0.6, reason: '模型建议', isNew: true },
     ]);
   });
 
