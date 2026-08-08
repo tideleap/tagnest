@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import { ensureTags } from '../db';
 import { newId, nowIso } from '../ids';
+import { domainOf, recordFeedback, type FeedbackRecord } from './feedback';
 import type { SuggestionResult } from './engine';
 
 /**
@@ -276,8 +277,8 @@ export async function saveSuggestions(
       statements.push(
         env.DB.prepare(
           `INSERT INTO tag_suggestions
-             (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason, topic, needs_review, status, created_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?
+             (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason, topic, needs_review, feedback_boosted, status, created_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?
             WHERE NOT EXISTS (
               SELECT 1 FROM bookmark_tags bt
                WHERE bt.bookmark_id = ? AND bt.tag_id IS NOT NULL AND bt.tag_id = ?
@@ -298,6 +299,7 @@ export async function saveSuggestions(
           tag.reason,
           result.topic,
           result.needsReview ? 1 : 0,
+          tag.feedbackBoosted ? 1 : 0,
           ts,
           result.bookmarkId,
           tag.tagId,
@@ -344,6 +346,8 @@ export interface SuggestionRow {
   topic: string | null;
   /** Model flagged this proposal as needing a human sanity check. */
   needsReview: boolean;
+  /** Confidence was lifted by the user's feedback history (see feedbackBoost). */
+  feedbackBoosted: boolean;
   createdAt: string;
 }
 
@@ -359,7 +363,7 @@ export async function listPendingSuggestions(
 
   const rows = await env.DB.prepare(
     `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source, s.reason,
-            s.topic, s.needs_review, s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
+            s.topic, s.needs_review, s.feedback_boosted, s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
        FROM tag_suggestions s
        JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
       WHERE s.user_id = ? AND s.status = 'pending' ${jobClause}
@@ -381,6 +385,7 @@ export async function listPendingSuggestions(
     reason: (row.reason as string | null) ?? null,
     topic: (row.topic as string | null) ?? null,
     needsReview: Number(row.needs_review ?? 0) === 1,
+    feedbackBoosted: Number(row.feedback_boosted ?? 0) === 1,
     createdAt: String(row.created_at),
   }));
 }
@@ -403,14 +408,17 @@ export async function decideSuggestions(
   userId: string,
   ids: string[],
   action: 'accept' | 'reject',
+  opts?: { renameTo?: string } | null,
 ): Promise<ApplyOutcome> {
   if (ids.length === 0) return { accepted: 0, rejected: 0, tagsCreated: 0 };
 
   const placeholders = ids.map(() => '?').join(',');
   const rows = await env.DB.prepare(
-    `SELECT id, bookmark_id, tag_name, tag_id, confidence
-       FROM tag_suggestions
-      WHERE user_id = ? AND status = 'pending' AND id IN (${placeholders})`,
+    `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source,
+            b.url AS bookmark_url, b.title AS bookmark_title
+       FROM tag_suggestions s
+       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
+      WHERE s.user_id = ? AND s.status = 'pending' AND s.id IN (${placeholders})`,
   )
     .bind(userId, ...ids)
     .all<Record<string, unknown>>();
@@ -420,6 +428,23 @@ export async function decideSuggestions(
   const ts = nowIso();
   const foundIds = rows.results.map((r) => String(r.id));
 
+  // The feedback event for every decided suggestion. Computed once and shared
+  // by both branches so the accept/reject loop is recorded consistently.
+  const feedback: FeedbackRecord[] = rows.results.map((r) => {
+    const url = String(r.bookmark_url ?? '');
+    const domain = domainOf(url);
+    const context = `${String(r.bookmark_title ?? '')} · ${domain ?? ''}`.trim();
+    return {
+      bookmarkId: String(r.bookmark_id),
+      tagName: String(r.tag_name),
+      action: action === 'reject' ? 'rejected' : 'accepted',
+      source: (r.source as string | null) ?? null,
+      confidence: Number(r.confidence ?? 0),
+      domain,
+      context,
+    };
+  });
+
   if (action === 'reject') {
     const marks = foundIds.map(() => '?').join(',');
     await env.DB.prepare(
@@ -428,12 +453,22 @@ export async function decideSuggestions(
     )
       .bind(ts, userId, ...foundIds)
       .run();
+    await recordFeedback(env, userId, feedback);
     return { accepted: 0, rejected: foundIds.length, tagsCreated: 0 };
+  }
+
+  // "Edit before accept": when a single suggestion is renamed, accept it under
+  // the new spelling and record a 'modified' event so future runs prefer it.
+  let renameTo: string | null = null;
+  if (opts?.renameTo && ids.length === 1) {
+    const trimmed = opts.renameTo.trim();
+    if (trimmed) renameTo = trimmed;
   }
 
   // Resolve every name in one pass so a batch accept is a couple of round
   // trips rather than one per tag.
   const names = [...new Set(rows.results.map((r) => String(r.tag_name)))];
+  if (renameTo) names.push(renameTo);
   const { ids: tagIds, created } = await ensureTags(env, userId, names);
 
   const byLower = new Map<string, string>();
@@ -441,10 +476,43 @@ export async function decideSuggestions(
     if (tagIds[index]) byLower.set(name.toLowerCase(), tagIds[index]);
   });
 
+  // Rewrite the renamed suggestion's feedback as a 'modified' event (the old
+  // spelling is rejected and mapped to the new) plus an 'accepted' event for
+  // the new name so it earns a boost too.
+  if (renameTo) {
+    const target = rows.results[0];
+    const idx = feedback.findIndex(
+      (f) => f.bookmarkId === String(target.bookmark_id) && f.tagName === String(target.tag_name),
+    );
+    if (idx >= 0) {
+      const { domain, context, source, confidence } = feedback[idx];
+      feedback[idx] = {
+        bookmarkId: String(target.bookmark_id),
+        tagName: String(target.tag_name),
+        action: 'modified',
+        finalTagId: byLower.get(renameTo.toLowerCase()) ?? null,
+        source,
+        confidence,
+        domain,
+        context: renameTo,
+      };
+      feedback.push({
+        bookmarkId: String(target.bookmark_id),
+        tagName: renameTo,
+        action: 'accepted',
+        source: 'taxonomy',
+        confidence: null,
+        domain,
+        context,
+      });
+    }
+  }
+
   const statements: D1PreparedStatement[] = [];
 
   for (const row of rows.results) {
-    const tagId = (row.tag_id as string | null) ?? byLower.get(String(row.tag_name).toLowerCase());
+    const tagName = renameTo ? renameTo : String(row.tag_name);
+    const tagId = byLower.get(tagName.toLowerCase()) ?? null;
     if (!tagId) continue;
 
     statements.push(
@@ -464,6 +532,7 @@ export async function decideSuggestions(
   );
 
   await env.DB.batch(statements);
+  await recordFeedback(env, userId, feedback);
   return { accepted: foundIds.length, rejected: 0, tagsCreated: created };
 }
 

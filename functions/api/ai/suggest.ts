@@ -6,6 +6,7 @@ import {
   loadAiConfig,
   loadBookmarkInputs,
   loadConfigRow,
+  loadFeedbackProfile,
   loadVocabulary,
   saveSuggestions,
   suggestForBookmarks,
@@ -53,7 +54,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   if (inputs.length === 0) throw badRequest('所选书签不存在或已被删除');
 
   const vocab = await loadVocabulary(ctx.env, userId);
-  const outcome = await suggestForBookmarks(inputs, { vocab, config, local });
+  const feedback = await loadFeedbackProfile(ctx.env, userId);
+  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback });
 
   await saveSuggestions(ctx.env, userId, null, outcome.results);
 

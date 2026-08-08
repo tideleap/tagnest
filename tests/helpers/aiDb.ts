@@ -57,8 +57,24 @@ export interface SuggestionRow {
   topic?: string | null;
   /** Model flagged this proposal as needing a human sanity check. */
   needs_review?: number;
+  /** Confidence was lifted by the user's feedback history. */
+  feedback_boosted?: number;
   status: 'pending' | 'accepted' | 'rejected';
   decided_at: string | null;
+  created_at: string;
+}
+
+export interface FeedbackRow {
+  id: string;
+  user_id: string;
+  bookmark_id: string;
+  tag_name: string;
+  action: string;
+  final_tag_id: string | null;
+  source: string | null;
+  confidence: number | null;
+  domain: string | null;
+  context: string | null;
   created_at: string;
 }
 
@@ -96,6 +112,7 @@ export interface AiDbState {
   bookmarks: BookmarkRow[];
   bookmark_tags: BookmarkTagRow[];
   tag_suggestions: SuggestionRow[];
+  ai_feedback: FeedbackRow[];
   ai_jobs: JobRow[];
   ai_settings: SettingsRow[];
 }
@@ -124,6 +141,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     bookmarks: seed?.bookmarks ?? [],
     bookmark_tags: seed?.bookmark_tags ?? [],
     tag_suggestions: seed?.tag_suggestions ?? [],
+    ai_feedback: seed?.ai_feedback ?? [],
     ai_jobs: seed?.ai_jobs ?? [],
     ai_settings: seed?.ai_settings ?? [],
   };
@@ -241,8 +259,13 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         .slice(0, Number(params[1] ?? 1000));
     }
 
-    // listPendingSuggestions
-    if (sql.includes('FROM TAG_SUGGESTIONS S') && sql.includes('JOIN BOOKMARKS B')) {
+    // listPendingSuggestions — note the FEEDBACK_BOOSTED column, which the
+    // decideSuggestions fetch does not select, so the two queries stay distinct.
+    if (
+      sql.includes('FROM TAG_SUGGESTIONS S') &&
+      sql.includes('JOIN BOOKMARKS B') &&
+      sql.includes('FEEDBACK_BOOSTED')
+    ) {
       const userId = String(params[0]);
       const jobClause = sql.includes('S.JOB_ID = ?');
       const jobId = jobClause ? String(params[1]) : null;
@@ -262,6 +285,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
             reason: s.reason,
             topic: s.topic ?? null,
             needs_review: s.needs_review ?? 0,
+            feedback_boosted: s.feedback_boosted ?? 0,
             created_at: s.created_at,
           };
         })
@@ -269,13 +293,39 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return rows;
     }
 
+    // loadFeedbackProfile
+    if (sql.startsWith('SELECT TAG_NAME, ACTION, DOMAIN, FINAL_TAG_ID, CONTEXT FROM AI_FEEDBACK')) {
+      const userId = String(params[0]);
+      return state.ai_feedback
+        .filter((f) => f.user_id === userId)
+        .map((f) => ({
+          tag_name: f.tag_name,
+          action: f.action,
+          domain: f.domain,
+          final_tag_id: f.final_tag_id,
+          context: f.context,
+        }));
+    }
+
     // decideSuggestions / autoApply row fetch
-    if (sql.startsWith('SELECT ID, BOOKMARK_ID, TAG_NAME, TAG_ID, CONFIDENCE FROM TAG_SUGGESTIONS')) {
+    if (sql.startsWith('SELECT S.ID, S.BOOKMARK_ID, S.TAG_NAME, S.TAG_ID, S.CONFIDENCE, S.SOURCE')) {
       const userId = String(params[0]);
       const ids = params.slice(1).map(String);
-      return state.tag_suggestions.filter(
-        (s) => s.user_id === userId && s.status === 'pending' && ids.includes(s.id),
-      );
+      return state.tag_suggestions
+        .filter((s) => s.user_id === userId && s.status === 'pending' && ids.includes(s.id))
+        .map((s) => {
+          const b = state.bookmarks.find((x) => x.id === s.bookmark_id);
+          return {
+            id: s.id,
+            bookmark_id: s.bookmark_id,
+            tag_name: s.tag_name,
+            tag_id: s.tag_id,
+            confidence: s.confidence,
+            source: s.source,
+            bookmark_url: b?.url ?? '',
+            bookmark_title: b?.title ?? '',
+          };
+        });
     }
 
     if (sql.startsWith('SELECT ID FROM TAG_SUGGESTIONS') && sql.includes('CONFIDENCE >= ?')) {
@@ -388,9 +438,28 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         reason: (params[8] as string | null) ?? null,
         topic: (params[9] as string | null) ?? null,
         needs_review: params[10] == null ? 0 : Number(params[10]),
+        feedback_boosted: params[11] == null ? 0 : Number(params[11]),
         status: 'pending',
         decided_at: null,
-        created_at: String(params[11]),
+        created_at: String(params[12]),
+      });
+      return;
+    }
+
+    // recordFeedback: INSERT INTO AI_FEEDBACK
+    if (sql.startsWith('INSERT INTO AI_FEEDBACK')) {
+      state.ai_feedback.push({
+        id: String(params[0]),
+        user_id: String(params[1]),
+        bookmark_id: String(params[2]),
+        tag_name: String(params[3]),
+        action: String(params[4]),
+        final_tag_id: params[5] == null ? null : String(params[5]),
+        source: params[6] == null ? null : String(params[6]),
+        confidence: params[7] == null ? null : Number(params[7]),
+        domain: params[8] == null ? null : String(params[8]),
+        context: params[9] == null ? null : String(params[9]),
+        created_at: String(params[10]),
       });
       return;
     }

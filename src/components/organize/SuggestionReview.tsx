@@ -301,6 +301,15 @@ function TagProposal({
       <Badge tone="neutral" className="hidden sm:inline-flex">
         {SOURCE_LABEL[item.source] ?? item.source}
       </Badge>
+      {item.feedbackBoosted && (
+        <span
+          title="根据你的历史偏好，这条建议被提升了置信度"
+          className="inline-flex items-center gap-0.5 rounded bg-positive-soft px-1 text-[10px] text-positive-ink"
+        >
+          <Sparkles size={10} aria-hidden />
+          已学习
+        </span>
+      )}
 
       <button
         type="button"

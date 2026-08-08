@@ -39,6 +39,7 @@ export function toApiSuggestion(row: SuggestionRow): AiSuggestion {
     reason: row.reason,
     topic: row.topic,
     needsReview: row.needsReview,
+    feedbackBoosted: row.feedbackBoosted,
     createdAt: row.createdAt,
   };
 }

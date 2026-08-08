@@ -267,6 +267,11 @@ export interface AiSuggestion {
    * even if confidence is not extremely low.
    */
   needsReview: boolean;
+  /**
+   * True when the user's feedback history lifted this proposal's confidence,
+   * surfaced in the review queue as a "已学习" hint.
+   */
+  feedbackBoosted: boolean;
   createdAt: string;
 }
 

@@ -62,6 +62,12 @@ export interface TagCandidate {
   source: CandidateSource;
   /** Short human-readable justification, e.g. "域名 github.com" or "复用已有标签". */
   reason: string;
+  /**
+   * Set when the user's feedback history lifted this candidate's confidence.
+   * Surfaced in the review queue as a "已学习" hint and persisted alongside the
+   * suggestion so the loop is visible.
+   */
+  feedbackBoosted?: boolean;
 }
 
 export interface Enrichment {

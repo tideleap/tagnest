@@ -76,6 +76,10 @@ const MIGRATION_PROBES = {
   // Probe one of the new columns as the "already applied" marker.
   '0011_ai_enhancements.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('tag_suggestions') WHERE name='topic'`,
+  // 0012 adds feedback_boosted to tag_suggestions via ALTER (non-idempotent) and
+  // creates ai_feedback (idempotent via IF NOT EXISTS). Probe the column.
+  '0012_ai_feedback.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('tag_suggestions') WHERE name='feedback_boosted'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

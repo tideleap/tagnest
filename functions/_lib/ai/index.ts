@@ -3,6 +3,7 @@ import { createLogger } from '../logger';
 import { loadAiConfig, loadConfigRow, loadVocabulary, toLocalConfig } from './config';
 import { suggestForBookmarks } from './engine';
 import { saveSuggestions } from './store';
+import { loadFeedbackProfile } from './feedback';
 import type { EnrichInput } from './types';
 
 /**
@@ -35,6 +36,7 @@ export * from './prompt';
 export * from './providers';
 export * from './engine';
 export * from './store';
+export * from './feedback';
 export * from './api';
 
 /**
@@ -72,10 +74,12 @@ export async function enrichBookmark(
     if (!config && !local.heuristicsEnabled) return;
 
     const vocab = await loadVocabulary(env, userId);
+    const feedback = await loadFeedbackProfile(env, userId);
     const outcome = await suggestForBookmarks([{ id: bookmarkId, ...input }], {
       vocab,
       config,
       local,
+      feedback,
     });
 
     const result = outcome.results[0];

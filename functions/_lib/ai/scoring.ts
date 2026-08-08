@@ -1,5 +1,6 @@
 import type { EnrichInput, TagCandidate, VocabEntry, Vocabulary } from './types';
 import { normalizeKey } from './taxonomy';
+import { domainOf, feedbackMultiplier, type FeedbackProfile } from './feedback';
 
 /**
  * Multi-dimensional scoring signals that raise the precision of the AI
@@ -164,6 +165,8 @@ export function scoreTagCandidate(
   input: EnrichInput,
   hostBoost: number,
   vocabEntry: VocabEntry | null,
+  /** User feedback memory; when present, bends confidence by (tag, domain) history. */
+  feedback?: FeedbackProfile | null,
 ): TagCandidate | null {
   let confidence = candidate.confidence;
 
@@ -177,13 +180,35 @@ export function scoreTagCandidate(
   // 3) Same-host neighbourhood.
   confidence *= hostBoost;
 
+  // 4) User feedback memory: bend confidence by the (tag, domain) history.
+  //    A strongly-rejected tag is dropped outright; a strongly-accepted tag is
+  //    lifted; a mixed history is chipped down but never below the mixed floor.
+  let feedbackBoosted = false;
+  if (feedback) {
+    const domain = domainOf(input.url);
+    const tagEffect = feedbackMultiplier(feedback.byTag.get(normalizeKey(candidate.name)));
+    if (tagEffect.drop) return null;
+    let mult = tagEffect.mult;
+    if (domain) {
+      const tdEffect = feedbackMultiplier(
+        feedback.byTagDomain.get(`${normalizeKey(candidate.name)}|${domain}`),
+      );
+      if (tdEffect.drop) return null;
+      if (tdEffect.mult > mult) mult = tdEffect.mult;
+    }
+    if (mult !== 1) {
+      confidence = Math.min(1, Math.max(0, confidence * mult));
+      if (mult > 1) feedbackBoosted = true;
+    }
+  }
+
   const capped = Math.min(1, Math.max(0, confidence));
   const floor =
     candidate.source === 'heuristic' ? MIN_HEURISTIC_CONFIDENCE : MIN_MODEL_CONFIDENCE;
 
   if (capped < floor) return null;
 
-  return { ...candidate, confidence: capped };
+  return { ...candidate, confidence: capped, feedbackBoosted };
 }
 
 /** Highest-frequency existing tag for a candidate, for the reuse boost. */

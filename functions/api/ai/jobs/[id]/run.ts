@@ -10,6 +10,7 @@ import {
   loadAiConfig,
   loadBookmarkInputs,
   loadConfigRow,
+  loadFeedbackProfile,
   loadVocabulary,
   saveSuggestions,
   suggestForBookmarks,
@@ -84,13 +85,16 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // That is what stops a long run from inventing "前端" and "Frontend" in two
   // different chunks of the same job.
   const vocab = await loadVocabulary(ctx.env, userId);
+  // Load the user's accept/reject history so this chunk's proposals are bent by
+  // what they have accepted or rejected before (the "越用越准" loop).
+  const feedback = await loadFeedbackProfile(ctx.env, userId);
 
   const inputs = await loadBookmarkInputs(ctx.env, userId, slice);
   // Anything that vanished between snapshot and now (trashed, deleted) counts
   // as processed-but-failed rather than silently shrinking the total.
   const missing = slice.length - inputs.length;
 
-  const outcome = await suggestForBookmarks(inputs, { vocab, config, local });
+  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback });
 
   const written = await saveSuggestions(ctx.env, userId, jobId, outcome.results);
   const autoApplied = await autoApply(ctx.env, userId, local.autoApplyThreshold, jobId);

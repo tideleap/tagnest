@@ -7,6 +7,7 @@ import {
   scoreTagCandidate,
   vocabularyEntryFor,
 } from './scoring';
+import { renameByFeedback, type FeedbackProfile } from './feedback';
 import type { AiConfig, EnrichInput, LocalConfig, TagCandidate, Vocabulary } from './types';
 
 /**
@@ -60,6 +61,12 @@ export interface SuggestOptions {
   /** Null when no model is available; heuristics still run. */
   config: AiConfig | null;
   local: LocalConfig;
+  /**
+   * User feedback memory. When supplied, the engine lifts tags the user
+   * repeatedly accepts, drops ones they keep rejecting, and prefers the
+   * spellings they have switched to. Loaded by callers via `loadFeedbackProfile`.
+   */
+  feedback?: FeedbackProfile | null;
   fetchImpl?: typeof fetch;
 }
 
@@ -82,6 +89,7 @@ export async function suggestForBookmarks(
   }
 
   const { vocab, config, local } = options;
+  const feedback = options.feedback ?? null;
 
   // ---- Track 1: local heuristics -------------------------------------
   const heuristics = new Map<number, RawCandidate[]>();
@@ -171,10 +179,19 @@ export async function suggestForBookmarks(
 
   // ---- Merge, normalise, rank, and score -----------------------------
   const results: SuggestionResult[] = inputs.map((input, index) => {
+    // Apply the user's rename history before resolution: a tag they have
+    // repeatedly switched ("React" → "React.js") is proposed under their
+    // preferred spelling, so resolution can merge it with the right existing
+    // tag rather than inventing a near-duplicate.
     const raw: RawCandidate[] = [
       ...(modelTags.get(index) ?? []),
       ...(heuristics.get(index) ?? []),
-    ];
+    ].map((c) => {
+      if (!feedback) return c;
+      const renamed = renameByFeedback(c.name, feedback);
+      if (renamed === c.name) return c;
+      return { ...c, name: renamed, reason: `按你以往偏好改用「${renamed}」` };
+    });
 
     // Base resolution: normalise against the user's taxonomy, merge duplicate
     // engines, and rank by agreement (as before).
@@ -194,6 +211,7 @@ export async function suggestForBookmarks(
         input,
         hostBoostCache(candidate.name),
         vocabEntry,
+        feedback,
       );
       if (boosted) scored.push(boosted);
     }
