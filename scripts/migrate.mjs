@@ -115,6 +115,28 @@ const normalizeSql = (sql) => String(sql).replace(/\s+/g, ' ').trim();
 
 const WRANGLER_CLI = resolve(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 
+// Resolve the Cloudflare account id. Prefer the explicit secret; fall back to
+// `wrangler whoami` (an API token is account-scoped, so whoami reports it).
+// Without an account id, `wrangler d1 execute --remote` cannot target the
+// database and the migration step fails — blocking a release that otherwise
+// only needs the (account-scoped) API token. This keeps migrations running
+// even when CLOUDFLARE_ACCOUNT_ID is left unset.
+if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
+  try {
+    const res = spawnSync(process.execPath, [WRANGLER_CLI, 'whoami'], {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      env: { ...process.env, http_proxy: '', https_proxy: '', HTTP_PROXY: '', HTTPS_PROXY: '', all_proxy: '', ALL_PROXY: '' },
+    });
+    const out = (res.stdout ?? '') + (res.stderr ?? '');
+    const m = out.match(/\b[0-9a-f]{32}\b/i);
+    if (m) process.env.CLOUDFLARE_ACCOUNT_ID = m[0];
+  } catch {
+    /* ignore */
+  }
+}
+
 const run = (args) => {
   const sanitized = args.map((a, i) => (i > 0 && args[i - 1] === '--command' ? normalizeSql(a) : a));
   // Invoke the local wrangler CLI directly through node with `shell: false`.

@@ -62,6 +62,35 @@ const cleanEnv = {
   ALL_PROXY: '',
 };
 
+// Resolve the Cloudflare account id. Prefer the explicit secret; fall back to
+// `wrangler whoami` (an API token is account-scoped, so whoami reports it).
+// Without an account id, every account-level wrangler call (d1/r2/kv) returns
+// nothing and the script would wrongly try to (re)create resources — which
+// then fails and blocks the whole deploy. This keeps the one-click flow
+// working even when CLOUDFLARE_ACCOUNT_ID is left unset.
+const resolveAccountId = () => {
+  if (process.env.CLOUDFLARE_ACCOUNT_ID) return process.env.CLOUDFLARE_ACCOUNT_ID;
+  try {
+    const res = spawnSync(process.execPath, [WRANGLER_CLI, 'whoami'], {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      env: { ...process.env, http_proxy: '', https_proxy: '', HTTP_PROXY: '', HTTPS_PROXY: '', all_proxy: '', ALL_PROXY: '' },
+    });
+    const out = (res.stdout ?? '') + (res.stderr ?? '');
+    const m = out.match(/\b[0-9a-f]{32}\b/i);
+    if (m) return m[0];
+  } catch {
+    /* ignore */
+  }
+  return '';
+};
+const ACCOUNT_ID = resolveAccountId();
+if (ACCOUNT_ID) {
+  process.env.CLOUDFLARE_ACCOUNT_ID = ACCOUNT_ID;
+  console.log(C.dim(`  使用账户 ${ACCOUNT_ID}（来自 wrangler whoami）`));
+}
+
 function wrangler(args, { input, capture = false, allowFail = false } = {}) {
   const shown = `wrangler ${args.join(' ')}`;
   const piped = Boolean(input) || capture;
