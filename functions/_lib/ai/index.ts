@@ -32,6 +32,7 @@ export * from './taxonomy';
 export * from './heuristics';
 export * from './scoring';
 export * from './grouping';
+export * from './grouping-apply';
 export * from './prompt';
 export * from './providers';
 export * from './engine';

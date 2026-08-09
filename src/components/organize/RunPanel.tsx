@@ -1,5 +1,5 @@
-import { AlertTriangle, CircleStop, Cpu, Play, Sparkles } from 'lucide-react';
-import type { AiEngineKind, AiJobTarget, AiOverview } from '@shared/types';
+import { AlertTriangle, CircleStop, Cpu, FolderTree, Play, Sparkles } from 'lucide-react';
+import type { AiEngineKind, AiJobTarget, AiOverview, AutoGroupResult } from '@shared/types';
 import { Badge, Button, SegmentedControl } from '@/components/ui';
 import { cx } from '@/lib/cx';
 import type { RunState } from '@/hooks/queries/organize';
@@ -161,7 +161,52 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
       )}
 
       {run.error && <Notice tone="critical">{run.error}</Notice>}
+
+      {/* Post-run hierarchy summary. Shows when the server finished the automatic
+          一级→二级→三级 grouping along with the tag organization. */}
+      {run.autoGrouped && <HierarchySummary result={run.autoGrouped} />}
     </section>
+  );
+}
+
+function HierarchySummary({ result }: { result: AutoGroupResult }) {
+  if (result.createdCategories === 0 && result.relocated === 0) {
+    return (
+      <Notice tone="info">
+        <span className="flex items-center gap-1.5">
+          <FolderTree size={14} />
+          本次整理未产生新的层级分组，现有标签层级已保持稳定。
+        </span>
+      </Notice>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md bg-sunken px-3 py-2.5">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-ink-soft">
+        <FolderTree size={14} aria-hidden />
+        已自动构建三级标签分组
+      </p>
+      <p className="text-2xs text-ink-faint">
+        新建 {result.createdCategories} 个分类 · 调整 {result.relocated} 个标签 ·{' '}
+        {result.untouched} 个保持原位
+      </p>
+      {result.summary.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {result.summary.slice(0, 8).map((line) => (
+            <li
+              key={line}
+              className="inline-flex items-center rounded bg-surface px-1.5 py-0.5 text-2xs text-ink-soft"
+            >
+              {line}
+            </li>
+          ))}
+          {result.summary.length > 8 && (
+            <li className="text-2xs text-ink-faint">+{result.summary.length - 8}</li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 

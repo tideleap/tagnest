@@ -2,6 +2,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, badRequestCode, json, readJson } from '../../_lib/http';
 import {
+  classifyTag,
   listPendingSuggestions,
   loadAiConfig,
   loadBookmarkInputs,
@@ -64,7 +65,12 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // the only view that matches what the review queue will actually show.
   const all = await listPendingSuggestions(ctx.env, userId, 200);
   const wanted = new Set(inputs.map((i) => i.id));
-  const suggestions = all.filter((s) => wanted.has(s.bookmarkId)).map(toApiSuggestion);
+  const suggestions = all
+    .filter((s) => wanted.has(s.bookmarkId))
+    .map((s) => {
+      const path = classifyTag(s.tagName);
+      return { ...toApiSuggestion(s), category: path?.[0] ?? null, subcategory: path?.[1] ?? null };
+    });
 
   return json({
     suggestions,

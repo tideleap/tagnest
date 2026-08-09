@@ -1,7 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
+  ChevronDown,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   Download,
@@ -18,12 +20,12 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { Tag } from '@shared/types';
 import { cx } from '@/lib/cx';
-import { IconButton, Skeleton, TagChip } from '@/components/ui';
+import { IconButton, Skeleton } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
 import { useStats, useTags } from '@/hooks/queries';
 import { Logo } from '@/components/decor/Logo';
-import { TagGlobe } from '@/components/tags/TagGlobe';
 
 /**
  * How labels behave at the current width.
@@ -157,9 +159,6 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
     trashed: stats?.trashed,
   };
 
-  // Only the busiest tags earn a slot; the rest live on the tags page.
-  const topTags = (tags ?? []).filter((t) => t.count > 0).slice(0, 8);
-
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const activeTagIds = useMemo(
@@ -201,7 +200,7 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
 
       <div className={cx('mt-5 min-h-0 flex-1 overflow-y-auto scrollbar-slim', BLOCK_VISIBILITY[mode])}>
         <h2 className="px-2.5 pb-2 text-2xs font-semibold uppercase tracking-wide text-ink-faint">
-          常用标签
+          标签分组
         </h2>
         {tagsLoading ? (
           <div className="flex flex-col gap-1.5 px-2.5 py-1">
@@ -209,37 +208,12 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
             <Skeleton className="h-5 w-16" />
             <Skeleton className="h-5 w-20" />
           </div>
-        ) : topTags.length === 0 ? (
+        ) : (tags ?? []).length === 0 ? (
           <p className="px-2.5 text-xs leading-relaxed text-ink-faint">
             还没有标签。给书签打上标签后会出现在这里。
           </p>
         ) : (
-          <div className="min-w-0 px-2">
-            {/* 3D globe — visual peek; clicks open a tag detail modal. The flat
-                chip list below stays in the DOM as the keyboard / screen-reader
-                path, and both lead to the same filtering. */}
-            <TagGlobe tags={topTags} />
-            <ul className="flex flex-wrap gap-2 pb-1">
-              {topTags.map((tag) => (
-                <li key={tag.id}>
-                  <button
-                    type="button"
-                    onClick={() => toggleTag(tag.id)}
-                    aria-pressed={activeTagIds.includes(tag.id)}
-                    className="max-w-full text-left"
-                  >
-                    <TagChip
-                      name={tag.name}
-                      colorIndex={tag.colorIndex}
-                      count={tag.count}
-                      size="sm"
-                      active={activeTagIds.includes(tag.id)}
-                    />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <TagTree tags={tags ??[]} activeTagIds={activeTagIds} onToggle={toggleTag} />
         )}
       </div>
 
@@ -256,6 +230,157 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
         ))}
       </ul>
     </nav>
+  );
+}
+
+interface TreeNode extends Tag {
+  children: TreeNode[];
+}
+
+function buildTagTree(tags: Tag[]): TreeNode[] {
+  const nodes = new Map<string, TreeNode>();
+  for (const t of tags) nodes.set(t.id, { ...t, children: [] });
+  const tops: TreeNode[] = [];
+  for (const t of tags) {
+    const node = nodes.get(t.id)!;
+    if (t.parentId && nodes.has(t.parentId)) nodes.get(t.parentId)!.children.push(node);
+    else tops.push(node);
+  }
+  // Stable, readable order: by usage then name.
+  const sort = (a: TreeNode, b: TreeNode) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN');
+  for (const node of nodes.values()) node.children.sort(sort);
+  return tops.sort(sort);
+}
+
+function TagTree({
+  tags,
+  activeTagIds,
+  onToggle,
+}: {
+  tags: Tag[];
+  activeTagIds: string[];
+  onToggle: (id: string) => void;
+}) {
+  const tree = useMemo(() => buildTagTree(tags), [tags]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    // Expand the first few top-level categories by default.
+    const init = new Set<string>();
+    tree.slice(0, 5).forEach((t) => init.add(t.id));
+    return init;
+  });
+
+  if (tree.length === 0) {
+    return (
+      <p className="px-2.5 text-xs leading-relaxed text-ink-faint">
+        还没有可归类的标签。
+      </p>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-0.5 px-1.5">
+      {tree.map((top) => (
+        <TreeNodeRow
+          key={top.id}
+          node={top}
+          depth={0}
+          expanded={expanded}
+          onToggleExpand={(id) =>
+            setExpanded((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })
+          }
+          activeTagIds={activeTagIds}
+          onToggleTag={onToggle}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function TreeNodeRow({
+  node,
+  depth,
+  expanded,
+  onToggleExpand,
+  activeTagIds,
+  onToggleTag,
+}: {
+  node: TreeNode;
+  depth: number;
+  expanded: Set<string>;
+  onToggleExpand: (id: string) => void;
+  activeTagIds: string[];
+  onToggleTag: (id: string) => void;
+}) {
+  const hasChildren = node.children.length > 0;
+  const isOpen = expanded.has(node.id);
+  const active = activeTagIds.includes(node.id);
+  const indent = depth * 12;
+
+  return (
+    <li className="flex flex-col">
+      <div
+        className={cx(
+          'group flex w-full items-center gap-1 rounded-md py-1 pr-1.5 text-left text-2xs transition-colors',
+          active
+            ? 'bg-brand-soft text-brand-ink'
+            : 'text-ink-soft hover:bg-surface-hover hover:text-ink',
+        )}
+        style={{ paddingLeft: `${8 + indent}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => onToggleExpand(node.id)}
+            className="shrink-0 rounded p-0.5 text-ink-faint hover:bg-surface-hover hover:text-ink"
+            aria-label={isOpen ? '收起' : '展开'}
+          >
+            {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+        ) : (
+          <span className="w-5" />
+        )}
+        <button
+          type="button"
+          onClick={() => onToggleTag(node.id)}
+          className={cx(
+            'min-w-0 flex-1 truncate text-left',
+            active ? 'text-brand-ink' : 'text-ink-soft group-hover:text-ink',
+          )}
+        >
+          {node.name}
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleTag(node.id)}
+          className={cx(
+            'shrink-0 tabular-nums',
+            active ? 'text-brand-ink' : 'text-ink-faint group-hover:text-ink-soft',
+          )}
+        >
+          {node.count}
+        </button>
+      </div>
+      {hasChildren && isOpen && (
+        <ul className="flex flex-col gap-0.5">
+          {node.children.map((child) => (
+            <TreeNodeRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              expanded={expanded}
+              onToggleExpand={onToggleExpand}
+              activeTagIds={activeTagIds}
+              onToggleTag={onToggleTag}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, ExternalLink, Pencil, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Check, ExternalLink, FolderTree, Pencil, Sparkles, X } from 'lucide-react';
 import type { AiSuggestion } from '@shared/types';
 import { Badge, Button, ConfirmDialog, EmptyState, SegmentedControl, Skeleton } from '@/components/ui';
 import { cx } from '@/lib/cx';
@@ -62,6 +62,54 @@ interface TopicGroup {
   top: number;
 }
 
+interface HierarchyGroup {
+  /** Top-level category, e.g. "开发技术". */
+  category: string;
+  subcategories: Array<{
+    name: string;
+    items: AiSuggestion[];
+    top: number;
+  }>;
+  /** Direct children of the category with no subcategory. */
+  direct: AiSuggestion[];
+  top: number;
+}
+
+function groupByHierarchy(suggestions: AiSuggestion[]): HierarchyGroup[] {
+  const map = new Map<string, { subs: Map<string, AiSuggestion[]>; direct: AiSuggestion[] }>();
+
+  for (const item of suggestions) {
+    const category = item.category ?? '未分类';
+    const held = map.get(category);
+    if (item.subcategory) {
+      if (held) {
+        const sub = held.subs.get(item.subcategory) ?? [];
+        sub.push(item);
+        held.subs.set(item.subcategory, sub);
+      } else {
+        map.set(category, { subs: new Map([[item.subcategory, [item]]]), direct: [] });
+      }
+    } else {
+      if (held) held.direct.push(item);
+      else map.set(category, { subs: new Map(), direct: [item] });
+    }
+  }
+
+  return [...map.entries()]
+    .map(([category, { subs, direct }]) => {
+      const subcategories = [...subs.entries()]
+        .map(([name, items]) => ({ name, items, top: Math.max(...items.map((i) => i.confidence)) }))
+        .sort((a, b) => b.items.length - a.items.length || b.top - a.top);
+      const directTop = direct.length > 0 ? Math.max(...direct.map((i) => i.confidence)) : 0;
+      const top = Math.max(
+        directTop,
+        subcategories.length > 0 ? Math.max(...subcategories.map((s) => s.top)) : 0,
+      );
+      return { category, subcategories, direct, top };
+    })
+    .sort((a, b) => b.top - a.top || a.category.localeCompare(b.category, 'zh-CN'));
+}
+
 /** Below this a proposal is shown but flagged as a guess. */
 const LOW_CONFIDENCE = 0.55;
 
@@ -122,7 +170,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
   // Locally hidden groups: the server round trip is fast but not instant, and
   // a card that lingers after a click reads as a broken button.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [grouping, setGrouping] = useState<'bookmark' | 'topic'>('bookmark');
+  const [grouping, setGrouping] = useState<'bookmark' | 'topic' | 'hierarchy'>('bookmark');
   const [confirmAll, setConfirmAll] = useState(false);
 
   const visible = useMemo(
@@ -132,6 +180,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
 
   const groups = useMemo(() => groupByBookmark(visible), [visible]);
   const topicGroups = useMemo(() => groupByTopic(visible), [visible]);
+  const hierarchyGroups = useMemo(() => groupByHierarchy(visible), [visible]);
 
   const allIds = useMemo(() => visible.map((s) => s.id), [visible]);
   const safeIds = useMemo(
@@ -233,16 +282,19 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
         <p className="text-xs text-ink-faint">
           {grouping === 'topic'
             ? `${topicGroups.length} 个主题 · ${totalTags} 个待确认标签`
-            : `${groups.length} 条书签 · ${totalTags} 个待确认标签`}
+            : grouping === 'hierarchy'
+              ? `${hierarchyGroups.length} 个大类 · ${totalTags} 个待确认标签`
+              : `${groups.length} 条书签 · ${totalTags} 个待确认标签`}
         </p>
         <SegmentedControl
           label="分组方式"
           size="sm"
           value={grouping}
-          onChange={(value) => setGrouping(value as 'bookmark' | 'topic')}
+          onChange={(value) => setGrouping(value as 'bookmark' | 'topic' | 'hierarchy')}
           segments={[
             { value: 'bookmark', label: '按书签' },
             { value: 'topic', label: '按主题' },
+            { value: 'hierarchy', label: '按层级' },
           ]}
         />
         <div className="ml-auto flex flex-wrap gap-2">
@@ -275,131 +327,35 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
       </div>
 
       {grouping === 'topic' ? (
-        <ul className="flex flex-col gap-3">
-          {topicGroups.map((tg) => (
-            <li
-              key={tg.topic}
-              className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
-            >
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-xs font-medium text-ink-soft">
-                  <Sparkles size={12} aria-hidden />
-                  {tg.topic}
-                </span>
-                <span className="text-2xs text-ink-faint">{tg.items.length} 条建议</span>
-                <div className="ml-auto flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={decide.isPending}
-                    onClick={() =>
-                      rejectByIds(tg.items.map((i) => i.id))
-                    }
-                  >
-                    忽略本主题
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    iconLeft={<Check size={14} />}
-                    disabled={decide.isPending}
-                    onClick={() => applyByIds(tg.items.map((i) => i.id))}
-                  >
-                    应用本主题
-                  </Button>
-                </div>
-              </div>
-              <ul className="mt-2.5 flex flex-wrap gap-1.5">
-                {tg.items.map((item) => (
-                  <li key={item.id}>
-                    <TagProposal
-                      item={item}
-                      onAccept={() => acceptOne(item)}
-                      onReject={() => rejectOne(item)}
-                      onRename={(name) => renameOne(item, name)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
+        <TopicGroupList
+          groups={topicGroups}
+          acceptOne={acceptOne}
+          rejectOne={rejectOne}
+          renameOne={renameOne}
+          applyByIds={applyByIds}
+          rejectByIds={rejectByIds}
+          decidePending={decide.isPending}
+        />
+      ) : grouping === 'hierarchy' ? (
+        <HierarchyGroupList
+          groups={hierarchyGroups}
+          acceptOne={acceptOne}
+          rejectOne={rejectOne}
+          renameOne={renameOne}
+          applyByIds={applyByIds}
+          rejectByIds={rejectByIds}
+          decidePending={decide.isPending}
+        />
       ) : (
-        <ul className="flex flex-col gap-2">
-          {groups.map((group) => (
-            <li
-              key={group.bookmarkId}
-              className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
-            >
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {group.title || group.url}
-                  </p>
-                  <a
-                    href={group.url}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="mt-0.5 inline-flex items-center gap-1 text-2xs text-ink-faint hover:text-ink-soft"
-                  >
-                    {displayHost(group.url)}
-                    <ExternalLink size={11} aria-hidden />
-                  </a>
-                  {(group.topic || group.needsReview) && (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      {group.topic && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-2xs text-ink-soft">
-                          <Sparkles size={11} aria-hidden />
-                          {group.topic}
-                        </span>
-                      )}
-                      {group.needsReview && (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-caution/60 px-1.5 py-0.5 text-2xs text-caution">
-                          <AlertTriangle size={11} aria-hidden />
-                          需复核
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex shrink-0 gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    iconLeft={<X size={14} />}
-                    onClick={() => rejectByIds(group.items.map((i) => i.id))}
-                  >
-                    忽略
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    iconLeft={<Check size={14} />}
-                    onClick={() => applyByIds(group.items.map((i) => i.id))}
-                  >
-                    全部接受
-                  </Button>
-                </div>
-              </div>
-
-              {/* Per-tag decisions. The common case is "most of these are right,
-                  one is not", which a group-level yes/no cannot express. */}
-              <ul className="mt-2.5 flex flex-wrap gap-1.5">
-                {group.items.map((item) => (
-                  <li key={item.id}>
-                    <TagProposal
-                      item={item}
-                      onAccept={() => acceptOne(item)}
-                      onReject={() => rejectOne(item)}
-                      onRename={(name) => renameOne(item, name)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
+        <BookmarkGroupList
+          groups={groups}
+          acceptOne={acceptOne}
+          rejectOne={rejectOne}
+          renameOne={renameOne}
+          applyByIds={applyByIds}
+          rejectByIds={rejectByIds}
+          decidePending={decide.isPending}
+        />
       )}
 
       <ConfirmDialog
@@ -425,6 +381,303 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
         }
       />
     </div>
+  );
+}
+
+function BookmarkGroupList({
+  groups,
+  acceptOne,
+  rejectOne,
+  renameOne,
+  applyByIds,
+  rejectByIds,
+}: {
+  groups: Group[];
+  acceptOne: (item: AiSuggestion) => void;
+  rejectOne: (item: AiSuggestion) => void;
+  renameOne: (item: AiSuggestion, name: string) => void;
+  applyByIds: (ids: string[]) => void;
+  rejectByIds: (ids: string[]) => void;
+  decidePending: boolean;
+}) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {groups.map((group) => (
+        <li
+          key={group.bookmarkId}
+          className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+        >
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-ink">{group.title || group.url}</p>
+              <a
+                href={group.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="mt-0.5 inline-flex items-center gap-1 text-2xs text-ink-faint hover:text-ink-soft"
+              >
+                {displayHost(group.url)}
+                <ExternalLink size={11} aria-hidden />
+              </a>
+              {(group.topic || group.needsReview) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {group.topic && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-2xs text-ink-soft">
+                      <Sparkles size={11} aria-hidden />
+                      {group.topic}
+                    </span>
+                  )}
+                  {group.needsReview && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-caution/60 px-1.5 py-0.5 text-2xs text-caution">
+                      <AlertTriangle size={11} aria-hidden />
+                      需复核
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex shrink-0 gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                iconLeft={<X size={14} />}
+                onClick={() => rejectByIds(group.items.map((i) => i.id))}
+              >
+                忽略
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                iconLeft={<Check size={14} />}
+                onClick={() => applyByIds(group.items.map((i) => i.id))}
+              >
+                全部接受
+              </Button>
+            </div>
+          </div>
+
+          <ul className="mt-2.5 flex flex-wrap gap-1.5">
+            {group.items.map((item) => (
+              <li key={item.id}>
+                <TagProposal
+                  item={item}
+                  onAccept={() => acceptOne(item)}
+                  onReject={() => rejectOne(item)}
+                  onRename={(name) => renameOne(item, name)}
+                />
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TopicGroupList({
+  groups,
+  acceptOne,
+  rejectOne,
+  renameOne,
+  applyByIds,
+  rejectByIds,
+  decidePending,
+}: {
+  groups: TopicGroup[];
+  acceptOne: (item: AiSuggestion) => void;
+  rejectOne: (item: AiSuggestion) => void;
+  renameOne: (item: AiSuggestion, name: string) => void;
+  applyByIds: (ids: string[]) => void;
+  rejectByIds: (ids: string[]) => void;
+  decidePending: boolean;
+}) {
+  return (
+    <ul className="flex flex-col gap-3">
+      {groups.map((tg) => (
+        <li
+          key={tg.topic}
+          className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+        >
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-xs font-medium text-ink-soft">
+              <Sparkles size={12} aria-hidden />
+              {tg.topic}
+            </span>
+            <span className="text-2xs text-ink-faint">{tg.items.length} 条建议</span>
+            <div className="ml-auto flex gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={decidePending}
+                onClick={() => rejectByIds(tg.items.map((i) => i.id))}
+              >
+                忽略本主题
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                iconLeft={<Check size={14} />}
+                disabled={decidePending}
+                onClick={() => applyByIds(tg.items.map((i) => i.id))}
+              >
+                应用本主题
+              </Button>
+            </div>
+          </div>
+          <ul className="mt-2.5 flex flex-wrap gap-1.5">
+            {tg.items.map((item) => (
+              <li key={item.id}>
+                <TagProposal
+                  item={item}
+                  onAccept={() => acceptOne(item)}
+                  onReject={() => rejectOne(item)}
+                  onRename={(name) => renameOne(item, name)}
+                />
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function HierarchyGroupList({
+  groups,
+  acceptOne,
+  rejectOne,
+  renameOne,
+  applyByIds,
+  rejectByIds,
+  decidePending,
+}: {
+  groups: HierarchyGroup[];
+  acceptOne: (item: AiSuggestion) => void;
+  rejectOne: (item: AiSuggestion) => void;
+  renameOne: (item: AiSuggestion, name: string) => void;
+  applyByIds: (ids: string[]) => void;
+  rejectByIds: (ids: string[]) => void;
+  decidePending: boolean;
+}) {
+  return (
+    <ul className="flex flex-col gap-3">
+      {groups.map((hg) => {
+        const allItems = [...hg.direct, ...hg.subcategories.flatMap((s) => s.items)];
+        return (
+          <li
+            key={hg.category}
+            className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs font-medium text-brand-ink">
+                <FolderTree size={12} aria-hidden />
+                {hg.category}
+              </span>
+              <span className="text-2xs text-ink-faint">{allItems.length} 条建议</span>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={decidePending}
+                  onClick={() => rejectByIds(allItems.map((i) => i.id))}
+                >
+                  忽略本类
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  iconLeft={<Check size={14} />}
+                  disabled={decidePending}
+                  onClick={() => applyByIds(allItems.map((i) => i.id))}
+                >
+                  应用本类
+                </Button>
+              </div>
+            </div>
+
+            <ul className="mt-2.5 flex flex-col gap-2">
+              {hg.subcategories.map((sub) => (
+                <li key={sub.name}>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-2xs font-medium text-ink-soft">{sub.name}</span>
+                    <span className="text-2xs text-ink-faint">{sub.items.length}</span>
+                    <div className="ml-auto flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={decidePending}
+                        onClick={() => rejectByIds(sub.items.map((i) => i.id))}
+                      >
+                        忽略
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={decidePending}
+                        onClick={() => applyByIds(sub.items.map((i) => i.id))}
+                      >
+                        应用
+                      </Button>
+                    </div>
+                  </div>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {sub.items.map((item) => (
+                      <li key={item.id}>
+                        <TagProposal
+                          item={item}
+                          onAccept={() => acceptOne(item)}
+                          onReject={() => rejectOne(item)}
+                          onRename={(name) => renameOne(item, name)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+              {hg.direct.length > 0 && (
+                <li>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-2xs font-medium text-ink-soft">其他</span>
+                    <span className="text-2xs text-ink-faint">{hg.direct.length}</span>
+                    <div className="ml-auto flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={decidePending}
+                        onClick={() => rejectByIds(hg.direct.map((i) => i.id))}
+                      >
+                        忽略
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={decidePending}
+                        onClick={() => applyByIds(hg.direct.map((i) => i.id))}
+                      >
+                        应用
+                      </Button>
+                    </div>
+                  </div>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {hg.direct.map((item) => (
+                      <li key={item.id}>
+                        <TagProposal
+                          item={item}
+                          onAccept={() => acceptOne(item)}
+                          onReject={() => rejectOne(item)}
+                          onRename={(name) => renameOne(item, name)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              )}
+            </ul>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

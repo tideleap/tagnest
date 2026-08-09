@@ -306,6 +306,28 @@ export interface AiSuggestion {
    */
   feedbackBoosted: boolean;
   createdAt: string;
+  /**
+   * Hierarchy path assigned by the auto-grouping rules, if any.
+   * `category` is the top-level bucket, `subcategory` the second level,
+   * and the tag itself forms the third level. Null subcategory means the
+   * tag sits directly under the top-level category.
+   */
+  category: string | null;
+  subcategory: string | null;
+}
+
+/** Result of applying the automatic three-level hierarchy to the tag set. */
+export interface AutoGroupResult {
+  /** Number of category / sub-category tags created. */
+  createdCategories: number;
+  /** Number of existing tags whose parent_id was rewritten. */
+  relocated: number;
+  /** Number of tags left untouched (unclassified or already deep enough). */
+  untouched: number;
+  /** Human-readable "一级 > 二级" summary lines. */
+  summary: string[];
+  /** Full tag tree after the hierarchy was applied. */
+  tags: Tag[];
 }
 
 /** Result of one chunk of a run, so the UI can show live progress. */
@@ -321,6 +343,11 @@ export interface AiJobRunResult {
   modelError: string | null;
   /** Topic frequency produced by this chunk, for the result distribution chart. */
   topics?: AiTopicCount[];
+  /**
+   * Automatic 一级→二级→三级 grouping applied when the run finished.
+   * Only present on the final chunk so mid-run responses stay small.
+   */
+  autoGrouped?: AutoGroupResult;
 }
 
 /** Topic frequency across a run, for the result distribution chart. */

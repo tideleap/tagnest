@@ -42,5 +42,7 @@ export function toApiSuggestion(row: SuggestionRow): AiSuggestion {
     needsReview: row.needsReview,
     feedbackBoosted: row.feedbackBoosted,
     createdAt: row.createdAt,
+    category: null,
+    subcategory: null,
   };
 }

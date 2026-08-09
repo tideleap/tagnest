@@ -1,7 +1,7 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { json } from '../../../_lib/http';
-import { countPending, listPendingSuggestions, toApiSuggestion } from '../../../_lib/ai';
+import { classifyTag, countPending, listPendingSuggestions, toApiSuggestion } from '../../../_lib/ai';
 
 /**
  * The review queue.
@@ -29,5 +29,16 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     countPending(ctx.env, userId),
   ]);
 
-  return json({ suggestions: rows.map(toApiSuggestion), total });
+  // Enrich each suggestion with its 一级/二级 hierarchy path so the review
+  // panel can group by category as well as by bookmark or topic.
+  const suggestions = rows.map((row) => {
+    const path = classifyTag(row.tagName);
+    return {
+      ...toApiSuggestion(row),
+      category: path?.[0] ?? null,
+      subcategory: path?.[1] ?? null,
+    };
+  });
+
+  return json({ suggestions, total });
 };

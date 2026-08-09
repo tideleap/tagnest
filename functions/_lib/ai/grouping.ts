@@ -57,63 +57,134 @@ export interface CategoryRule {
  * manual tags land on a consistent taxonomy.
  */
 const CATEGORY_RULES: CategoryRule[] = [
-  // Learning/documentation first: a "Python 官方文档" is more usefully filed
-  // under 学习>文档参考 than swallowed by the broad 技术 bucket. Order matters —
-  // the first rule whose key matches wins — so specific intent categories come
-  // first and the dev catch-all (技术) is left last.
+  // Specific domains first: a tag like "Python 官方文档" should land in
+  // 学习 > 文档参考, not be swallowed by the broader 技术 bucket. Order matters
+  // — the first rule whose key matches wins — so narrow intent categories come
+  // before the catch-all buckets.
   {
-    category: '学习',
-    keys: ['教程', '课程', '学习', '文档', '参考', '指南', '面试', '证书', 'book', 'paper', '论文', 'manual', 'handbook', 'getting started'],
+    category: '学习资料',
+    keys: ['教程', '课程', '学习', '学习资料', '文档', '参考', '指南', '手册', '面试', '证书', 'book', 'paper', '论文', 'manual', 'handbook', 'getting started', '题库', '考点'],
     subcategories: [
       { keys: ['教程', '课程', '指南', 'guide', 'getting started'], name: '教程与课程' },
-      { keys: ['文档', '参考', 'reference', 'manual', 'handbook'], name: '文档参考' },
+      { keys: ['文档', '参考', '手册', 'reference', 'manual', 'handbook'], name: '文档参考' },
       { keys: ['论文', 'paper', '学术', 'arxiv'], name: '学术论文' },
-      { keys: ['面试', '八股'], name: '求职面试' },
+      { keys: ['面试', '八股', '题库', '考点'], name: '求职面试' },
+      { keys: ['证书', '认证'], name: '认证考试' },
     ],
   },
   {
-    category: '技术',
-    keys: ['前端', '后端', 'javascript', 'typescript', 'react', 'vue', 'css', '算法', '数据库', 'sql', 'postgres', 'mysql', 'devops', '运维', '安全', '开源', '代码', '编程', 'api', '软件', '云', 'docker', 'kubernetes', '人工智能', '机器学习', '大模型', 'python', 'go', 'rust', 'java', 'linux'],
+    category: '人工智能',
+    keys: ['人工智能', 'ai', '机器学习', '大模型', 'llm', '深度学习', '神经网络', 'nlp', '自然语言处理', '计算机视觉', 'cv', '强化学习', '生成式', 'chatgpt', 'claude', 'openai', 'huggingface', 'transformer', '扩散模型', '多模态'],
     subcategories: [
-      { keys: ['前端', 'react', 'vue', 'css', 'javascript'], name: '前端开发' },
-      { keys: ['后端', 'api', '微服务'], name: '后端开发' },
+      { keys: ['大模型', 'llm', 'chatgpt', 'claude', 'openai', '生成式'], name: '大模型' },
+      { keys: ['机器学习', '深度学习', '神经网络', '强化学习', 'transformer'], name: '机器学习' },
+      { keys: ['计算机视觉', 'cv', '图像识别', '扩散模型', '多模态'], name: '计算机视觉' },
+      { keys: ['nlp', '自然语言处理'], name: '自然语言处理' },
+    ],
+  },
+  {
+    category: '数据分析',
+    keys: ['数据分析', '数据科学', '数据可视化', '可视化', '图表', 'bi', 'tableau', 'powerbi', 'excel', '统计', 'spss', 'pandas', 'numpy', '数据挖掘', '大数据'],
+    subcategories: [
+      { keys: ['数据分析', '数据科学', '统计', '数据挖掘', '大数据'], name: '数据分析' },
+      { keys: ['数据可视化', '可视化', '图表', 'bi', 'tableau', 'powerbi'], name: '数据可视化' },
+      { keys: ['excel', 'pandas', 'numpy', 'python'], name: '分析工具' },
+    ],
+  },
+  {
+    category: '运维与云',
+    keys: ['运维', 'devops', '云', '云计算', 'docker', 'kubernetes', 'k8s', 'linux', '服务器', '主机', 'vps', 'nginx', 'ci/cd', 'cicd', '监控', '日志', '备份', '集群', '容器', '网关', 'cdn'],
+    subcategories: [
+      { keys: ['devops', 'ci/cd', 'cicd', '监控', '日志'], name: 'DevOps' },
+      { keys: ['docker', 'kubernetes', 'k8s', '容器', '集群'], name: '容器编排' },
+      { keys: ['云', '云计算', 'aws', 'azure', 'gcp', '阿里云', '腾讯云', '华为云', 'cdn'], name: '云服务' },
+      { keys: ['服务器', '主机', 'vps', 'nginx', '网关'], name: '服务器与主机' },
+      { keys: ['linux'], name: 'Linux' },
+    ],
+  },
+  {
+    category: '营销与运营',
+    keys: ['营销', '运营', 'seo', 'sem', '增长', '推广', '广告', '社媒', '社交媒体', '内容运营', '产品运营', '用户增长', '投放', '转化', '社群', '新媒体'],
+    subcategories: [
+      { keys: ['seo', 'sem', '搜索优化'], name: 'SEO/SEM' },
+      { keys: ['增长', '推广', '广告', '投放', '转化', '用户增长'], name: '增长黑客' },
+      { keys: ['社媒', '社交媒体', '内容运营', '社群', '新媒体'], name: '社媒运营' },
+    ],
+  },
+  {
+    category: '技术社区',
+    keys: ['社区', '论坛', 'github', 'stackoverflow', 'reddit', 'hackernews', 'v2ex', '掘金', '知乎', 'csdn', 'segmentfault', '开发者社区', '技术社区', '开源社区'],
+    subcategories: [
+      { keys: ['github', '开源社区'], name: '开源社区' },
+      { keys: ['stackoverflow', 'reddit', 'hackernews', 'v2ex', '掘金', '知乎', 'csdn', 'segmentfault', '论坛', '社区', '开发者社区', '技术社区'], name: '开发者论坛' },
+    ],
+  },
+  {
+    category: '开发技术',
+    keys: ['前端', '后端', 'javascript', 'typescript', 'react', 'vue', 'css', '算法', '数据库', 'sql', 'postgres', 'mysql', '安全', '开源', '代码', '编程', 'api', '软件', 'python', 'go', 'golang', 'rust', 'java', 'c++', 'c#', 'php', 'ruby', 'swift', 'kotlin', 'flutter', 'nodejs', 'node.js', 'web', 'http', 'git'],
+    subcategories: [
+      { keys: ['前端', 'react', 'vue', 'css', 'javascript', 'typescript', 'flutter', 'web'], name: '前端开发' },
+      { keys: ['后端', 'api', '微服务', 'nodejs', 'node.js'], name: '后端开发' },
       { keys: ['数据库', 'sql', 'postgres', 'mysql'], name: '数据与存储' },
-      { keys: ['devops', '运维', 'docker', 'kubernetes', '云', 'ci'], name: '运维与云' },
-      { keys: ['人工智能', '机器学习', '大模型', 'llm', '深度学习', '神经网络'], name: '人工智能' },
       { keys: ['算法', '数据结构'], name: '算法' },
       { keys: ['安全', '漏洞', 'cve'], name: '安全' },
       { keys: ['开源'], name: '开源项目' },
+      { keys: ['git'], name: '版本控制' },
     ],
   },
   {
-    category: '设计',
-    keys: ['设计', 'ui', 'ux', '交互', '视觉', '配色', 'figma', 'sketch', '品牌'],
+    category: '设计与创意',
+    keys: ['设计', 'ui', 'ux', '交互', '视觉', '配色', 'figma', 'sketch', '品牌', '创意', '灵感', '平面设计', '插画', '摄影', '字体', '排版', '动效', '3d', 'blender', 'ps', 'photoshop'],
     subcategories: [
-      { keys: ['ui', '交互', 'ux'], name: '界面设计' },
-      { keys: ['视觉', '配色', '品牌', '灵感'], name: '视觉与品牌' },
-      { keys: ['figma', 'sketch', '工具'], name: '设计工具' },
+      { keys: ['ui', '交互', 'ux'], name: '界面与交互' },
+      { keys: ['视觉', '配色', '品牌', '灵感', '平面设计', '插画', '字体', '排版', '动效'], name: '视觉与品牌' },
+      { keys: ['figma', 'sketch', 'ps', 'photoshop', 'blender', '3d'], name: '设计工具' },
+      { keys: ['摄影', '图片', '壁纸'], name: '摄影与图像' },
     ],
   },
   {
-    category: '工具',
-    keys: ['工具', '效率', '生产力', 'productivity', '快捷键', 'chrom', 'browser', '插件', '软件'],
+    category: '在线工具',
+    keys: ['工具', '在线工具', '在线', '效率', '生产力', 'productivity', '快捷键', 'chrom', 'browser', '插件', '扩展', '软件', '转换器', '生成器', '计算器', '压缩', '解析', '检测'],
     subcategories: [
-      { keys: ['效率', 'productivity'], name: '效率办公' },
+      { keys: ['效率', 'productivity', '快捷键'], name: '效率办公' },
       { keys: ['插件', '扩展', 'browser'], name: '浏览器插件' },
+      { keys: ['转换器', '生成器', '计算器', '压缩', '解析', '检测'], name: '实用工具' },
+      { keys: ['在线', '在线工具', '工具'], name: '在线服务' },
+    ],
+  },
+  {
+    category: '博客',
+    keys: ['博客', 'blog', '个人博客', '技术博客', '专栏'],
+  },
+  {
+    category: '阅读与资讯',
+    keys: ['新闻', '资讯', '阅读', 'rss', '订阅', '杂志', '报纸', '财经', '科技新闻', '时事'],
+    subcategories: [
+      { keys: ['新闻', '资讯', '科技新闻', '时事'], name: '新闻资讯' },
+      { keys: ['rss', '订阅'], name: 'RSS订阅' },
+      { keys: ['杂志', '报纸', '阅读'], name: '阅读' },
+      { keys: ['财经'], name: '财经' },
     ],
   },
   {
     category: '内容',
-    keys: ['博客', '视频', '新闻', '资讯', '社区', '播客', '电子书', '读书', '写作'],
+    keys: ['视频', '播客', '电子书', '读书', '写作', '自媒体', '文案'],
     subcategories: [
-      { keys: ['博客'], name: '博客文章' },
       { keys: ['视频'], name: '视频' },
-      { keys: ['资讯', '新闻'], name: '资讯' },
+      { keys: ['播客'], name: '播客' },
+      { keys: ['电子书', '读书', '写作', '自媒体', '文案'], name: '阅读与创作' },
     ],
   },
   {
-    category: '生活',
-    keys: ['美食', '旅行', '菜谱', '健身', '健康', '家居', '亲子', '宠物', '园艺', '咖啡'],
+    category: '娱乐与生活',
+    keys: ['美食', '旅行', '菜谱', '健身', '健康', '家居', '亲子', '宠物', '园艺', '咖啡', '生活', '电影', '音乐', '游戏', '动漫', '娱乐', '休闲', '运动', '穿搭', '美妆'],
+    subcategories: [
+      { keys: ['电影', '音乐', '游戏', '动漫', '娱乐', '休闲'], name: '娱乐休闲' },
+      { keys: ['美食', '菜谱', '咖啡'], name: '美食' },
+      { keys: ['旅行', '旅游'], name: '旅行' },
+      { keys: ['健身', '健康', '运动'], name: '健康' },
+      { keys: ['家居', '园艺', '亲子', '宠物', '穿搭', '美妆'], name: '生活方式' },
+    ],
   },
 ];
 

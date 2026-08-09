@@ -1,4 +1,4 @@
-import type { AiJobRunResult } from '../../../../../shared/types';
+import type { AiJobRunResult, AutoGroupResult } from '../../../../../shared/types';
 import type { Env, RequestData } from '../../../../_lib/env';
 import { requireUserId } from '../../../../_lib/auth';
 import { conflict, json, notFound } from '../../../../_lib/http';
@@ -7,6 +7,7 @@ import {
   RUN_CHUNK,
   autoApply,
   aggregateTopics,
+  applyTagHierarchy,
   getJob,
   loadAiConfig,
   loadBookmarkInputs,
@@ -102,15 +103,33 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const processed = job.processed + slice.length;
   const finished = processed >= ids.length;
+  const failed = Boolean(outcome.fatal);
 
   await updateJob(ctx.env, userId, jobId, {
     processed,
     suggested: job.suggested + written,
     failed: job.failed + missing,
     engine: outcome.engine,
-    status: outcome.fatal ? 'failed' : finished ? 'done' : 'running',
-    error: outcome.fatal ? outcome.modelError : null,
+    status: failed ? 'failed' : finished ? 'done' : 'running',
+    error: failed ? outcome.modelError : null,
   });
+
+  // Synchronize the three-level hierarchy with the organization run.
+  // Only runs when the chunk finishes successfully so partial failures do not
+  // leave the tag tree in a half-rewritten state.
+  let autoGrouped: AutoGroupResult | undefined;
+  if (finished && !failed) {
+    try {
+      autoGrouped = await applyTagHierarchy(ctx.env.DB, userId);
+    } catch (e) {
+      log.error('ai.job.grouping', {
+        userId,
+        jobId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      // Grouping failure is not fatal to the run: proposals are already saved.
+    }
+  }
 
   log.info('ai.job.chunk', {
     userId,
@@ -119,6 +138,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     total: ids.length,
     suggested: written,
     autoApplied,
+    autoGrouped: autoGrouped
+      ? { created: autoGrouped.createdCategories, relocated: autoGrouped.relocated }
+      : null,
     engine: outcome.engine,
     fatal: outcome.fatal,
   });
@@ -126,12 +148,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const updated = await getJob(ctx.env, userId, jobId);
   const result: AiJobRunResult = {
     job: toApiJob(updated ?? job),
-    done: finished || outcome.fatal,
+    done: finished || failed,
     suggested: written,
     autoApplied,
     engine: outcome.engine,
     modelError: outcome.modelError,
     topics: aggregateTopics(outcome.results),
+    autoGrouped,
   };
 
   return json(result);

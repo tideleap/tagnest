@@ -10,7 +10,7 @@ import type {
   AiSuggestion,
   AiTaxonomyAudit,
   AiTopicCount,
-  Tag,
+  AutoGroupResult,
 } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -201,6 +201,11 @@ export interface RunState {
   error: string | null;
   /** Topic distribution accumulated across chunks, for the result chart. */
   topics: AiTopicCount[];
+  /**
+   * Automatic 一级→二级→③ grouping result from the final chunk.
+   * Present once the run has settled successfully.
+   */
+  autoGrouped: AutoGroupResult | null;
 }
 
 const IDLE: RunState = {
@@ -211,6 +216,7 @@ const IDLE: RunState = {
   autoApplied: 0,
   error: null,
   topics: [],
+  autoGrouped: null,
 };
 
 /**
@@ -318,16 +324,17 @@ export function useOrganizeRun() {
           return job;
         }
 
-        autoApplied += result.autoApplied;
-        setState((s) => ({
-          job: result.job,
-          running: !result.done,
-          engine: result.engine,
-          modelError: result.modelError,
-          autoApplied,
-          error: result.job.status === 'failed' ? result.job.error : null,
-          topics: mergeTopicCounts(s.topics, result.topics),
-        }));
+      autoApplied += result.autoApplied;
+      setState((s) => ({
+        job: result.job,
+        running: !result.done,
+        engine: result.engine,
+        modelError: result.modelError,
+        autoApplied,
+        error: result.job.status === 'failed' ? result.job.error : null,
+        topics: mergeTopicCounts(s.topics, result.topics),
+        autoGrouped: result.autoGrouped ?? s.autoGrouped,
+      }));
 
         // The queue grows as chunks land, so the review list stays live
         // instead of only appearing once everything has finished.
@@ -349,15 +356,6 @@ export function useOrganizeRun() {
   );
 
   return { ...state, start, stop, reset };
-}
-
-/** Result of an auto-group run. */
-export interface AutoGroupResult {
-  createdCategories: number;
-  relocated: number;
-  untouched: number;
-  summary: string[];
-  tags: Tag[];
 }
 
 /**
