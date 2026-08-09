@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { SnapshotMonitorItem, SnapshotMonitorStatus } from '@shared/types';
+import type { BookmarkSnapshotStatus, SnapshotMonitorItem, SnapshotMonitorStatus } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -67,6 +67,23 @@ export function useSnapshotMonitor(enabled = true) {
   });
 }
 
+export const bookmarkSnapshotStatusKey = (id: string) => ['bookmark-snapshot-status', id] as const;
+
+/**
+ * Polls the lightweight status for one bookmark's snapshot. Used inside each
+ * card to show freshness and trigger automatic refreshes without pulling the
+ * full monitor list.
+ */
+export function useBookmarkSnapshotStatus(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: bookmarkSnapshotStatusKey(id ?? ''),
+    queryFn: () => api.get<BookmarkSnapshotStatus>(`/bookmarks/${id}/snapshot/status`),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    enabled: Boolean(id) && enabled,
+  });
+}
+
 interface RefreshMonitorResponse {
   item: SnapshotMonitorItem;
   refreshedAt: string;
@@ -84,9 +101,29 @@ export function useRefreshSnapshotMonitor() {
       api.post<RefreshMonitorResponse>('/snapshots/monitor', opts.bookmarkId ? { bookmarkId: opts.bookmarkId } : {}),
     onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: SNAPSHOT_MONITOR_KEY });
+      void qc.invalidateQueries({ queryKey: bookmarkSnapshotStatusKey(res.item.bookmarkId) });
       void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
       void qc.invalidateQueries({ queryKey: keys.bookmark(res.item.bookmarkId) });
       toast.success(`${res.item.title || '书签'} 快照已更新`);
+    },
+    onError: (e: Error) => toast.error('刷新快照失败', e.message),
+  });
+}
+
+/**
+ * Generates a fresh website snapshot for a single bookmark.
+ * On success the card's snapshot status and bookmark list are invalidated.
+ */
+export function useRefreshBookmarkSnapshot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ snapshotKey: string }>(`/bookmarks/${id}/snapshot`),
+    onSuccess: (_res, id) => {
+      void qc.invalidateQueries({ queryKey: bookmarkSnapshotStatusKey(id) });
+      void qc.invalidateQueries({ queryKey: ['bookmark-snapshots', id] });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.bookmark(id) });
+      toast.success('快照已更新');
     },
     onError: (e: Error) => toast.error('刷新快照失败', e.message),
   });

@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
@@ -20,7 +20,12 @@ import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { Button, IconButton, Menu, Modal, TagChip, RemoteImage, tagColorVars } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { useBookmarkSnapshots, useGenerateSnapshot } from '@/hooks/queries/snapshots';
+import {
+  useBookmarkSnapshots,
+  useBookmarkSnapshotStatus,
+  useGenerateSnapshot,
+  useRefreshBookmarkSnapshot,
+} from '@/hooks/queries/snapshots';
 import { useAddToCollection, useCollections } from '@/hooks/queries';
 import type { ViewMode } from '@/stores/ui';
 
@@ -187,6 +192,7 @@ function BookmarkCardBase({
   // `generate` fires POST /bookmarks/:id/snapshot; the history query backs the
   // viewer modal and only runs once it is actually opened.
   const generate = useGenerateSnapshot();
+  const refreshSnapshot = useRefreshBookmarkSnapshot();
   const [showSnapshots, setShowSnapshots] = useState(false);
   const {
     data: snapList,
@@ -194,6 +200,19 @@ function BookmarkCardBase({
     isError: snapsError,
     refetch: refetchSnaps,
   } = useBookmarkSnapshots(b.id, showSnapshots);
+
+  // Real-time snapshot status: each card polls its own lightweight endpoint.
+  // When the backend reports the image is stale, we refresh it automatically so
+  // the user sees the latest website visual state without clicking anything.
+  const { data: snapStatus } = useBookmarkSnapshotStatus(b.id, !inTrash);
+  useEffect(() => {
+    if (snapStatus?.isStale && !refreshSnapshot.isPending && !inTrash) {
+      refreshSnapshot.mutate(b.id);
+    }
+    // refreshSnapshot.mutate is stable from TanStack Query; listing the whole
+    // mutation object would cause an infinite loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapStatus?.isStale, refreshSnapshot.isPending, b.id, inTrash]);
 
   const open = () => {
     onVisit(b.id);
@@ -290,6 +309,11 @@ function BookmarkCardBase({
   const isCompact = view === 'compact';
   const isGrid = view === 'grid';
 
+  // Live snapshot key from the real-time status endpoint takes precedence over
+  // the bookmark list's cached value, so a freshly refreshed image appears
+  // immediately without waiting for the list refetch.
+  const liveSnapshotKey = snapStatus?.snapshotKey ?? b.snapshotKey;
+
   /** Checkbox — appears over the top-left on hover, permanent once selecting. */
   const checkbox = (
     <label
@@ -358,11 +382,25 @@ function BookmarkCardBase({
     >
       {checkbox}
 
-      {/* ---- Compact: one tight row, host on the right ---- */}
+      {/* ---- Compact: live snapshot thumbnail + title in one tight row ---- */}
       {isCompact ? (
         <>
           {grip}
-          <FaviconBadge bookmark={b} size={22} />
+          {liveSnapshotKey ? (
+            <div className="relative h-6 w-10 overflow-hidden rounded bg-sunken">
+              <RemoteImage
+                src={`/api/snapshots/${liveSnapshotKey}`}
+                alt=""
+                className="h-full w-full object-cover"
+                fallback={<FaviconBadge bookmark={b} size={22} />}
+              />
+              {snapStatus?.isStale && (
+                <span className="absolute right-0.5 top-0.5 h-1 w-1 rounded-full bg-caution" aria-hidden />
+              )}
+            </div>
+          ) : (
+            <FaviconBadge bookmark={b} size={22} />
+          )}
           <h3 className="min-w-0 flex-1 truncate text-sm text-ink">
             <button type="button" onClick={open} className="truncate underline-offset-2 hover:text-brand-ink hover:underline">
               {b.title || displayHost(b.url)}
@@ -382,17 +420,14 @@ function BookmarkCardBase({
       ) : (
         <>
           {isGrid ? (
-            /* ---- Grid: ZIYK-style card optimized for a dense 6-column grid.
-                    A large centred circle badge acts as the hero visual; title,
-                    compact #hashtag pills and the red stat pill are stacked below.
-                    No duplicate badge, no tall cover — cards stay readable at
-                    ~170 px wide. ---- */
-            <>              {/* Top hero strip — first-party R2 website snapshot when one
-                  exists, else the raw remote cover, else a circle badge. */}
-              {b.snapshotKey ? (
-                <div className="relative -mx-3 -mt-3 mb-3 aspect-[16/10] overflow-hidden rounded-t-lg bg-sunken">
+            /* ---- Grid: website snapshot as the dominant hero visual.
+                    A live first-party screenshot fills the top strip; the favicon
+                    badge only appears as a fallback. ---- */
+            <>
+              <div className="relative -mx-3 -mt-3 mb-3 aspect-[16/10] overflow-hidden rounded-t-lg bg-sunken">
+                {liveSnapshotKey ? (
                   <RemoteImage
-                    src={`/api/snapshots/${b.snapshotKey}`}
+                    src={`/api/snapshots/${liveSnapshotKey}`}
                     alt=""
                     className="h-full w-full object-cover"
                     fallback={
@@ -401,9 +436,7 @@ function BookmarkCardBase({
                       </div>
                     }
                   />
-                </div>
-              ) : b.coverUrl ? (
-                <div className="relative -mx-3 -mt-3 mb-3 aspect-[16/10] overflow-hidden rounded-t-lg bg-sunken">
+                ) : b.coverUrl ? (
                   <RemoteImage
                     src={b.coverUrl}
                     alt=""
@@ -414,12 +447,28 @@ function BookmarkCardBase({
                       </div>
                     }
                   />
-                </div>
-              ) : (
-                <div className="relative -mx-3 -mt-3 mb-3 flex aspect-[16/10] items-center justify-center overflow-hidden rounded-t-lg bg-brand-soft/30">
-                  <CircleBadge bookmark={b} size={56} />
-                </div>
-              )}
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-brand-soft/30">
+                    <CircleBadge bookmark={b} size={56} />
+                  </div>
+                )}
+
+                {/* Refresh overlay — visible on hover, or while auto-refreshing. */}
+                <button
+                  type="button"
+                  onClick={() => refreshSnapshot.mutate(b.id)}
+                  disabled={refreshSnapshot.isPending}
+                  className={cx(
+                    'absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full',
+                    'bg-black/50 text-white backdrop-blur-sm transition-opacity',
+                    'opacity-0 focus:opacity-100 group-hover:opacity-100',
+                    refreshSnapshot.isPending && 'opacity-100',
+                  )}
+                  aria-label="刷新网站快照"
+                >
+                  <Camera size={13} className={refreshSnapshot.isPending ? 'animate-spin' : ''} aria-hidden />
+                </button>
+              </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-2.5">
                 <h3 className="font-bold leading-snug text-ink">
@@ -472,11 +521,25 @@ function BookmarkCardBase({
               </div>
             </>
           ) : (
-            /* ---- List: left favicon rail + stacked content ---- */
+            /* ---- List: live snapshot thumbnail on the left, favicon fallback ---- */
             <>
               <div className="flex shrink-0 flex-col items-center gap-1.5">
                 {grip}
-                <FaviconBadge bookmark={b} size={40} />
+                {liveSnapshotKey ? (
+                  <div className="relative h-10 w-16 overflow-hidden rounded-md bg-sunken">
+                    <RemoteImage
+                      src={`/api/snapshots/${liveSnapshotKey}`}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      fallback={<FaviconBadge bookmark={b} size={40} />}
+                    />
+                    {snapStatus?.isStale && (
+                      <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-caution" aria-hidden />
+                    )}
+                  </div>
+                ) : (
+                  <FaviconBadge bookmark={b} size={40} />
+                )}
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-1">

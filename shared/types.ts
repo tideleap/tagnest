@@ -149,6 +149,18 @@ export interface SnapshotMonitorStatus {
   refreshedAt: string;
 }
 
+/** Lightweight status for a single bookmark's latest snapshot. */
+export interface BookmarkSnapshotStatus {
+  bookmarkId: string;
+  title: string;
+  url: string;
+  snapshotKey: string | null;
+  snapshotUrl: string | null;
+  capturedAt: string | null;
+  /** True when the latest snapshot is older than the freshness threshold. */
+  isStale: boolean;
+}
+
 export interface TagInput {
   name: string;
   colorIndex?: number;

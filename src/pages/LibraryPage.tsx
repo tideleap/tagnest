@@ -26,7 +26,6 @@ import {
 } from '@/components/ui';
 import { BookmarkCard } from '@/components/bookmark/BookmarkCard';
 import { BulkActionBar } from '@/components/bookmark/BulkActionBar';
-import { SnapshotMonitor } from '@/components/snapshot';
 import { useOverlay, useSelection, useView } from '@/stores/ui';
 import type { ViewMode } from '@/stores/ui';
 import {
@@ -328,8 +327,6 @@ export function LibraryPage() {
           <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
         )}
       </PageHeader>
-
-      <SnapshotMonitor active={scope !== 'trash' && activeTags.length === 0 && !query} />
 
       {activeTags.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5">

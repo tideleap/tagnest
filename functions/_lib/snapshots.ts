@@ -94,6 +94,30 @@ export function snapshotServePath(key: string): string {
   return `/api/snapshots/${encodeURIComponent(key)}`;
 }
 
+/** Snapshot is considered stale after this many milliseconds. */
+export const SNAPSHOT_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+export interface SnapshotStatus {
+  snapshotKey: string | null;
+  snapshotUrl: string | null;
+  capturedAt: string | null;
+  isStale: boolean;
+}
+
+/**
+ * Builds a status view for a single snapshot key.
+ * Returns `isStale: true` when the key is missing or older than the threshold.
+ */
+export function buildSnapshotStatus(snapshotKey: string | null): SnapshotStatus {
+  const ts = snapshotKey ? snapshotTimestamp(snapshotKey) : 0;
+  return {
+    snapshotKey,
+    snapshotUrl: snapshotKey ? snapshotServePath(snapshotKey) : null,
+    capturedAt: ts ? new Date(ts).toISOString() : null,
+    isStale: ts ? Date.now() - ts > SNAPSHOT_STALE_THRESHOLD_MS : true,
+  };
+}
+
 /**
  * Produces the retained snapshot list after appending a newly captured key,
  * honouring the retention limit (`limit < 0` = unlimited). Returns both the

@@ -9,6 +9,7 @@ import {
   updateBookmarkSnapshots,
 } from '../../../_lib/db';
 import {
+  buildSnapshotStatus,
   captureAndStoreBookmarkSnapshot,
   classifySnapshotError,
   deleteSnapshots,
@@ -18,24 +19,17 @@ import {
 import type { SnapshotMonitorItem, SnapshotMonitorStatus } from '../../../../shared/types';
 
 const MONITOR_LIMIT = 6;
-const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
-interface SnapshotStatusExtras {
-  snapshotUrl: string;
-  capturedAt: string | null;
-  isStale: boolean;
-}
-
-function toMonitorItem(row: Awaited<ReturnType<typeof listBookmarksWithSnapshots>>[number]): SnapshotMonitorItem & SnapshotStatusExtras {
-  const ts = snapshotTimestamp(row.snapshotKey);
+function toMonitorItem(row: Awaited<ReturnType<typeof listBookmarksWithSnapshots>>[number]): SnapshotMonitorItem {
+  const status = buildSnapshotStatus(row.snapshotKey);
   return {
     bookmarkId: row.id,
     title: row.title,
     url: row.url,
-    snapshotKey: row.snapshotKey,
-    snapshotUrl: snapshotServePath(row.snapshotKey),
-    capturedAt: ts ? new Date(ts).toISOString() : null,
-    isStale: ts ? Date.now() - ts > STALE_THRESHOLD_MS : true,
+    snapshotKey: status.snapshotKey!,
+    snapshotUrl: status.snapshotUrl!,
+    capturedAt: status.capturedAt,
+    isStale: status.isStale,
   };
 }
 
@@ -155,7 +149,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       snapshotUrl: snapshotServePath(stored.key),
       capturedAt: new Date().toISOString(),
       isStale: false,
-    } satisfies SnapshotMonitorItem & SnapshotStatusExtras,
+    } satisfies SnapshotMonitorItem,
     refreshedAt: new Date().toISOString(),
   });
 };
