@@ -80,6 +80,16 @@ const MIGRATION_PROBES = {
   // creates ai_feedback (idempotent via IF NOT EXISTS). Probe the column.
   '0012_ai_feedback.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('tag_suggestions') WHERE name='feedback_boosted'`,
+  // 0013 adds prompt_version to ai_jobs via ALTER (non-idempotent). Probe the
+  // column so a file already applied directly via `wrangler d1 execute --file`
+  // (which never writes _d1_migrations) is recognised and skipped.
+  '0013_prompt_version.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('ai_jobs') WHERE name='prompt_version'`,
+  // 0014 adds is_private + encrypted_blob to bookmarks via ALTER (non-idempotent)
+  // and creates the private_vault table + index (idempotent via IF NOT EXISTS).
+  // Probe the first added column as the representative "already applied" marker.
+  '0014_private_bookmarks.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='is_private'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
