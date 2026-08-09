@@ -3,6 +3,7 @@ import { ArrowRight, Combine, ShieldCheck, Trash2 } from 'lucide-react';
 import type { AiTaxonomyAudit } from '@shared/types';
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Skeleton } from '@/components/ui';
 import { useDeleteTag, useMergeTags } from '@/hooks/queries';
+import { AliasSuggestions } from './AliasSuggestions';
 
 /**
  * Taxonomy health: duplicate clusters and unused tags.
@@ -51,11 +52,14 @@ export function TaxonomyPanel({ audit, loading }: Props) {
 
   if (clean) {
     return (
-      <EmptyState
-        icon={<ShieldCheck size={22} />}
-        title="标签体系很干净"
-        description={`共 ${audit.totalTags} 个标签，没有发现重复或未使用的标签。`}
-      />
+      <div className="flex flex-col gap-4">
+        <EmptyState
+          icon={<ShieldCheck size={22} />}
+          title="标签体系很干净"
+          description={`共 ${audit.totalTags} 个标签，没有发现重复或未使用的标签。`}
+        />
+        <AliasSuggestions />
+      </div>
     );
   }
 
@@ -144,6 +148,8 @@ export function TaxonomyPanel({ audit, loading }: Props) {
           </ul>
         </section>
       )}
+
+      <AliasSuggestions />
 
       <ConfirmDialog
         open={pendingDelete !== null}

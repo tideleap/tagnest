@@ -18,6 +18,8 @@ export const keys = {
   userSettings: ['user-settings'] as const,
   aiOverview: ['ai-overview'] as const,
   aiTaxonomy: ['ai-taxonomy'] as const,
+  /** Alias proposals + topic clustering for the taxonomy health page. */
+  aiAliases: ['ai-aliases'] as const,
   /** Pending proposals; scoped by run so "review what I just made" is cacheable. */
   aiSuggestions: (jobId?: string | null) => ['ai-suggestions', jobId ?? 'all'] as const,
   aiSuggestionsRoot: ['ai-suggestions'] as const,

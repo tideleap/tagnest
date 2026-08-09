@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AiAliasSuggestionsResponse,
   AiEngineKind,
   AiJob,
   AiJobRunResult,
@@ -50,6 +51,61 @@ export function useAiTaxonomyAudit(enabled = true) {
     queryFn: () => api.get<AiTaxonomyAudit>('/ai/taxonomy'),
     enabled,
     staleTime: 60_000,
+  });
+}
+
+export function useAiAliasSuggestions() {
+  return useQuery({
+    queryKey: keys.aiAliases,
+    queryFn: () => api.get<AiAliasSuggestionsResponse>('/ai/taxonomy/aliases'),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Applies the user-confirmed aliases to `tags.aliases`.
+ *
+ * Optimistic cache update so the proposal list reflects the accept immediately;
+ * on error the list is invalidated and refetched. Applying is additive only —
+ * it never deletes a tag — so rolling back is just dropping the local edit.
+ */
+export function useApplyAliases() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (items: Array<{ tagId: string; aliases: string[] }>) =>
+      api.post<{ updated: number }>('/ai/taxonomy/aliases', { action: 'apply', apply: items }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.aiAliases });
+      qc.invalidateQueries({ queryKey: keys.tags });
+      toast.success('已写入别名，后续归一化会自动合并');
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: keys.aiAliases });
+      toast.error('应用别名失败，请重试');
+    },
+  });
+}
+
+/**
+ * Asks the model to propose richer aliases. Falls back to offline proposals
+ * when no model is configured (the response carries `modelAvailable: false`).
+ */
+export function useGenerateAliases() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tagIds?: string[]) =>
+      api.post<AiAliasSuggestionsResponse>('/ai/taxonomy/aliases', {
+        action: 'generate',
+        tagIds,
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(keys.aiAliases, (prev: AiAliasSuggestionsResponse | undefined) => ({
+        ...(prev ?? { aliasSuggestions: [], topicClusters: [] }),
+        aliasSuggestions: data.aliasSuggestions,
+        modelAvailable: data.modelAvailable,
+      }));
+    },
+    onError: () => toast.error('AI 生成别名失败，请重试'),
   });
 }
 

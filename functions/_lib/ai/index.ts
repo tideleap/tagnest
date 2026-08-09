@@ -37,6 +37,7 @@ export * from './providers';
 export * from './engine';
 export * from './store';
 export * from './feedback';
+export * from './aliases';
 export * from './api';
 
 /**

@@ -41,7 +41,7 @@ const FUZZY_THRESHOLD = 0.86;
  * anything domain-specific is learned from the user's own tags and aliases,
  * which always take precedence over this table.
  */
-const SYNONYMS: Record<string, string> = {
+export const SYNONYMS: Record<string, string> = {
   // Frontend
   frontend: '前端',
   fe: '前端',

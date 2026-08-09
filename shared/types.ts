@@ -304,6 +304,32 @@ export interface AiTaxonomyAudit {
   unused: Array<{ id: string; name: string }>;
 }
 
+/** A proposed alias spelling for an existing tag, before the user confirms it. */
+export interface AiAliasSuggestion {
+  tagId: string;
+  tagName: string;
+  /** Proposed spellings not already covered by the tag. */
+  aliases: string[];
+  /** Why these were proposed (offline synonyms vs. AI). */
+  reason?: string;
+}
+
+/** A group of pending suggestions sharing one model-supplied topic. */
+export interface AiTopicCluster {
+  topic: string;
+  /** Distinct bookmarks carrying this topic. */
+  bookmarkCount: number;
+  /** Distinct tag names proposed under this topic (capped). */
+  tagNames: string[];
+}
+
+export interface AiAliasSuggestionsResponse {
+  aliasSuggestions: AiAliasSuggestion[];
+  topicClusters: AiTopicCluster[];
+  /** False when the model was unavailable and offline proposals were returned. */
+  modelAvailable?: boolean;
+}
+
 /** Dashboard numbers for the organiser workbench. */
 export interface AiOverview {
   /** Model reachable with the current settings. */
