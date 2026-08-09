@@ -85,6 +85,12 @@ jobs:
       # new ids into wrangler.toml, generates a JWT_SECRET, and applies
       # migrations — so the user never touches the dashboard or CLI.
       - name: Provision infrastructure (idempotent, fork-friendly)
+        # Never block a release on provisioning. On the upstream repo every
+        # resource already exists and migrations are applied separately, so a
+        # provisioning hiccup (e.g. the CI token lacking D1/R2/KV scope) must
+        # not skip the Pages deploy + health check that follow. Forks with a
+        # fully-scoped token still get their resources created here.
+        continue-on-error: true
         if: steps.cf.outputs.configured == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
