@@ -305,6 +305,64 @@ export type SnapshotErrorKind =
   | 'empty'
   | 'r2_unavailable'; // bucket missing / write failed
 
+interface CaptureAndStoreResult {
+  key: string;
+  keep: string[];
+  drop: string[];
+}
+
+/**
+ * End-to-end capture for a single bookmark: resolves the provider, renders the
+ * screenshot, stores it in R2 with retention, and returns the new key plus the
+ * retained key list. This is the shared body used by both the per-bookmark
+ * snapshot endpoint and the real-time monitor refresh endpoint.
+ */
+export async function captureAndStoreBookmarkSnapshot(
+  env: Pick<Env, 'SNAPSHOT_BUCKET' | 'SNAPSHOT_API_URL' | 'SNAPSHOT_API_KEY' | 'BROWSER'>,
+  opts: {
+    userId: string;
+    bookmarkId: string;
+    url: string;
+    existingKeys: string[];
+    retentionLimit: number;
+  },
+): Promise<CaptureAndStoreResult> {
+  if (!env.SNAPSHOT_BUCKET) {
+    throw new Error('SNAPSHOT_BUCKET 未绑定，无法存储网站快照');
+  }
+
+  const provider = resolveSnapshotProvider(env);
+  if (provider === 'none') {
+    throw new Error('未配置截图能力（需启用 Cloudflare Browser Run 或设置 SNAPSHOT_API_URL）');
+  }
+
+  let bytes: Uint8Array;
+  let contentType: string;
+  try {
+    if (provider === 'external') {
+      ({ bytes, contentType } = await fetchSnapshotFromApi(opts.url, {
+        apiUrl: env.SNAPSHOT_API_URL,
+        apiKey: env.SNAPSHOT_API_KEY,
+      }));
+    } else {
+      ({ bytes, contentType } = await captureWithBrowserRun(env, opts.url));
+    }
+  } catch (e) {
+    const { message } = classifySnapshotError(e);
+    throw new Error(message);
+  }
+
+  const stored = await storeSnapshotWithRetention(env, {
+    userId: opts.userId,
+    bookmarkId: opts.bookmarkId,
+    existingKeys: opts.existingKeys,
+    bytes,
+    contentType,
+    retentionLimit: opts.retentionLimit,
+  });
+  return stored;
+}
+
 export function classifySnapshotError(e: unknown): { kind: SnapshotErrorKind; message: string } {
   const msg = e instanceof Error ? e.message : String(e);
   if (msg.includes('SNAPSHOT_API_URL 未配置')) return { kind: 'not_configured', message: '网站快照功能未配置（未设置 SNAPSHOT_API_URL）' };

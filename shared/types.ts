@@ -130,6 +130,25 @@ export interface BookmarkInput {
 
 export type BookmarkPatch = Partial<BookmarkInput>;
 
+/** One entry in the real-time website snapshot monitor strip. */
+export interface SnapshotMonitorItem {
+  bookmarkId: string;
+  title: string;
+  url: string;
+  snapshotKey: string;
+  snapshotUrl: string;
+  capturedAt: string | null;
+  /** True when the latest snapshot is older than the freshness threshold. */
+  isStale: boolean;
+}
+
+/** Response from GET /api/snapshots/monitor. */
+export interface SnapshotMonitorStatus {
+  items: SnapshotMonitorItem[];
+  limit: number;
+  refreshedAt: string;
+}
+
 export interface TagInput {
   name: string;
   colorIndex?: number;

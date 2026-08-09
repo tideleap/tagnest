@@ -548,6 +548,55 @@ export async function loadSnapshotState(
   };
 }
 
+export interface SnapshotMonitorRow {
+  id: string;
+  url: string;
+  title: string;
+  snapshotKey: string;
+  snapshotKeys: string[];
+  visitCount: number;
+  lastVisitedAt: string | null;
+}
+
+/**
+ * Returns the user's live bookmarks that already have at least one snapshot.
+ *
+ * Ordered by "most interesting first": visits desc, then latest capture desc,
+ * then title. This keeps the monitor strip focused on sites the user actually
+ * cares about, rather than the newest imports that may never have been opened.
+ */
+export async function listBookmarksWithSnapshots(
+  env: Env,
+  userId: string,
+  limit: number,
+): Promise<SnapshotMonitorRow[]> {
+  const rows = await env.DB.prepare(
+    `SELECT b.id, b.url, b.title, b.snapshot_key, b.snapshot_keys,
+            b.visit_count, b.last_visited_at
+       FROM bookmarks b
+      WHERE b.user_id = ?
+        AND b.deleted_at IS NULL
+        AND b.is_archived = 0
+        AND b.snapshot_key IS NOT NULL
+      ORDER BY b.visit_count DESC,
+               json_extract(b.snapshot_keys, '$[#-1]') DESC,
+               b.title COLLATE NOCASE ASC
+      LIMIT ?`,
+  )
+    .bind(userId, limit)
+    .all<Row>();
+
+  return rows.results.map((row) => ({
+    id: row.id as string,
+    url: row.url as string,
+    title: (row.title as string) ?? '',
+    snapshotKey: row.snapshot_key as string,
+    snapshotKeys: parseSnapshotKeys(row.snapshot_keys),
+    visitCount: Number(row.visit_count ?? 0),
+    lastVisitedAt: (row.last_visited_at as string | null) ?? null,
+  }));
+}
+
 /**
  * Persists the snapshot state after a capture: the latest key (for the card's
  * `snapshot_key`) and the full retained list (`snapshot_keys`, oldest→newest).

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { SnapshotMonitorItem, SnapshotMonitorStatus } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -46,5 +47,47 @@ export function useBookmarkSnapshots(id: string | null, enabled = true) {
     queryKey: ['bookmark-snapshots', id ?? ''],
     queryFn: () => api.get<SnapshotList>(`/bookmarks/${id}/snapshots`),
     enabled: Boolean(id) && enabled,
+  });
+}
+
+export const SNAPSHOT_MONITOR_KEY = ['snapshot-monitor'] as const;
+
+/**
+ * Real-time snapshot monitor: top N bookmarks that already have a snapshot,
+ * ordered by visits + recency. Refreshes automatically every 30s so the first
+ * screen always shows the latest visual state.
+ */
+export function useSnapshotMonitor(enabled = true) {
+  return useQuery({
+    queryKey: SNAPSHOT_MONITOR_KEY,
+    queryFn: () => api.get<SnapshotMonitorStatus>('/snapshots/monitor'),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    enabled,
+  });
+}
+
+interface RefreshMonitorResponse {
+  item: SnapshotMonitorItem;
+  refreshedAt: string;
+}
+
+/**
+ * Refreshes one bookmark in the monitor strip. Without a `bookmarkId` the
+ * backend refreshes the bookmark whose snapshot is oldest (round-robin), which
+ * is how the automatic rotation is implemented.
+ */
+export function useRefreshSnapshotMonitor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (opts: { bookmarkId?: string } = {}) =>
+      api.post<RefreshMonitorResponse>('/snapshots/monitor', opts.bookmarkId ? { bookmarkId: opts.bookmarkId } : {}),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: SNAPSHOT_MONITOR_KEY });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.bookmark(res.item.bookmarkId) });
+      toast.success(`${res.item.title || '书签'} 快照已更新`);
+    },
+    onError: (e: Error) => toast.error('刷新快照失败', e.message),
   });
 }
