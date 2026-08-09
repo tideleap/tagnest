@@ -45,14 +45,11 @@
 
 ## 项目简介
 
-TagNest 是 *tmarks* 书签管理器理念的**独立清洁室实现（clean-room reimplementation）**，
-从零设计、使用 MIT 许可证，可自由自托管或商用。它面向「重度书签用户」：
-
+TagNest：
 - **为搜索而生**：D1/SQLite 的 `fts5` 触发器分词，让中文子串和拉丁文词中匹配都准确可用。
 - **键盘优先**：Vim 风格导航、即时命令面板、键集分页，规模再大也顺滑。
 - **导入即整理**：Netscape / JSON / CSV 多源导入，文件夹自动变标签，重复网址自动去重。
 - **可观测**：每次请求输出结构化日志，关键业务事件可查询，健康检查端点可直接接入监控。
-
 ---
 
 ## 功能特性
@@ -239,40 +236,6 @@ npm run deploy
 
 ---
 
-## 与 tmarks 的关系（清洁室实现声明）
-
-TagNest 是 *tmarks* 书签管理器**产品理念**的独立清洁室实现（clean-room reimplementation），
-并非其分支、Fork 或直接复制。我们对两者的全部源代码做了结构化比对，结论如下：
-
-- **无直接源代码关联**：两个仓库相互独立（`github.com/tideleap/tagnest` 与
-  `github.com/ai-tmarks/tmarks`），不存在共享子模块、共享私有包或文件级复制。
-- **零文件级重复**：对 308 个 TagNest 源文件与 373 个 tmarks 源文件做 SHA-256 内容比对，
-  **没有任何内容相同的非空文件**。
-- **零残留引用**：在 `src/`、`functions/`、`shared/`、`migrations/` 中检索
-  `tmarks|TMarks|上游` 命中数为 **0**；早期提交（`b1c3323`）已主动清除所有 TMarks 字面值。
-- **仅存间接（概念 / 架构）渊源**：两者都基于同一套公开、标准的 Cloudflare Pages 技术栈
-  （Pages Functions + D1 + R2 + KV + React + Vite + Tailwind v4），并沿用类似的模块划分
-  （如 `functions/_lib` 对应 `functions/lib`、`shared/types.ts`）。但同一用途的实现方式完全不同
-  ——例如字段密封：TagNest 用 AES-256-GCM（HKDF 派生密钥），tmarks 用 PBKDF2 做密码哈希。
-
-> 上游 *tmarks* 仓库 `LICENSE` 实为 **CC BY-NC 4.0（非商业）**，与其 README 自称的 MIT 自相矛盾。
-> TagNest 不复用其任何源码、素材、文案或布局，故不受该非商业条款限制，以独立的 **MIT** 许可证发布，
-> 可自由自托管或商用。完整合规分析见 [`COMPLIANCE.md`](./COMPLIANCE.md) 与
-> [`docs/COMPLIANCE-REVIEW-2026-08-02.md`](./docs/COMPLIANCE-REVIEW-2026-08-02.md)。
-
----
-
-## 优化变更记录
-
-- **2026-08-09 · 源代码关联审计与仓库整理**
-  - 全量比对 TagNest 与 tmarks 源码：确认**无直接源代码关联**，仅存间接的清洁室概念 / 架构渊源。
-  - 验证并确认代码库与上游**零耦合**（无共享模块、无私有依赖、无残留字面值），无需额外解耦改造。
-  - 清理仓库根目录遗留的构建 / 调试产物（`*.log`、`parser.bundle.mjs`、`_tmp_test_parser.mjs` 等），
-    统一目录结构，保持工作区整洁（均已被 `.gitignore` 忽略，不进入版本库）。
-  - 完善本文档：新增「与 tmarks 的关系」专节，明确清洁室声明与比对证据；优化结构描述与关系标注，
-    确保文档与代码状态一致。
-
----
 
 ## English abstract
 
