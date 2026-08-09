@@ -14,9 +14,11 @@ import { getSnapshot, snapshotContentType } from '../../_lib/snapshots';
 const KEY_PATTERN = /^snapshots\/[\w-]+\/[\w-]+(?:-\d+)?\.webp$/;
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
-  const raw = ctx.params.key as string;
+  const raw = ctx.params.key;
 
-  const key = decodeURIComponent(Array.isArray(raw) ? raw[0] : String(raw));
+  // Catch-all route: the key is a path like "snapshots/{userId}/{file}.webp".
+  // Pages Functions pass it as an array of segments, so we rejoin them with '/'.
+  const key = decodeURIComponent(Array.isArray(raw) ? raw.join('/') : String(raw));
   if (!KEY_PATTERN.test(key)) {
     throw notFound('快照不存在');
   }
