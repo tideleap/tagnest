@@ -75,6 +75,13 @@ TagNest 是某款书签管理器产品理念的独立清洁室实现（clean-roo
 - 每条建议带置信度与来源（`model` / `heuristic` / `taxonomy`），进入可审阅队列，完全可逆；无 API Key 也能用启发式产出。
 - **整理即分级**：AI 整理跑完的最后一刻自动执行「三级分组」——按标签把书签归并成 `一级大类 → 二级子类 → 三级具体标签` 的层级树（改写标签 `parent_id`），与标签整理同步完成、无需手动点「自动建组」。未命中分类规则或已位于三级深处的标签保持原状，分组结果完全可逆。
 - **按层级审阅**：建议审阅页新增「按层级」视图，按 大类 → 子类 归并同一标签下的书签，支持整类忽略 / 整类应用；侧边栏标签树改为可折叠的三级层级展示，点击叶子标签即筛选对应书签。
+- **书签三级 ML 分类**（新）：基于朴素贝叶斯 + IDF 重加权的文本分类器（`functions/_lib/ai/classifier.ts`），直接对**书签内容**（标题 / URL / 描述 / 已有标签）做三级归类，而不只是对标签名归类。层级结构在 `taxonomy-ml.ts` 中集中定义（13 个一级大类、各含二级子类、每类配特征词）；分类的输入输出格式、置信度阈值、内容安全隔离与批量稳定性约束如下：
+  - **层级结构**：`一级大类 → 二级子类 → 三级具体标签`。三级具体标签取自书签自身的标签或子类名（叶子）。
+  - **输入** `BookmarkClassInput`：`{ id, title, url, description?, tags? }`。**输出** `BookmarkClassPrediction`：`{ category, subcategory, suggestedTag, confidence, engine, needsReview, quarantined, reason }`。
+  - **置信度阈值**：`confidenceThreshold`（默认 0.5）作为自动归类的门槛；低于阈值落到 `needsReview`（`category`/`subcategory` 置空，不写入层级）。置信度由「胜出类相对亚军类的边际」经 sigmoid 校准，并经 IDF 强化稀有特征、压制通用词（如 `文档`、`教程`），避免被通用词带偏。
+  - **内容安全**：命中成人/NSFW 词表的书签直接 `quarantined` 隔离待人工确认，绝不进入生产力三级体系。
+  - **批量稳定**：`classifyBatch` 确定性产出（同输入同输出），模型只训练一次并共享于整批；返回聚合统计（按类计数、置信度直方图、`needsReview`/`quarantined` 数量），便于大规模书签处理时核对结果稳定可靠。
+  - **API**：`POST /api/ai/classify`，`mode` 可为 `report`（只读报告，默认）/ `apply`（把自动归类的书签挂到其一级/二级标签，幂等）/ `revert`（按确定性重分类删除自动链接，可回滚）。
 - 支持 OpenAI / Anthropic / Gemini / 任意 OpenAI 兼容 `custom` 端点；密钥以 AES-256-GCM 加密后存储。
 
 **分享与扩展**

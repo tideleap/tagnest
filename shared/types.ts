@@ -357,6 +357,103 @@ export interface AiTopicCount {
   count: number;
 }
 
+/* ------------------------------------------------------------------ *
+ * Bookmark three-level ML classification
+ * ------------------------------------------------------------------ */
+
+/** What the classifier needs about a bookmark. All fields optional except id. */
+export interface BookmarkClassInput {
+  id: string;
+  title: string;
+  url: string;
+  description?: string | null;
+  /** Existing tag names — strong signal for the 3rd-level leaf. */
+  tags?: string[];
+}
+
+/** The prediction for one bookmark. `category`/`subcategory` null ⇒ review. */
+export interface BookmarkClassPrediction {
+  bookmarkId: string;
+  /** 一级大类, or null when below threshold / quarantined. */
+  category: string | null;
+  /** 二级子类, or null when below threshold / quarantined. */
+  subcategory: string | null;
+  /** 三级具体标签 — most specific label (an existing tag or the subcategory). */
+  suggestedTag: string | null;
+  /** Calibrated probability in [0,1]. */
+  confidence: number;
+  engine: 'model' | 'none';
+  /** True when confidence < threshold and the item needs a human decision. */
+  needsReview: boolean;
+  /** True when content-safety matched; never filed into a category. */
+  quarantined: boolean;
+  quarantineReason?: string;
+  /** Short human-readable explanation for the review queue. */
+  reason: string;
+}
+
+export interface ClassifyOptions {
+  /** Auto-file floor in [0,1]. Default 0.6. */
+  confidenceThreshold: number;
+  /** Softmax temperature: lower ⇒ sharper probabilities / stricter ranking. */
+  temperature: number;
+  /** Multiplier applied to confidence when the bookmark has zero feature hits. */
+  zeroSignalFactor: number;
+  /** Minimum coverage fraction for full confidence. */
+  minCoverage: number;
+}
+
+/** Aggregate result of a batch classification run. */
+export interface BatchClassifyResult {
+  total: number;
+  classified: number;
+  needsReview: number;
+  quarantined: number;
+  /** Mean confidence across items that were auto-filed. */
+  avgConfidence: number;
+  /** Count of items whose top probability landed in each confidence band. */
+  confidenceHistogram: { band: string; count: number }[];
+  /** Per-category counts of auto-filed items. */
+  byCategory: Record<string, number>;
+  /** Per-bookmark predictions, in input order. */
+  predictions: BookmarkClassPrediction[];
+  engine: 'model';
+}
+
+/** Scope selector for a classification run, mirrors the AI job scope. */
+export interface ClassifyScope {
+  type: 'all' | 'untagged' | 'ids';
+  ids?: string[];
+}
+
+/** Request body for POST /api/ai/classify. */
+export interface ClassifyRequest {
+  mode?: 'report' | 'apply' | 'revert';
+  scope?: ClassifyScope;
+  confidenceThreshold?: number;
+}
+
+/** Response body for POST /api/ai/classify. */
+export interface ClassifyResponse {
+  mode: 'report' | 'apply' | 'revert';
+  scope: ClassifyScope;
+  confidenceThreshold: number;
+  summary: {
+    total: number;
+    classified: number;
+    needsReview: number;
+    quarantined: number;
+    avgConfidence: number;
+  };
+  byCategory: Record<string, number>;
+  /** Per-bookmark predictions (report mode) or affected items (apply/revert). */
+  predictions: BookmarkClassPrediction[];
+  /** apply mode: links created between bookmarks and hierarchy tags. */
+  linksCreated?: number;
+  /** revert mode: links removed. */
+  linksRemoved?: number;
+}
+
 /** A group of tags that mean the same thing, proposed for merging. */
 export interface AiTaxonomyCluster {
   canonicalId: string;
