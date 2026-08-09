@@ -114,6 +114,38 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
             {job.failed > 0 && <span className="text-caution-ink">{job.failed} 条跳过</span>}
             <span className="ml-auto">{percent}%</span>
           </div>
+
+          {/* Post-run topic distribution. The bar chart is pure CSS so it
+              survives a reload and needs no charting dependency. */}
+          {run.topics.length > 0 && (
+            <div className="mt-1 flex flex-col gap-1">
+              <p className="text-2xs font-medium text-ink-soft">本次整理主题分布</p>
+              <ul className="flex flex-col gap-1">
+                {run.topics.slice(0, 8).map((t) => {
+                  const width = Math.max(6, Math.round((t.count / (run.topics[0]?.count || 1)) * 100));
+                  return (
+                    <li key={t.topic} className="flex items-center gap-2 text-2xs">
+                      <span
+                        className="w-24 shrink-0 truncate text-ink-faint"
+                        title={t.topic}
+                      >
+                        {t.topic}
+                      </span>
+                      <span className="h-2 flex-1 overflow-hidden rounded-full bg-sunken">
+                        <span
+                          className="block h-full rounded-full bg-brand"
+                          style={{ width: `${width}%` }}
+                        />
+                      </span>
+                      <span className="w-6 shrink-0 text-right tabular-nums text-ink-faint">
+                        {t.count}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

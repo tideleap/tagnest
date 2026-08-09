@@ -9,6 +9,7 @@ import {
 } from './scoring';
 import { renameByFeedback, type FeedbackProfile } from './feedback';
 import type { AiConfig, EnrichInput, LocalConfig, TagCandidate, Vocabulary } from './types';
+import type { AiTopicCount } from '../../../shared/types';
 
 /**
  * The orchestrator: turns bookmarks into reviewed-ready tag proposals.
@@ -239,4 +240,23 @@ export async function suggestForBookmarks(
   else if (usedHeuristics) engine = 'heuristic';
 
   return { results, engine, modelError, fatal };
+}
+
+/**
+ * Counts bookmarks by their model-assigned topic across a chunk of results.
+ *
+ * Used to build the post-run topic distribution chart: each result is one
+ * bookmark carrying a single `topic`, so the count is the number of bookmarks
+ * that fell under that topic. `null` topics are dropped — they carry no
+ * signal for the chart.
+ */
+export function aggregateTopics(results: SuggestionResult[]): AiTopicCount[] {
+  const counts = new Map<string, number>();
+  for (const result of results) {
+    if (!result.topic) continue;
+    counts.set(result.topic, (counts.get(result.topic) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
 }

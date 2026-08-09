@@ -133,7 +133,6 @@ export function OrganizePage() {
             loading={queueLoading}
             failed={queueFailed}
             onRetry={() => void refetchQueue()}
-            jobId={reviewJobId}
           />
         </div>
       )}

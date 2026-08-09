@@ -9,6 +9,7 @@ import type {
   AiOverview,
   AiSuggestion,
   AiTaxonomyAudit,
+  AiTopicCount,
   Tag,
 } from '@shared/types';
 import { api } from '@/lib/api';
@@ -118,6 +119,8 @@ export interface DecideInput {
   ids?: string[];
   jobId?: string;
   bookmarkId?: string;
+  /** New spelling when a single suggestion is edited before accept. */
+  renameTo?: string;
 }
 
 /**
@@ -196,6 +199,8 @@ export interface RunState {
   modelError: string | null;
   autoApplied: number;
   error: string | null;
+  /** Topic distribution accumulated across chunks, for the result chart. */
+  topics: AiTopicCount[];
 }
 
 const IDLE: RunState = {
@@ -205,7 +210,26 @@ const IDLE: RunState = {
   modelError: null,
   autoApplied: 0,
   error: null,
+  topics: [],
 };
+
+/**
+ * Merges per-chunk topic counts into a running total. Topics are de-duplicated
+ * by name and summed, so the same topic appearing across chunks accumulates.
+ */
+function mergeTopicCounts(
+  prev: AiTopicCount[],
+  next: AiTopicCount[] | undefined,
+): AiTopicCount[] {
+  if (!next || next.length === 0) return prev;
+  const totals = new Map<string, number>(prev.map((t) => [t.topic, t.count]));
+  for (const { topic, count } of next) {
+    totals.set(topic, (totals.get(topic) ?? 0) + count);
+  }
+  return [...totals.entries()]
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+}
 
 /**
  * Drives a batch run to completion, chunk by chunk.
@@ -295,14 +319,15 @@ export function useOrganizeRun() {
         }
 
         autoApplied += result.autoApplied;
-        setState({
+        setState((s) => ({
           job: result.job,
           running: !result.done,
           engine: result.engine,
           modelError: result.modelError,
           autoApplied,
           error: result.job.status === 'failed' ? result.job.error : null,
-        });
+          topics: mergeTopicCounts(s.topics, result.topics),
+        }));
 
         // The queue grows as chunks land, so the review list stays live
         // instead of only appearing once everything has finished.

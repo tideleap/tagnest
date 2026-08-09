@@ -29,10 +29,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     ids?: unknown;
     jobId?: unknown;
     bookmarkId?: unknown;
+    /** When a single suggestion is renamed before accept (Phase 4 edit). */
+    renameTo?: unknown;
   }>(ctx.request);
 
   const action = String(body.action ?? '');
   if (action !== 'accept' && action !== 'reject') throw badRequest('操作类型无效');
+
+  // A rename only makes sense on a single accept; cap length to match tags.
+  const renameTo = typeof body.renameTo === 'string' ? body.renameTo.slice(0, 64) : undefined;
 
   let ids: string[] = Array.isArray(body.ids)
     ? [...new Set(body.ids.map(String))].filter(Boolean).slice(0, MAX_DECISIONS)
@@ -58,7 +63,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   if (ids.length === 0) throw badRequest('没有可处理的标签建议');
 
-  const outcome = await decideSuggestions(ctx.env, userId, ids, action);
+  // Edit-before-accept is single-suggestion only; pass the new spelling so
+  // `decideSuggestions` records a 'modified' event and accepts under the new name.
+  const opts = ids.length === 1 && renameTo ? { renameTo } : undefined;
+
+  const outcome = await decideSuggestions(ctx.env, userId, ids, action, opts);
   const pending = await countPending(ctx.env, userId);
 
   return json({ ...outcome, pending });

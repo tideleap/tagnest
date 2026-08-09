@@ -6,6 +6,7 @@ import { createLogger } from '../../../../_lib/logger';
 import {
   RUN_CHUNK,
   autoApply,
+  aggregateTopics,
   getJob,
   loadAiConfig,
   loadBookmarkInputs,
@@ -130,6 +131,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     autoApplied,
     engine: outcome.engine,
     modelError: outcome.modelError,
+    topics: aggregateTopics(outcome.results),
   };
 
   return json(result);

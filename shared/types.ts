@@ -286,6 +286,15 @@ export interface AiJobRunResult {
   autoApplied: number;
   engine: AiEngineKind;
   modelError: string | null;
+  /** Topic frequency produced by this chunk, for the result distribution chart. */
+  topics?: AiTopicCount[];
+}
+
+/** Topic frequency across a run, for the result distribution chart. */
+export interface AiTopicCount {
+  topic: string;
+  /** Number of bookmarks carrying this topic. */
+  count: number;
 }
 
 /** A group of tags that mean the same thing, proposed for merging. */
