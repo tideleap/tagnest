@@ -243,6 +243,8 @@ export interface AiJob {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Prompt template revision that produced this run (Phase 5, for A/B). */
+  promptVersion?: string | null;
 }
 
 /** One proposed (bookmark, tag) pair awaiting a decision. */
@@ -351,6 +353,41 @@ export interface AiOverview {
   aiTagLinks: number;
   userTagLinks: number;
   recentJobs: AiJob[];
+  /**
+   * Suggestion-quality metrics (Phase 5). Derived from the accept/reject/modify
+   * feedback recorded on every decision: how often the user kept a proposal, and
+   * how often a proposed tag was ultimately accepted across the whole queue.
+   */
+  feedback: AiFeedbackMetrics;
+  /** Daily accept/reject counts for the last 30 days, for the trend chart. */
+  feedbackTrend: AiFeedbackTrendPoint[];
+  /** Active prompt-template revision; bump to compare revisions (A/B). */
+  promptVersion: string;
+}
+
+/** Headline suggestion-quality numbers shown on the workbench. */
+export interface AiFeedbackMetrics {
+  /** Total feedback events recorded. */
+  total: number;
+  accepted: number;
+  rejected: number;
+  modified: number;
+  /** Fraction (0..1) of resolved decisions the user kept a suggestion for. */
+  acceptanceRate: number;
+  /** Total proposed suggestions ever written (all statuses). */
+  proposalTotal: number;
+  /** Of those, how many the user accepted. */
+  proposalAccepted: number;
+  /** Precision across the whole queue, 0..1. */
+  hitRate: number;
+}
+
+/** One point on the evaluation trend chart. */
+export interface AiFeedbackTrendPoint {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  accepted: number;
+  rejected: number;
 }
 
 /* ------------------------------------------------------------------ *

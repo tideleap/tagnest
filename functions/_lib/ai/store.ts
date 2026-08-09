@@ -49,6 +49,8 @@ export interface JobRow {
   createdAt: string;
   updatedAt: string;
   scope: JobScope | null;
+  /** Prompt template revision that produced this run (Phase 5, for A/B). */
+  promptVersion: string | null;
 }
 
 function mapJob(row: Record<string, unknown>): JobRow {
@@ -72,6 +74,7 @@ function mapJob(row: Record<string, unknown>): JobRow {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     scope,
+    promptVersion: (row.prompt_version as string | null) ?? null,
   };
 }
 
@@ -162,15 +165,25 @@ export async function createJob(
   userId: string,
   kind: string,
   scope: JobScope,
+  promptVersion?: string | null,
 ): Promise<JobRow> {
   const id = newId();
   const ts = nowIso();
 
   await env.DB.prepare(
-    `INSERT INTO ai_jobs (id, user_id, kind, status, scope, total, processed, suggested, failed, created_at, updated_at)
-     VALUES (?, ?, ?, 'queued', ?, ?, 0, 0, 0, ?, ?)`,
+    `INSERT INTO ai_jobs (id, user_id, kind, status, scope, total, processed, suggested, failed, created_at, updated_at, prompt_version)
+     VALUES (?, ?, ?, 'queued', ?, ?, 0, 0, 0, ?, ?, ?)`,
   )
-    .bind(id, userId, kind, JSON.stringify(scope), scope.ids.length, ts, ts)
+    .bind(
+      id,
+      userId,
+      kind,
+      JSON.stringify(scope),
+      scope.ids.length,
+      ts,
+      ts,
+      promptVersion ?? null,
+    )
     .run();
 
   return {
@@ -186,6 +199,7 @@ export async function createJob(
     createdAt: ts,
     updatedAt: ts,
     scope,
+    promptVersion: promptVersion ?? null,
   };
 }
 

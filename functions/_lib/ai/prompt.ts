@@ -31,6 +31,18 @@ export const MAX_SUMMARY_LENGTH = 200;
 export const MAX_TOPIC_LENGTH = 40;
 export const MAX_REASON_LENGTH = 24;
 
+/**
+ * The prompt template revision currently in production.
+ *
+ * Every organise run stamps this onto its `ai_jobs.prompt_version` row, so the
+ * acceptance metrics collected in Phase 5 can be sliced by revision. Bump the
+ * string whenever the tagging prompt or its few-shot / schema block changes
+ * meaningfully — that is what lets a future "did the new prompt do better?"
+ * comparison be more than a guess. It is a plain date tag, not a semver, so the
+ * value reads as "the prompt that shipped on this day" in logs and dashboards.
+ */
+export const PROMPT_VERSION = '2026-08-09';
+
 export interface PromptOptions {
   maxTags: number;
   wantSummary: boolean;

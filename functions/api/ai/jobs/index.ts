@@ -2,6 +2,7 @@ import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { badRequest, badRequestCode, json, readJson } from '../../../_lib/http';
 import { MAX_JOB_ITEMS, createJob, listJobs, resolveScope, toApiJob } from '../../../_lib/ai';
+import { PROMPT_VERSION } from '../../../_lib/ai/prompt';
 
 /**
  * Batch organiser runs.
@@ -55,6 +56,6 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     );
   }
 
-  const job = await createJob(ctx.env, userId, 'tagging', { target, ids });
+  const job = await createJob(ctx.env, userId, 'tagging', { target, ids }, PROMPT_VERSION);
   return json({ job: toApiJob(job) }, { status: 201 });
 };

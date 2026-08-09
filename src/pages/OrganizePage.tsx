@@ -4,6 +4,7 @@ import { Download, ListChecks, Settings2, Sparkles, Wrench } from 'lucide-react'
 import type { AiJobTarget } from '@shared/types';
 import { Button, PageHeader, SegmentedControl } from '@/components/ui';
 import { RunPanel } from '@/components/organize/RunPanel';
+import { EvaluationPanel } from '@/components/organize/EvaluationPanel';
 import { SuggestionReview } from '@/components/organize/SuggestionReview';
 import { TaxonomyPanel } from '@/components/organize/TaxonomyPanel';
 import { AutoGroupPanel } from '@/components/organize/AutoGroupPanel';
@@ -106,12 +107,15 @@ export function OrganizePage() {
       />
 
       {tab === 'run' && (
-        <RunPanel
-          overview={overview}
-          run={{ ...run, start: startRun }}
-          target={target}
-          onTargetChange={setTarget}
-        />
+        <>
+          <RunPanel
+            overview={overview}
+            run={{ ...run, start: startRun }}
+            target={target}
+            onTargetChange={setTarget}
+          />
+          <EvaluationPanel overview={overview} />
+        </>
       )}
 
       {tab === 'review' && (

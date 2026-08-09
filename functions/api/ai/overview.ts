@@ -2,7 +2,16 @@ import type { AiOverview } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { json } from '../../_lib/http';
-import { countPending, isModelReady, listJobs, loadConfigRow, toApiJob } from '../../_lib/ai';
+import {
+  countPending,
+  isModelReady,
+  listJobs,
+  loadConfigRow,
+  loadFeedbackMetrics,
+  loadFeedbackTrend,
+  toApiJob,
+} from '../../_lib/ai';
+import { PROMPT_VERSION } from '../../_lib/ai/prompt';
 
 /**
  * Numbers for the organiser workbench.
@@ -17,7 +26,7 @@ import { countPending, isModelReady, listJobs, loadConfigRow, toApiJob } from '.
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
 
-  const [row, pending, jobs, counts, provenance] = await Promise.all([
+  const [row, pending, jobs, counts, provenance, feedback, trend] = await Promise.all([
     loadConfigRow(ctx.env, userId),
     countPending(ctx.env, userId),
     listJobs(ctx.env, userId, 5),
@@ -47,6 +56,10 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     )
       .bind(userId)
       .first<{ ai: number; user_made: number }>(),
+
+    // Phase 5: suggestion-quality metrics from the feedback loop.
+    loadFeedbackMetrics(ctx.env, userId),
+    loadFeedbackTrend(ctx.env, userId, 30),
   ]);
 
   const overview: AiOverview = {
@@ -58,6 +71,9 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     aiTagLinks: Number(provenance?.ai ?? 0),
     userTagLinks: Number(provenance?.user_made ?? 0),
     recentJobs: jobs.map(toApiJob),
+    feedback,
+    feedbackTrend: trend,
+    promptVersion: PROMPT_VERSION,
   };
 
   return json(overview);

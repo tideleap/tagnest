@@ -171,6 +171,207 @@ export function renameByFeedback(name: string, profile: FeedbackProfile): string
 }
 
 /* ------------------------------------------------------------------ *
+ * Evaluation metrics (Phase 5 — observability)
+ *
+ * The `ai_feedback` table is the raw signal: one row per decision the user
+ * made. These helpers turn it into the numbers a dashboard can show — how
+ * often the user kept a suggestion (acceptance rate), how often a proposed
+ * tag was ultimately accepted (hit rate / precision), and a per-day trend so
+ * the line can move up or down in front of the user instead of living only in
+ * an admin panel. All of it is pure so the arithmetic is unit-testable without
+ * a database, and the public `load*` wrappers are thin SQL over the same logic.
+ * ------------------------------------------------------------------ */
+
+/** A single decision tallied for the dashboard. */
+export interface FeedbackTally {
+  total: number;
+  accepted: number;
+  rejected: number;
+  modified: number;
+  /**
+   * Fraction (0..1) of *resolved* decisions the user kept a suggestion for.
+   * A rename counts as "kept" (the user wanted a tag, just not that spelling),
+   * so `kept = accepted + modified` over `accepted + rejected + modified`.
+   */
+  acceptanceRate: number;
+}
+
+/**
+ * Pure aggregation of feedback actions into headline counts and an acceptance
+ * rate. `modified` is treated as a kept suggestion, not a rejection, because the
+ * user accepted the *idea* of tagging and only corrected the wording — that is
+ * exactly the signal Phase 2 feeds back into the engine via `renameByFeedback`.
+ */
+export function summarizeFeedback(actions: ReadonlyArray<FeedbackAction>): FeedbackTally {
+  let accepted = 0;
+  let rejected = 0;
+  let modified = 0;
+  for (const a of actions) {
+    if (a === 'accepted') accepted += 1;
+    else if (a === 'rejected') rejected += 1;
+    else if (a === 'modified') modified += 1;
+  }
+  const kept = accepted + modified;
+  const resolved = accepted + rejected + modified;
+  return {
+    total: actions.length,
+    accepted,
+    rejected,
+    modified,
+    acceptanceRate: resolved === 0 ? 0 : kept / resolved,
+  };
+}
+
+/**
+ * Precision of the suggestion engine across the whole queue: of every tag ever
+ * proposed (all statuses, including still-pending), what share did the user
+ * ultimately accept? This is intentionally broader than `acceptanceRate`,
+ * which only reflects decisions already made — `hitRate` shows whether the
+ * *pipeline* is producing tags worth keeping, pending items included.
+ */
+export function computeHitRate(proposalAccepted: number, proposalTotal: number): number {
+  if (proposalTotal <= 0) return 0;
+  return proposalAccepted / proposalTotal;
+}
+
+/** One point on the evaluation trend chart. */
+export interface FeedbackTrendPoint {
+  /** `YYYY-MM-DD` (UTC). */
+  date: string;
+  accepted: number;
+  rejected: number;
+}
+
+function toDateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Builds a contiguous daily series of the last `days` days (inclusive of
+ * `endDate`), filling gaps with zero so the chart never has holes. `rows` are
+ * pre-aggregated `(day, action, count)` tuples from the database; anything
+ * outside the window, or in a shape we do not recognise, is ignored.
+ *
+ * Pure: pass `endDate` explicitly in tests to keep the window deterministic.
+ */
+export function buildFeedbackTrend(
+  rows: ReadonlyArray<{ day: string; action: FeedbackAction; count: number }>,
+  days = 30,
+  endDate: Date = new Date(),
+): FeedbackTrendPoint[] {
+  const end = toDateKey(endDate);
+  const byDay = new Map<string, { accepted: number; rejected: number }>();
+  for (const r of rows) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.day)) continue;
+    const bucket = byDay.get(r.day) ?? { accepted: 0, rejected: 0 };
+    if (r.action === 'accepted') bucket.accepted += r.count;
+    else if (r.action === 'rejected') bucket.rejected += r.count;
+    // 'modified' is folded into acceptance on the dashboard; for the trend we
+    // keep the raw accept/reject split so the daily volume stays honest.
+    byDay.set(r.day, bucket);
+  }
+
+  const series: FeedbackTrendPoint[] = [];
+  const cursor = new Date(`${end}T00:00:00.000Z`);
+  cursor.setUTCDate(cursor.getUTCDate() - (days - 1));
+  for (let i = 0; i < days; i += 1) {
+    const key = toDateKey(cursor);
+    const bucket = byDay.get(key) ?? { accepted: 0, rejected: 0 };
+    series.push({ date: key, accepted: bucket.accepted, rejected: bucket.rejected });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return series;
+}
+
+/** What the overview endpoint surfaces about suggestion quality. */
+export interface FeedbackMetrics extends FeedbackTally {
+  /** Total proposed suggestions ever written (all statuses). */
+  proposalTotal: number;
+  /** Of those, how many were accepted by the user. */
+  proposalAccepted: number;
+  /** Precision across the whole queue, 0..1. */
+  hitRate: number;
+}
+
+/**
+ * Aggregates the user's decision history into the dashboard metrics.
+ *
+ * Two counts feed it:
+ *   - the `ai_feedback` action tally (accept / reject / modify),
+ *   - the `tag_suggestions` status tally (accepted / rejected / pending / ...).
+ * Kept as one batched query set so the overview endpoint stays a single
+ * round-trip against the database.
+ */
+export async function loadFeedbackMetrics(
+  env: Env,
+  userId: string,
+): Promise<FeedbackMetrics> {
+  const [actionRows, statusRows] = await Promise.all([
+    env.DB.prepare(
+      `SELECT action, COUNT(*) AS c FROM ai_feedback WHERE user_id = ? GROUP BY action`,
+    )
+      .bind(userId)
+      .all<{ action: FeedbackAction; c: number }>(),
+
+    env.DB.prepare(
+      `SELECT status, COUNT(*) AS c FROM tag_suggestions WHERE user_id = ? GROUP BY status`,
+    )
+      .bind(userId)
+      .all<{ status: string; c: number }>(),
+  ]);
+
+  // The query returns one row per action with a count; expand it back into a
+  // flat per-event list so `summarizeFeedback` (which reasons about individual
+  // decisions, e.g. treating a rename as "kept") can do its job unchanged.
+  const flatActions: FeedbackAction[] = [];
+  for (const r of actionRows.results) {
+    for (let i = 0; i < Number(r.c); i += 1) flatActions.push(r.action);
+  }
+  const tally = summarizeFeedback(flatActions);
+
+  const byStatus = new Map(statusRows.results.map((r) => [String(r.status), Number(r.c)]));
+  const proposalAccepted = byStatus.get('accepted') ?? 0;
+  const proposalTotal = statusRows.results.reduce((sum, r) => sum + Number(r.c), 0);
+
+  return {
+    ...tally,
+    proposalTotal,
+    proposalAccepted,
+    hitRate: computeHitRate(proposalAccepted, proposalTotal),
+  };
+}
+
+/**
+ * Daily accept/reject counts for the last `days` days, for the trend chart.
+ * The window cutoff is computed in UTC from the current time; the caller can
+ * pass a fixed `endDate` only through `buildFeedbackTrend`'s pure path — here
+ * we read "now" so the dashboard always shows up-to-date history.
+ */
+export async function loadFeedbackTrend(
+  env: Env,
+  userId: string,
+  days = 30,
+): Promise<FeedbackTrendPoint[]> {
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  const cutoff = start.toISOString();
+
+  const rows = await env.DB.prepare(
+    `SELECT DATE(created_at) AS day, action, COUNT(*) AS c
+       FROM ai_feedback
+      WHERE user_id = ? AND created_at >= ?
+      GROUP BY day, action`,
+  )
+    .bind(userId, cutoff)
+    .all<{ day: string; action: FeedbackAction; c: number }>();
+
+  return buildFeedbackTrend(
+    rows.results.map((r) => ({ day: r.day, action: r.action, count: Number(r.c) })),
+    days,
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Database access
  * ------------------------------------------------------------------ */
 

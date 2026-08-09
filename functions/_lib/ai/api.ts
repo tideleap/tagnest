@@ -23,6 +23,7 @@ export function toApiJob(row: JobRow): AiJob {
     error: row.error,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    promptVersion: row.promptVersion,
   };
 }
 

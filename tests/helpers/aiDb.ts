@@ -92,6 +92,7 @@ export interface JobRow {
   error: string | null;
   created_at: string;
   updated_at: string;
+  prompt_version: string | null;
 }
 
 export interface SettingsRow {
@@ -307,6 +308,54 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         }));
     }
 
+    // Phase 5: feedback action tally (accept/reject/modify counts)
+    if (
+      sql.startsWith('SELECT ACTION, COUNT(*) AS C FROM AI_FEEDBACK') &&
+      sql.includes('GROUP BY ACTION')
+    ) {
+      const userId = String(params[0]);
+      const counts = new Map<string, number>();
+      for (const f of state.ai_feedback.filter((x) => x.user_id === userId)) {
+        counts.set(f.action, (counts.get(f.action) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([action, c]) => ({ action, c }));
+    }
+
+    // Phase 5: tag_suggestions status tally (accepted/rejected/pending/...)
+    if (
+      sql.startsWith('SELECT STATUS, COUNT(*) AS C FROM TAG_SUGGESTIONS') &&
+      sql.includes('GROUP BY STATUS')
+    ) {
+      const userId = String(params[0]);
+      const counts = new Map<string, number>();
+      for (const s of state.tag_suggestions.filter((x) => x.user_id === userId)) {
+        counts.set(s.status, (counts.get(s.status) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([status, c]) => ({ status, c }));
+    }
+
+    // Phase 5: 30-day accept/reject trend by day
+    if (sql.startsWith('SELECT DATE(CREATED_AT) AS DAY, ACTION, COUNT(*) AS C FROM AI_FEEDBACK')) {
+      const userId = String(params[0]);
+      const cutoff = params[1] != null ? String(params[1]) : '';
+      const counts = new Map<string, { accepted: number; rejected: number }>();
+      for (const f of state.ai_feedback.filter(
+        (x) => x.user_id === userId && (cutoff === '' || x.created_at >= cutoff),
+      )) {
+        const day = String(f.created_at).slice(0, 10);
+        const bucket = counts.get(day) ?? { accepted: 0, rejected: 0 };
+        if (f.action === 'accepted') bucket.accepted += 1;
+        else if (f.action === 'rejected') bucket.rejected += 1;
+        counts.set(day, bucket);
+      }
+      const rows: Array<{ day: string; action: string; c: number }> = [];
+      for (const [day, b] of counts) {
+        if (b.accepted > 0) rows.push({ day, action: 'accepted', c: b.accepted });
+        if (b.rejected > 0) rows.push({ day, action: 'rejected', c: b.rejected });
+      }
+      return rows;
+    }
+
     // decideSuggestions / autoApply row fetch
     if (sql.startsWith('SELECT S.ID, S.BOOKMARK_ID, S.TAG_NAME, S.TAG_ID, S.CONFIDENCE, S.SOURCE')) {
       const userId = String(params[0]);
@@ -357,7 +406,10 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
 
   /** INSERT / UPDATE / DELETE side effects. */
   function applyMutation(sql: string, rawSql: string, params: unknown[]) {
-    // createJob
+    // createJob — columns: id, user_id, kind, status('queued'), scope, total,
+    // processed(0), suggested(0), failed(0), created_at, updated_at, prompt_version.
+    // processed/suggested/failed are literal 0 in the SQL, so the bound params
+    // are [id, user_id, kind, scope, total, created_at, updated_at, prompt_version].
     if (sql.startsWith('INSERT INTO AI_JOBS')) {
       state.ai_jobs.push({
         id: String(params[0]),
@@ -373,6 +425,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         error: null,
         created_at: String(params[5]),
         updated_at: String(params[6]),
+        prompt_version: params[7] == null ? null : String(params[7]),
       });
       return;
     }
