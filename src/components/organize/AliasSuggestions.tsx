@@ -22,9 +22,17 @@ export function AliasSuggestions() {
   const generate = useGenerateAliases();
   const [picked, setPicked] = useState<Record<string, Set<string>>>({});
 
+  const suggestions = useMemo(() => data?.aliasSuggestions ?? [], [data]);
+  const selectedItems = useMemo(
+    () =>
+      suggestions
+        .map((s) => ({ tagId: s.tagId, aliases: [...(picked[s.tagId] ?? [])] }))
+        .filter((i) => i.aliases.length > 0),
+    [suggestions, picked],
+  );
+
   if (isLoading) return <Skeleton className="h-20 w-full rounded-md" />;
 
-  const suggestions = data?.aliasSuggestions ?? [];
   if (suggestions.length === 0) {
     return (
       <EmptyState
@@ -45,14 +53,6 @@ export function AliasSuggestions() {
       return next;
     });
   };
-
-  const selectedItems = useMemo(
-    () =>
-      suggestions
-        .map((s) => ({ tagId: s.tagId, aliases: [...(picked[s.tagId] ?? [])] }))
-        .filter((i) => i.aliases.length > 0),
-    [suggestions, picked],
-  );
 
   const topicClusters = data?.topicClusters ?? [];
 

@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { AiConfig, VocabEntry } from '../functions/_lib/ai/types';
+import type { AiConfig } from '../functions/_lib/ai/types';
 import {
   applyAliases,
   buildAliasSuggestions,
   clusterSuggestionsByTopic,
   generateModelAliases,
   parseAliasResponse,
-  type AliasSuggestion,
 } from '../functions/_lib/ai/aliases';
-import { buildVocabulary, normalizeKey } from '../functions/_lib/ai/taxonomy';
+import { buildVocabulary } from '../functions/_lib/ai/taxonomy';
 
 function vocab(entries: Array<{ id: string; name: string; aliases?: string[]; count?: number }>) {
   return buildVocabulary(
@@ -111,7 +110,7 @@ describe('applyAliases (DB-backed)', () => {
           return {
             bind(...args: unknown[]) {
               if (sql.startsWith('SELECT name, aliases')) {
-                const [id, userId] = args as [string, string];
+                const [id] = args as [string, string];
                 const row = tags.get(id);
                 return {
                   first: async () =>
@@ -119,7 +118,7 @@ describe('applyAliases (DB-backed)', () => {
                 };
               }
               if (sql.startsWith('UPDATE tags')) {
-                const [json, id, userId] = args as [string, string, string];
+                const [json, id, _userId] = args as [string, string, string];
                 lastUpdate = { id, json };
                 return { run: async () => ({}) };
               }
