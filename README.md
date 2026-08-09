@@ -1,217 +1,264 @@
 # TagNest
 
-A fast, keyboard-first bookmark manager. TagNest is a from-scratch, MIT-licensed
-implementation of the ideas behind the *tmarks* bookmark manager, built on a
-modern Cloudflare stack (Pages Functions + D1 + FTS5) with a React/TypeScript
-front end.
+> 中文文档 ｜ [English abstract](#english-abstract)
 
-> **Clean-room notice.** This project is an independent, clean-room reimplementation.
-> The upstream *tmarks* project is distributed under **CC BY-NC 4.0**, which
-> prohibits commercial use. TagNest shares **no source code** with that project:
-> it was designed and written independently against the published feature list,
-> and is released under the permissive **MIT** license so it can be self-hosted
-> or used commercially without restriction.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Ftideleap%2Ftagnest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/tideleap/tagnest/actions/workflows/ci.yml/badge.svg)](https://github.com/tideleap/tagnest/actions/workflows/ci.yml)
 
-## Live
+**TagNest** 是一个「快、键盘优先」的书签管理器，构建在现代 Cloudflare 技术栈之上
+（Pages Functions + D1 + R2 + KV）。它把你散落各处的网址、标签页和收藏，整理成一个
+可搜索、可标签化、可分享的私人知识库。
 
-TagNest is deployed and verified end-to-end on Cloudflare Pages:
+---
 
-- **Production URL:** https://tagnest.pages.dev
-- **Back end:** Cloudflare Pages Functions + D1 (`tagnest-db`, region APAC) with an
-  `fts5` trigram full-text index.
-- **Auth:** PBKDF2-HMAC-SHA256 + HS256 JWT access tokens with rotating httpOnly
-  refresh cookies, using a production `JWT_SECRET` (set via `wrangler pages secret put`).
-- **Verified:** register → list → create → FTS5 search all succeed against the live
-  database; `/api/health` reports `{"status":"ok","database":"ok"}`.
+## 一键部署（推荐）
 
-## Features
+不想敲命令？点一下按钮，剩下的全自动：
 
-- **Full-text search that works for Chinese.** A D1/SQLite `fts5` index using the
-  `trigram` tokenizer, so Chinese substrings and mid-word Latin matches both
-  resolve. Queries shorter than three characters fall back to `LIKE` automatically.
-- **Keyboard-first UI.** Vim-style navigation, instant command palette, and
-  keyset-paginated list views that stay smooth at scale.
-- **Folders become tags.** Importing a Netscape bookmark file turns its folder
-  hierarchy into tags; duplicates are detected by a normalized URL key that
-  strips `utm_*`/`gclid`/`fbclid` and other tracking parameters.
-- **Multi-source import.** Netscape HTML, JSON (TagNest / array / `{bookmarks}`
-  / `{items}`), and CSV — all staged for a preview before anything is written.
-- **Live import progress.** Large imports stream their progress as batches
-  commit (NDJSON), so the page shows a real progress bar instead of sitting at
-  0% until the last record lands.
-- **Scopes & bulk ops.** Inbox / all / favorites / archive / trash, plus bulk
-  tag, soft-delete, restore, and purge.
-- **Tenant isolation.** Every query is scoped by `user_id`; cross-account access
-  is rejected at the data layer, not by convention.
-- **Auth.** PBKDF2-HMAC-SHA256 password hashing and HS256 JWT access tokens with
-  rotating, httpOnly refresh cookies.
-- **Personal API keys.** Generate scoped (`read`/`write`) access tokens for the
-  browser extension or scripts; only a SHA-256 digest is stored, and keys can be
-  revoked at any time. A key can never be used to mint more keys.
-- **Drag-to-reorder.** Arrange bookmarks manually with drag and drop; the order is
-  persisted per user and coexists with sort-by-date/title/visits.
-- **Public share pages.** Publish a live, filtered view of your bookmarks at a
-  short `/s/:slug` link, with optional expiry, theme, and edge caching.
-- **Login throttling.** Failed logins and registrations are rate-limited per IP
-  and email to resist brute-force attempts.
-- **Field-level encryption.** AI provider keys are sealed with AES-256-GCM before
-  they touch the database, so a D1 export never contains live credentials.
-- **Tab groups (O12).** Curate an ordered set of your existing bookmarks into named,
-  color-coded groups and reopen the whole set in one click; the extension's
-  "capture window" flow automatically files a window's tabs into a fresh group.
-- **AI tagging & summaries, now a first-class capability (O11).** Tagging is
-  driven by a two-track engine — the model **and** a local heuristic rule engine
-  that always runs for free — whose outputs are normalised against your existing
-  taxonomy so the library stays tidy instead of accumulating `前端` / `Frontend` /
-  `前端开发` for the same idea. Every proposal lands in a review queue with a
-  confidence score and a reason, tagged by source (`model` / `heuristic` /
-  `taxonomy`) so AI contributions are measurable and fully reversible. With no API
-  key the heuristic engine still produces a usable result; with a key, the model
-  lifts quality and the two engines cross-check each other (agreement raises
-  confidence). Configure a provider (OpenAI, Anthropic, Gemini, or any
-  OpenAI-compatible `custom` endpoint) and open **AI 整理** (`/organize`) to
-  organise the whole library in batched, resumable jobs; new bookmarks are also
-  enriched on save. Keys are sealed with AES-256-GCM. See
-  [docs/AI-REFACTOR-2026-08-02.md](./docs/AI-REFACTOR-2026-08-02.md).
-- **Browser extension (O10).** A Manifest V3 helper in [extension/](./extension/)
-  saves the current page or captures an entire window into a tab group in one
-  click (Ctrl+Shift+T). It talks to your instance over HTTPS with a scoped
-  personal API key and requests only `activeTab`, `tabs`, and `storage`. Load it
-  unpacked from `extension/` after enabling developer mode; see its README.
-- **Installable & offline-capable (Q8e).** A PWA manifest + service worker make
-  TagNest installable on desktop/mobile. The app shell loads offline; static
-  assets refresh in the background (stale-while-revalidate). Bookmark API calls
-  are deliberately never cached, so you never see stale data for another
-  session.
-- **Dashboard (B8).** The signed-in landing page shows your library at a glance —
-  bookmarks, tags, recent additions and favourites up top, plus maintenance
-  counts (untagged / archived / trashed) and quick links to keep things tidy.
-- **Cover thumbnails (Q8d).** Bookmarks that carry a `cover_url` render a
-  16:9 thumb in grid view (lazy-loaded); covers that fail fall back silently to
-  the compact favicon row, and list/compact layouts stay lean.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Ftideleap%2Ftagnest)
 
-## Tech stack
+三步即可拥有你**自己账户下**的独立实例：
 
-| Layer        | Choice                                                        |
-|--------------|--------------------------------------------------------------|
-| Front end    | React 18, TypeScript, Vite 6, Tailwind CSS v4, Zustand, TanStack Query / Virtual |
-| Back end     | Cloudflare Pages Functions (Workers), TypeScript            |
-| Database     | Cloudflare D1 (SQLite) with `fts5` trigram search           |
-| Auth         | WebCrypto PBKDF2 + HMAC-SHA256 (JWT)                         |
-| Tests        | Vitest (unit) + `scripts/smoke.sh` (end-to-end)             |
+1. **点按钮 → 授权**  
+   点击上方按钮，用 GitHub / Cloudflare 登录授权。Cloudflare 会**自动 Fork 本仓库**，
+   并在你的账户下创建 Pages 项目（构建命令 `npm run build`、输出目录 `dist`、生产分支 `main`）。
+2. **填一个 Token（仅此一次）**  
+   在你 Fork 出的仓库中进入 **Settings → Secrets and variables → Actions → New repository secret**，添加：
+   - `CLOUDFLARE_API_TOKEN`：具备 `Cloudflare Pages:Edit`、`D1:Edit`、`R2:Edit`、`Workers KV:Edit` 权限的 API Token
+   - `CLOUDFLARE_ACCOUNT_ID`：你的 Cloudflare 账户 ID
+3. **运行工作流**  
+   进入仓库 **Actions → Deploy → Run workflow**。工作流会自动完成：
+   - 创建 **D1 数据库** + **R2 存储桶**（网站快照）+ **KV 命名空间**（分享页缓存）
+   - 生成强随机 **JWT_SECRET** 并写入 Pages 密钥（已存在则跳过，不会使现有会话失效）
+   - 执行数据库迁移（幂等）
+   - 构建并发布到生产
 
-## Project layout
+完成后站点即上线。脚本会把新的绑定 id 写回 `wrangler.toml` 并提交，因此 Fork 后的仓库
+**完全自包含**，后续维护无需回到上游。
+
+> 说明：出于 Cloudflare 的安全模型，创建工作区资源必须有一个授权 Token，所以这一步无法被
+> 按钮本身代劳——这是整个流程里**唯一**需要你手动操作的地方。除此之外，环境变量、数据库、
+> 构建与发布全部自动化，无需逐项填写设置、无需命令行。
+
+---
+
+## 项目简介
+
+TagNest 是 *tmarks* 书签管理器理念的**独立清洁室实现（clean-room reimplementation）**，
+从零设计、使用 MIT 许可证，可自由自托管或商用。它面向「重度书签用户」：
+
+- **为搜索而生**：D1/SQLite 的 `fts5` 触发器分词，让中文子串和拉丁文词中匹配都准确可用。
+- **键盘优先**：Vim 风格导航、即时命令面板、键集分页，规模再大也顺滑。
+- **导入即整理**：Netscape / JSON / CSV 多源导入，文件夹自动变标签，重复网址自动去重。
+- **可观测**：每次请求输出结构化日志，关键业务事件可查询，健康检查端点可直接接入监控。
+
+---
+
+## 功能特性
+
+**搜索与整理**
+- 中文友好的全文搜索（`fts5` 触发器分词；短于 3 字自动回退 `LIKE`）。
+- 文件夹即标签：导入时把书签文件夹层级转成标签，按归一化 URL（去除 `utm_*`/`gclid` 等追踪参数）去重。
+- 多源导入：Netscape HTML、JSON（TagNest / 数组 / `{bookmarks}` / `{items}`）、CSV，导入前可预览。
+- 实时导入进度：大批量导入按批次流式回传进度，页面显示真实进度条。
+- 作用域与批量操作：收件箱 / 全部 / 收藏 / 归档 / 回收站，支持批量打标签、软删除、恢复、彻底清除。
+- 拖拽排序：手动排列书签顺序，与按时间/标题/访问量排序共存。
+
+**网站实时快照**
+- 书签卡片自身即「网站截图」：Grid 视图顶部大图、List/Compact 视图左侧缩略图，无需额外区域。
+- 截图优先走 Cloudflare Browser Run（自托管、无第三方），也可接入外部截图 API；二者皆缺时优雅降级到 favicon，不报错。
+- 快照按策略留存与自动刷新，过期后前端自动重新抓取。
+
+**AI 整理（两轨引擎）**
+- 模型 + 本地启发式规则引擎（始终免费运行）双轨产出标签与摘要，对照你现有标签体系归一化，避免同义标签堆积。
+- 每条建议带置信度与来源（`model` / `heuristic` / `taxonomy`），进入可审阅队列，完全可逆；无 API Key 也能用启发式产出。
+- 支持 OpenAI / Anthropic / Gemini / 任意 OpenAI 兼容 `custom` 端点；密钥以 AES-256-GCM 加密后存储。
+
+**分享与扩展**
+- 公开分享页：以短链 `/s/:slug` 发布可筛选的实时书marks 视图，支持过期时间、主题与边缘缓存。
+- 浏览器扩展（Manifest V3）：一键保存当前页或把整个窗口捕获进标签组（Ctrl+Shift+T），通过作用域化的个人 API Key 通信。
+- 标签组（Tab groups）：把已有书签策展成有序、带颜色的组，一键重开整组；扩展的「捕获窗口」会自动归档。
+
+**账户与安全**
+- 认证：WebCrypto PBKDF2-HMAC-SHA256 + HS256 JWT 访问令牌，配合可轮转的 httpOnly 刷新 Cookie。
+- 多租户隔离：每条查询按 `user_id` 隔离，越权访问在数据层即被拒绝。
+- 个人 API Key：可生成 `read`/`write` 作用域的令牌（仅存 SHA-256 摘要），随时吊销，且不能用于再签发 Key。
+- 字段级加密：AI 提供方密钥入库前以 AES-256-GCM 密封，D1 导出不含明文凭据。
+- 登录限流：失败登录/注册按 IP 与邮箱限流，抵御暴力破解。
+- 注册控制：`DISABLE_SIGNUP` 可关闭公开注册；`ALLOWED_EMAILS` 支持邮箱/域名白名单（`*@corp.dev`）。
+
+**体验**
+- 可安装、可离线（PWA）：应用外壳离线可用，静态资源后台刷新；书签 API 永不缓存，避免看到他人会话的陈旧数据。
+- 仪表盘：登录落地页一览你的书签、标签、最近新增与收藏，以及待整理计数（未标签/已归档/回收站）。
+
+---
+
+## 技术栈
+
+| 层 | 选型 |
+|----|------|
+| 前端 | React 18 · TypeScript · Vite 6 · Tailwind CSS v4 · Zustand · TanStack Query / Virtual |
+| 后端 | Cloudflare Pages Functions（Workers 运行时）· TypeScript |
+| 数据库 | Cloudflare D1（SQLite）+ `fts5` 触发器全文索引 |
+| 存储 | Cloudflare R2（网站快照）· KV（分享页边缘缓存）|
+| 认证 | WebCrypto PBKDF2 + HMAC-SHA256（JWT）|
+| 截图 | Cloudflare Browser Run（或外部截图 API）|
+| 测试 | Vitest（后端逻辑单测 + 前端组件测试）|
+
+---
+
+## 目录结构
 
 ```
 tagnest/
-  src/                 React front end (UI, store, API client)
-  functions/           Cloudflare Pages Functions
-    _lib/              Shared back-end logic (auth, db, urlkey, import-parsers, ids)
-    api/               Route handlers (auth, bookmarks, tags, import, export, stats, ai)
-  migrations/          D1 schema (0001_init.sql)
-  shared/              Types shared by front end and back end
-  extension/           Browser extension (Manifest V3) — load unpacked in dev
-  scripts/smoke.sh     End-to-end smoke test
-  tests/               Vitest unit tests (backend logic)
-  wrangler.toml        Pages + D1 binding config
+├─ src/                     # React 前端（Vite + TS）
+│  ├─ components/           # UI 组件：bookmark / command / layout / organize / tags / ui
+│  ├─ pages/                # 路由页面（含 settings）
+│  ├─ hooks/queries/        # TanStack Query 数据请求
+│  ├─ stores/               # zustand 状态
+│  ├─ lib/                  # 工具（API 客户端、类名合并等）
+│  ├─ styles/               # 主题（theme.css，明/暗色 token）
+│  └─ test/                 # 前端测试辅助
+├─ functions/               # Cloudflare Pages Functions（后端）
+│  ├─ _lib/                 # 共享后端逻辑：auth / db / snapshots / import / ai …
+│  └─ api/                  # 路由处理器：auth / bookmarks / tags / import / export /
+│                           #   shares / ai / snapshots / tab-groups / collections / keys / public
+├─ migrations/              # D1 schema（0001_init … 0013_prompt_version，全部幂等）
+├─ shared/                  # 前后端共享类型与工具（types.ts / snapshotUrl.ts）
+├─ extension/               # 浏览器扩展（Manifest V3），见 extension/README.md
+├─ scripts/                 # 部署 / 迁移 / 健康检查 / 基础设施配置
+│                           #   deploy.mjs · migrate.mjs · setup-infra.mjs · health-check.mjs …
+├─ docs/                    # 设计 / 部署 / 评审文档（BACKLOG.md 等）
+├─ public/                  # 静态资源（_headers 安全头、图标、PWA manifest）
+├─ tests/                   # Vitest 单测（后端逻辑 + 前端组件）
+├─ wrangler.toml           # Pages + D1 / KV / R2 / Browser 绑定
+└─ package.json
 ```
 
-## Local development
+---
 
-Prerequisites: Node 22+, and the Cloudflare CLI (`wrangler`) which is installed
-as a dev dependency.
+## 本地运行
+
+前置条件：Node 22+，`wrangler` 已作为开发依赖安装。
 
 ```bash
 npm install
 
-# Run the front end (Vite dev server on :5173, proxies /api to :8788)
+# 启动前端（Vite 开发服务器 :5173，并把 /api 代理到 :8788）
 npm run dev
 
-# In a second terminal, run the API + D1 locally (Miniflare)
+# 另开一个终端，本地运行 API + D1（Miniflare）
 npm run dev:api
 
-# Apply the D1 schema to the local database (idempotent)
+# 把 D1 schema 应用到本地库（幂等）
 npm run db:migrate:local
 
-# Unit tests (backend logic)
+# 后端逻辑单测
 npm test
 
-# Requirement ledger: verify every claimed status against the repository
+# 前端组件测试
+npm run test:ui
+
+# 需求台账：把 docs/backlog.json 里声明状态与代码逐一核对
 npm run backlog:check
 
-# End-to-end smoke test (expects `npm run dev:api` running on :8788)
+# 端到端冒烟测试（需先运行 npm run dev:api 于 :8788）
 bash scripts/smoke.sh
 ```
 
-> **Secrets.** Locally, `JWT_SECRET` falls back to an insecure development secret
-> (a warning is printed). Before deploying, set a real secret:
-> `wrangler pages secret put JWT_SECRET`.
+> **本地密钥**：未设置 `JWT_SECRET` 时会回退到一个不安全的开发密钥（并打印警告）。
+> 部署前请用 `wrangler pages secret put JWT_SECRET` 设置一个真实密钥。
 
-## Database migrations
+---
+
+## 部署到 Cloudflare Pages
+
+### 方式一：一键部署（Deploy to Cloudflare 按钮）
+
+见上方「一键部署」小节——Fork、建库、建桶、写密钥、迁移、发布全部自动完成，
+只需在 Fork 出的仓库里填一个 `CLOUDFLARE_API_TOKEN` 即可。
+
+### 方式二：手动 / CLI 部署
+
+适合在自己机器上控制发布节奏：
 
 ```bash
-npm run db:migrate:local     # local (Miniflare SQLite)
-npm run db:migrate           # remote (Cloudflare D1)
+# 1. 建 D1 库（记下 database id），并写入 wrangler.toml
+npm run db:create
+
+# 2. 在 Cloudflare 仪表盘创建 R2 桶 tagnest-media、KV 命名空间 SHARE_CACHE，
+#    并把对应 id 填进 wrangler.toml
+
+# 3. 应用远程 schema
+npm run db:migrate
+
+# 4. 设置 JWT 密钥
+wrangler pages secret put JWT_SECRET
+
+# 5. 质量门禁 + 构建 + 部署（也可 npm run release 自动推送后部署）
+npm run deploy
 ```
 
-The schema lives in `migrations/0001_init.sql` and includes the `bookmarks_fts`
-trigram virtual table with insert/delete/update triggers kept in sync with
-`bookmarks`.
+`wrangler.toml` 把数据库绑定为 `DB`，并设置 `DISABLE_SIGNUP`（默认 `false`）。
+部署完成后建议把 `DISABLE_SIGNUP` 改为 `true` 关闭公开注册；或保留开放、用
+`ALLOWED_EMAILS` 做白名单。
 
-## Deployment (Cloudflare Pages)
+### 环境变量与注册控制
 
-1. Create the D1 database once: `npm run db:create` (note the database ID).
-2. Apply the schema remotely: `npm run db:migrate`.
-3. Set the JWT secret: `wrangler pages secret put JWT_SECRET`.
-4. Build and deploy: `npm run deploy` (runs `vite build` then `wrangler pages deploy`).
+`wrangler.toml` 的 `[vars]` 段与 Pages 密钥共同决定运行行为：
 
-`wrangler.toml` binds the database as `DB` and sets `DISABLE_SIGNUP` (default
-`false`); flip it to `true` after creating your account to close public
-registration.
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `JWT_SECRET` | **密钥** | HS256 签名密钥，用 `wrangler pages secret put` 设置，切勿提交。 |
+| `DISABLE_SIGNUP` | 变量 | `true` 关闭公开注册；默认 `false`。 |
+| `ALLOWED_EMAILS` | 变量 | 逗号分隔的邮箱/域名白名单（`*@corp.dev`）；`DISABLE_SIGNUP=true` 时忽略。 |
+| `SNAPSHOT_API_URL` / `SNAPSHOT_API_KEY` | 变量 | 外部截图 API；设置后优先于 Browser Run。 |
+| `LOG_LEVEL` | 变量 | 日志最低级别 `debug`→`info`→`warn`→`error`，默认 `info`。 |
 
-For a middle ground, leave registration open but gate it with
-`ALLOWED_EMAILS` — a comma-separated list of exact emails (case-insensitive) or
-domain wildcards (`*@example.com`). Empty/unset means anyone may sign up; the
-setting is ignored when `DISABLE_SIGNUP=true`.
+---
 
-### Observability
+## 可观测性
 
-Every request is logged as a single JSON line prefixed `[tagnest]` (consumed by
-Cloudflare Logs / Logpush), carrying `ts`, `level`, `event`, `rid` (the
-correlating request id echoed in the `X-Request-Id` response header), and
-`props`. Key business events are also emitted — `user.signup`,
-`bookmark.create`, `share.create` — so conversion funnels are queryable without
-extra tooling. Minimum severity is controlled by `LOG_LEVEL` (`debug` → `info`
-→ `warn` → `error`, default `info`).
+- 每次请求输出单行 JSON 日志（前缀 `[tagnest]`），携带 `ts / level / event / rid / props`，
+  关键业务事件（`user.signup`、`bookmark.create`、`share.create` 等）可直接用于漏斗分析。
+- `GET /api/health` 返回 `{ status, checks: { database, shareCache, auth }, timestamp }`，
+  接入你的 uptime 监控，对 `status !== "ok"` 告警即可。
+- 生产部署后工作流会自动做健康检查，失败则回滚到上一个健康提交。
 
-`GET /api/health` is a readiness probe returning
-`{ status, checks: { database, shareCache, auth }, timestamp }`; wire it to your
-uptime monitor and alert on `status !== "ok"`.
+---
 
-> This project is already deployed to **https://tagnest.pages.dev**. To ship an
-> update, just run `npm run deploy` (it builds `dist/` and runs
-> `wrangler pages deploy`). The D1 schema and `JWT_SECRET` are already provisioned;
-> only code changes need redeploying.
->
-> **Preferred path — Cloudflare Git integration (push-to-deploy):** the project
-> is connected to GitHub so every push to `main` can auto-build and deploy. See
-> `docs/CF-GIT-DEPLOY.md` for the one dashboard setting (build command
-> `npm run build`, output `dist`) and how D1 migrations are handled under Git
-> integration.
+## 路线图与需求追踪
 
-## Roadmap and requirement tracking
+每个需求（已实现 / 进行中 / 已放弃 / 受阻）都集中在一个机器可校验的台账：
 
-Every requirement — shipped, open, dropped, or blocked on someone else — lives in
-a single machine-checked ledger:
+- [`docs/BACKLOG.md`](./docs/BACKLOG.md) — 完成定义、排序规则与生成的状态表。
+- `docs/backlog.json` — 唯一事实来源。
+- `npm run backlog:check` — 从仓库重新推导每个状态，若声明与代码不符或在 CI 中失败，
+  因此路线图不会与代码悄悄脱节。
 
-- [`docs/BACKLOG.md`](./docs/BACKLOG.md) — the definition of done, the ordering
-  rules, and the generated status table.
-- `docs/backlog.json` — the source of truth.
-- `npm run backlog:check` — re-derives each status from the repository and fails
-  if a claim is unsupported **or** if finished work was never logged. It runs in
-  CI, so the roadmap cannot silently drift from the code.
+---
 
-## License
+## 许可证与清洁室声明
 
-[MIT](./LICENSE). TagNest is a clean-room, independent implementation and is not
-affiliated with the upstream *tmarks* project.
+[MIT](./LICENSE)。TagNest 是**独立清洁室实现**，与上游 *tmarks* 项目无任何源代码共享，
+不受其 CC BY-NC 4.0 许可证限制，可自由自托管或商用。
+
+---
+
+## English abstract
+
+**TagNest** is a fast, keyboard-first bookmark manager built on a modern Cloudflare stack
+(Pages Functions + D1 + R2 + KV) with a React/TypeScript front end. It features Chinese-friendly
+full-text search (`fts5` trigram), folder-to-tag import with URL de-duplication, live import
+progress, multi-tenant isolation, scoped personal API keys, field-level AES-256-GCM encryption,
+AI tagging (two-track: model + heuristic, fully reversible), public share pages, a Manifest V3
+browser extension, live website snapshots, and an offline-capable PWA.
+
+**One-click deploy:** click the *Deploy to Cloudflare* button to fork the repo and create a Pages
+project, add a `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secret once, then run the
+`Deploy` workflow — it provisions D1/R2/KV, generates `JWT_SECRET`, runs migrations, and publishes.
+No dashboard form-filling, no CLI.
+
+Local dev: `npm install && npm run dev` (front end) + `npm run dev:api` (Miniflare) +
+`npm run db:migrate:local`. See the Chinese sections above for full details.

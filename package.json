@@ -30,6 +30,7 @@
     "deploy:preview": "node scripts/deploy.mjs --branch=preview",
     "deploy:check": "node scripts/deploy.mjs --dry-run",
     "release": "node scripts/deploy.mjs --push",
+    "infra:setup": "node scripts/setup-infra.mjs",
     "extension:icons": "node extension/build-icons.mjs",
     "pwa:icons": "node scripts/gen-pwa-icons.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
