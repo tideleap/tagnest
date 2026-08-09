@@ -82,6 +82,7 @@ TagNest 是某款书签管理器产品理念的独立清洁室实现（clean-roo
   - **内容安全**：命中成人/NSFW 词表的书签直接 `quarantined` 隔离待人工确认，绝不进入生产力三级体系。
   - **批量稳定**：`classifyBatch` 确定性产出（同输入同输出），模型只训练一次并共享于整批；返回聚合统计（按类计数、置信度直方图、`needsReview`/`quarantined` 数量），便于大规模书签处理时核对结果稳定可靠。
   - **API**：`POST /api/ai/classify`，`mode` 可为 `report`（只读报告，默认）/ `apply`（把自动归类的书签挂到其一级/二级标签，幂等）/ `revert`（按确定性重分类删除自动链接，可回滚）。
+  - **设计规范**：完整层级表、I/O 字段说明、置信度阈值约束与批量稳定性保证见 [`docs/AI-HIERARCHY.md`](docs/AI-HIERARCHY.md)。
 - 支持 OpenAI / Anthropic / Gemini / 任意 OpenAI 兼容 `custom` 端点；密钥以 AES-256-GCM 加密后存储。
 
 **分享与扩展**
