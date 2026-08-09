@@ -166,6 +166,9 @@ if (dryRun) {
 }
 
 heading('部署到 Cloudflare Pages');
+// Proxy env vars are cleared here too: when they point at the sandbox proxy,
+// `wrangler pages deploy` hangs indefinitely on the upload connection. The
+// build step already clears them for the same reason.
 run('npx', [
   'wrangler',
   'pages',
@@ -174,7 +177,16 @@ run('npx', [
   `--project-name=${PROJECT}`,
   `--branch=${branch}`,
   '--commit-dirty=true',
-]);
+], {
+  env: {
+    http_proxy: '',
+    https_proxy: '',
+    HTTP_PROXY: '',
+    HTTPS_PROXY: '',
+    all_proxy: '',
+    ALL_PROXY: '',
+  },
+});
 
 const seconds = ((Date.now() - started) / 1000).toFixed(1);
 console.log(`\n${C.green('✔ 部署完成')} ${C.dim(`(${seconds}s)`)}`);
