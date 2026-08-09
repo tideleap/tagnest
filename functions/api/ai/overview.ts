@@ -39,7 +39,7 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
            SELECT 1 FROM bookmark_tags bt WHERE bt.bookmark_id = b.id
          ) THEN 1 ELSE 0 END) AS untagged
        FROM bookmarks b
-      WHERE b.user_id = ? AND b.deleted_at IS NULL`,
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0`,
     )
       .bind(userId)
       .first<{ total: number; untagged: number }>(),
@@ -51,7 +51,7 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
          SUM(CASE WHEN bt.source = 'ai' THEN 1 ELSE 0 END) AS ai,
          SUM(CASE WHEN bt.source IS NULL OR bt.source <> 'ai' THEN 1 ELSE 0 END) AS user_made
        FROM bookmark_tags bt
-       JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL
+       JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL AND b.is_private = 0
       WHERE b.user_id = ?`,
     )
       .bind(userId)

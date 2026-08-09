@@ -6,6 +6,8 @@ import {
   Download,
   Inbox,
   Layers,
+  Lock,
+  LockOpen,
   Moon,
   Plus,
   Search,
@@ -19,6 +21,7 @@ import type { ReactNode } from 'react';
 import { Kbd, Modal } from '@/components/ui';
 import { cx } from '@/lib/cx';
 import { useOverlay, useTheme } from '@/stores/ui';
+import { useVault } from '@/stores/vault';
 import { useBookmarks, useTags } from '@/hooks/queries';
 import { useDebounced } from '@/hooks/useDebounced';
 import { displayHost } from '@/lib/url';
@@ -59,6 +62,8 @@ export function CommandPalette() {
   const setQuickAddOpen = useOverlay((s) => s.setQuickAddOpen);
   const setEditingBookmarkId = useOverlay((s) => s.setEditingBookmarkId);
   const setThemeMode = useTheme((s) => s.setMode);
+  const vaultUnlocked = useVault((s) => s.status === 'unlocked');
+  const lockVault = useVault((s) => s.lock);
 
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -147,6 +152,13 @@ export function CommandPalette() {
         run: () => navigate('/tags'),
       },
       {
+        id: 'nav-private',
+        label: '私密保险库',
+        icon: <Lock size={15} />,
+        group: '前往',
+        run: () => navigate('/private'),
+      },
+      {
         id: 'nav-settings',
         label: '设置',
         hint: 'G S',
@@ -154,8 +166,21 @@ export function CommandPalette() {
         group: '前往',
         run: () => navigate('/settings'),
       },
+      // Only offered while the vault is open — a "lock" command for an already
+      // locked vault is noise, and the entry itself would hint at its state.
+      ...(vaultUnlocked
+        ? [
+            {
+              id: 'vault-lock',
+              label: '锁定私密保险库',
+              icon: <LockOpen size={15} />,
+              group: '操作',
+              run: () => lockVault(),
+            } satisfies Command,
+          ]
+        : []),
     ];
-  }, [navigate, setQuickAddOpen, setThemeMode]);
+  }, [navigate, setQuickAddOpen, setThemeMode, vaultUnlocked, lockVault]);
 
   const commands = useMemo<Command[]>(() => {
     const scored = actions

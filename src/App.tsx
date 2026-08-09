@@ -50,6 +50,9 @@ const DashboardPage = lazy(() =>
 const OrganizePage = lazy(() =>
   import('@/pages/OrganizePage').then((m) => ({ default: m.OrganizePage })),
 );
+const PrivateVaultPage = lazy(() =>
+  import('@/pages/PrivateVaultPage').then((m) => ({ default: m.PrivateVaultPage })),
+);
 
 function RouteFallback() {
   return (
@@ -121,6 +124,7 @@ export function App() {
             <Route path="/tab-groups" element={<TabGroupsPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionDetail />} />
+            <Route path="/private" element={<PrivateVaultPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/:section" element={<SettingsPage />} />
           </Route>

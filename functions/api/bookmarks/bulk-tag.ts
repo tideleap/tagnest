@@ -24,7 +24,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Ownership check up front: without it, a crafted id list could attach the
   // caller's tags to another account's rows.
   const owned = await ctx.env.DB.prepare(
-    `SELECT id FROM bookmarks WHERE user_id = ? AND id IN (${ids.map(() => '?').join(',')})`,
+    `SELECT id FROM bookmarks WHERE user_id = ? AND is_private = 0 AND id IN (${ids.map(() => '?').join(',')})`,
   )
     .bind(userId, ...ids)
     .all<{ id: string }>();

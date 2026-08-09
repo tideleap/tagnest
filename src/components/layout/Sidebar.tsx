@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
@@ -12,6 +13,7 @@ import {
   Inbox,
   LayoutDashboard,
   Layers,
+  Lock,
   Settings,
   Sparkles,
   Star,
@@ -25,6 +27,7 @@ import { cx } from '@/lib/cx';
 import { IconButton, Skeleton } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
 import { useStats, useTags } from '@/hooks/queries';
+import { useVault } from '@/stores/vault';
 import { Logo } from '@/components/decor/Logo';
 
 /**
@@ -59,6 +62,8 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   countKey?: 'bookmarks' | 'favorites' | 'archived' | 'trashed' | 'inbox';
+  /** Renders the vault's lock state instead of a count. */
+  vaultState?: boolean;
 }
 
 const PRIMARY: NavItem[] = [
@@ -78,6 +83,9 @@ const SECONDARY: NavItem[] = [
   { to: '/tab-groups', label: '标签页组', icon: FolderOpen },
   { to: '/collections', label: '集合', icon: Folder },
   { to: '/import', label: '导入导出', icon: Download },
+  // Deliberately has no count: the number of private bookmarks is itself
+  // information the vault is supposed to withhold from a shoulder-surfer.
+  { to: '/private', label: '私密保险库', icon: Lock, vaultState: true },
   { to: '/library/trash', label: '回收站', icon: Trash2, countKey: 'trashed' },
   { to: '/settings', label: '设置', icon: Settings },
 ];
@@ -85,11 +93,13 @@ const SECONDARY: NavItem[] = [
 function NavRow({
   item,
   count,
+  trailing,
   mode,
   onNavigate,
 }: {
   item: NavItem;
   count?: number;
+  trailing?: ReactNode;
   mode: LabelMode;
   onNavigate?: () => void;
 }) {
@@ -141,6 +151,9 @@ function NavRow({
               {count > 999 ? '999+' : count}
             </span>
           )}
+          {trailing && (
+            <span className={cx('shrink-0 items-center', LABEL_VISIBILITY[mode])}>{trailing}</span>
+          )}
         </>
       )}
     </NavLink>
@@ -150,6 +163,14 @@ function NavRow({
 function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: () => void }) {
   const { data: stats } = useStats();
   const { data: tags, isLoading: tagsLoading } = useTags();
+
+  // Resolving the vault's configured/locked state here (rather than only on the
+  // vault page) is what lets the nav row warn that the vault is currently open.
+  const vaultStatus = useVault((s) => s.status);
+  const bootstrapVault = useVault((s) => s.bootstrap);
+  useEffect(() => {
+    void bootstrapVault();
+  }, [bootstrapVault]);
 
   const counts: Record<string, number | undefined> = {
     inbox: stats?.untagged,
@@ -223,6 +244,15 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
             <NavRow
               item={item}
               count={item.countKey ? counts[item.countKey] : undefined}
+              trailing={
+                item.vaultState && vaultStatus === 'unlocked' ? (
+                  <span
+                    title="保险库已解锁"
+                    aria-label="保险库已解锁"
+                    className="block h-1.5 w-1.5 rounded-full bg-brand-accent"
+                  />
+                ) : undefined
+              }
               mode={mode}
               onNavigate={onNavigate}
             />

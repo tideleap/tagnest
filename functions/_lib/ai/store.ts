@@ -100,7 +100,7 @@ export async function resolveScope(
     const placeholders = explicitIds.map(() => '?').join(',');
     const rows = await env.DB.prepare(
       `SELECT id FROM bookmarks
-        WHERE user_id = ? AND deleted_at IS NULL AND id IN (${placeholders})
+        WHERE user_id = ? AND deleted_at IS NULL AND is_private = 0 AND id IN (${placeholders})
         ORDER BY created_at DESC`,
     )
       .bind(userId, ...explicitIds)
@@ -115,7 +115,7 @@ export async function resolveScope(
 
   const rows = await env.DB.prepare(
     `SELECT b.id AS id FROM bookmarks b
-      WHERE b.user_id = ? AND b.deleted_at IS NULL ${untaggedClause}
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0 ${untaggedClause}
       ORDER BY b.created_at DESC
       LIMIT ?`,
   )
@@ -135,7 +135,7 @@ export async function loadBookmarkInputs(
   const placeholders = ids.map(() => '?').join(',');
   const rows = await env.DB.prepare(
     `SELECT id, url, title, description FROM bookmarks
-      WHERE user_id = ? AND deleted_at IS NULL AND id IN (${placeholders})`,
+      WHERE user_id = ? AND deleted_at IS NULL AND is_private = 0 AND id IN (${placeholders})`,
   )
     .bind(userId, ...ids)
     .all<Record<string, unknown>>();
@@ -379,7 +379,7 @@ export async function listPendingSuggestions(
     `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source, s.reason,
             s.topic, s.needs_review, s.feedback_boosted, s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
        FROM tag_suggestions s
-       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
+       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND b.is_private = 0
       WHERE s.user_id = ? AND s.status = 'pending' ${jobClause}
       ORDER BY s.confidence DESC, s.created_at DESC
       LIMIT ?`,
@@ -431,7 +431,7 @@ export async function decideSuggestions(
     `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source,
             b.url AS bookmark_url, b.title AS bookmark_title
        FROM tag_suggestions s
-       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
+       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND b.is_private = 0
       WHERE s.user_id = ? AND s.status = 'pending' AND s.id IN (${placeholders})`,
   )
     .bind(userId, ...ids)
@@ -585,7 +585,7 @@ export async function autoApply(
 export async function countPending(env: Env, userId: string): Promise<number> {
   const row = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM tag_suggestions s
-       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
+       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND b.is_private = 0
       WHERE s.user_id = ? AND s.status = 'pending'`,
   )
     .bind(userId)

@@ -2,7 +2,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
-import { ensureTags, loadBookmark, setBookmarkTags } from '../../_lib/db';
+import { clearBookmarkPrivate, ensureTags, loadBookmark, setBookmarkPrivate, setBookmarkTags } from '../../_lib/db';
 import { canonicalUrl, urlKey } from '../../_lib/urlkey';
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
@@ -24,6 +24,38 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
   if (!owned) throw notFound('书签不存在');
 
   const body = await readJson<Record<string, unknown>>(ctx.request);
+
+  // Privacy toggle — a zero-knowledge conversion that the generic field update
+  // below must not also touch. Set encrypts client-side and blanks the row;
+  // clear restores the decrypted plaintext the client re-supplies.
+  if ('isPrivate' in body) {
+    if (body.isPrivate === true) {
+      const encryptedBlob = body.encryptedBlob;
+      if (typeof encryptedBlob !== 'string' || !encryptedBlob) {
+        throw badRequest('缺少加密数据');
+      }
+      const ok = await setBookmarkPrivate(ctx.env, userId, id, encryptedBlob);
+      if (!ok) throw notFound('书签不存在或已为私密');
+      return json({ id, isPrivate: true });
+    }
+    // Cancel privacy: restore the decrypted plaintext the client unlocked.
+    const url = typeof body.url === 'string' ? body.url : '';
+    if (!url) throw badRequest('网址格式不正确', { url: '网址格式不正确' });
+    const tagNames = Array.isArray(body.tagNames)
+      ? (body.tagNames as unknown[]).map(String).slice(0, 30)
+      : [];
+    const restored = await clearBookmarkPrivate(ctx.env, userId, id, {
+      url,
+      title: typeof body.title === 'string' ? body.title : '',
+      description: typeof body.description === 'string' ? body.description : null,
+      note: typeof body.note === 'string' ? body.note : null,
+      faviconUrl: typeof body.faviconUrl === 'string' ? body.faviconUrl : null,
+      coverUrl: typeof body.coverUrl === 'string' ? body.coverUrl : null,
+      tagNames,
+    });
+    if (!restored) throw notFound('书签不存在或并非私密');
+    return json(restored);
+  }
 
   const sets: string[] = [];
   const params: unknown[] = [];

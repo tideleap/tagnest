@@ -9,6 +9,7 @@ import {
   GripVertical,
   Heart,
   Images,
+  Lock,
   MoreHorizontal,
   Pencil,
   RotateCcw,
@@ -44,6 +45,12 @@ export interface BookmarkCardProps {
   onPurge: (id: string) => void;
   onVisit: (id: string) => void;
   onTagClick: (tagId: string) => void;
+  /**
+   * Moves the bookmark into the encrypted private vault. Optional: surfaces
+   * cannot all reach an unlocked vault key, so the menu item only appears
+   * where a handler is wired up.
+   */
+  onSetPrivate?: (bookmark: Bookmark) => void;
   /** When true, a grip handle appears and the card is part of a manual order. */
   draggable?: boolean;
   onDragStartCard?: (id: string) => void;
@@ -177,6 +184,7 @@ function BookmarkCardBase({
   onPurge,
   onVisit,
   onTagClick,
+  onSetPrivate,
   draggable = false,
   onDragStartCard,
   isDragOver = false,
@@ -288,6 +296,17 @@ function BookmarkCardBase({
                 label: '查看快照历史',
                 icon: <Images size={15} />,
                 onSelect: () => setShowSnapshots(true),
+              },
+            ]
+          : []),
+        ...(onSetPrivate
+          ? [
+              {
+                id: 'set-private',
+                label: '设为私密',
+                icon: <Lock size={15} />,
+                separatorBefore: true,
+                onSelect: () => onSetPrivate(b),
               },
             ]
           : []),

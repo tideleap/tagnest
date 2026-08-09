@@ -13,7 +13,7 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-import type { BookmarkScope, BookmarkSort, Tag } from '@shared/types';
+import type { Bookmark, BookmarkScope, BookmarkSort, Tag } from '@shared/types';
 import {
   Button,
   ConfirmDialog,
@@ -39,6 +39,9 @@ import {
   useUpdateBookmark,
   useDeleteForever,
 } from '@/hooks/queries';
+import { useSetBookmarkPrivate } from '@/hooks/queries/vault';
+import { useVault } from '@/stores/vault';
+import { toast } from '@/components/ui/Toast';
 import { cx } from '@/lib/cx';
 
 const VALID_SCOPES: BookmarkScope[] = ['inbox', 'all', 'favorites', 'archive', 'trash'];
@@ -186,6 +189,7 @@ export function LibraryPage() {
   const deleteForever = useDeleteForever();
   const recordVisit = useRecordVisit();
   const reorder = useReorderBookmarks();
+  const setBookmarkPrivate = useSetBookmarkPrivate();
 
   // Drag-to-reorder only makes sense when the backend is honouring the manual
   // order, i.e. this sort is active and we are not reshuffling the trash.
@@ -196,6 +200,8 @@ export function LibraryPage() {
   const [overId, setOverId] = useState<string | null>(null);
   /** Bookmark awaiting an irreversible purge confirmation. */
   const [purgeId, setPurgeId] = useState<string | null>(null);
+  /** Bookmark awaiting confirmation before being encrypted into the vault. */
+  const [privateTarget, setPrivateTarget] = useState<Bookmark | null>(null);
 
   // Any change of context invalidates an in-flight drag.
   useEffect(() => {
@@ -296,6 +302,17 @@ export function LibraryPage() {
     onPurge: (id: string) => setPurgeId(id),
     onVisit: (id: string) => recordVisit.mutate(id),
     onTagClick: toggleTag,
+    // Encryption needs the vault key, which only exists in memory after an
+    // unlock. Without it there is nothing to encrypt with, so send the user to
+    // the vault instead of failing silently at mutation time.
+    onSetPrivate: (b: Bookmark) => {
+      if (!useVault.getState().getKey()) {
+        toast.info('请先解锁私密保险库', '解锁后即可把书签加密移入私密空间。');
+        navigate('/private');
+        return;
+      }
+      setPrivateTarget(b);
+    },
   };
 
   const purgeTarget = purgeId ? items.find((b) => b.id === purgeId) : undefined;
@@ -541,6 +558,23 @@ export function LibraryPage() {
         confirmLabel="永久删除"
         tone="danger"
         loading={deleteForever.isPending}
+      />
+
+      <ConfirmDialog
+        open={privateTarget !== null}
+        onClose={() => setPrivateTarget(null)}
+        onConfirm={() => {
+          if (privateTarget) setBookmarkPrivate.mutate(privateTarget);
+          setPrivateTarget(null);
+        }}
+        title="移入私密保险库？"
+        message={
+          privateTarget
+            ? `「${privateTarget.title || privateTarget.url}」将在本地加密后保存，并从全部列表、搜索、标签与分享中彻底隐藏，只能在解锁保险库后查看。`
+            : ''
+        }
+        confirmLabel="加密并隐藏"
+        loading={setBookmarkPrivate.isPending}
       />
     </div>
   );

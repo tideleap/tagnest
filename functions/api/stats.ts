@@ -19,7 +19,7 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
        SUM(CASE WHEN deleted_at IS NULL AND NOT EXISTS (
              SELECT 1 FROM bookmark_tags bt WHERE bt.bookmark_id = bookmarks.id
            ) THEN 1 ELSE 0 END) AS untagged
-     FROM bookmarks WHERE user_id = ?`,
+     FROM bookmarks WHERE user_id = ? AND is_private = 0`,
   )
     .bind(since, userId)
     .first<Record<string, number | null>>();

@@ -9,7 +9,14 @@ import { api, setAccessToken, setUnauthorizedHandler } from '@/lib/api';
  * cache behind is how the next person to sign in on a shared machine sees
  * someone else's bookmarks.
  */
-const ACCOUNT_SCOPED_KEYS = ['tagnest.view', 'tagnest.sidebar', 'tagnest.recent-tags'];
+const ACCOUNT_SCOPED_KEYS = [
+  'tagnest.view',
+  'tagnest.sidebar',
+  'tagnest.recent-tags',
+  // The vault's salt + verifier are non-secret, but they are account-scoped and
+  // must not leak across sign-ins on a shared machine.
+  'tagnest.vault',
+];
 
 interface AuthState {
   user: User | null;

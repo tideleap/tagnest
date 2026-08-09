@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Archive, ExternalLink, Star } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Archive, ExternalLink, Lock, Star } from 'lucide-react';
 import { Button, Input, Modal, Skeleton, Switch, Textarea } from '@/components/ui';
+import { toast } from '@/components/ui/Toast';
 import { TagPicker } from './TagPicker';
 import { useOverlay } from '@/stores/ui';
 import { useBookmark, useUpdateBookmark } from '@/hooks/queries';
+import { useSetBookmarkPrivate } from '@/hooks/queries/vault';
+import { useVault } from '@/stores/vault';
 import { displayHost, formatDate } from '@/lib/url';
 
 export function BookmarkEditor({ id }: { id: string }) {
   const setEditingBookmarkId = useOverlay((s) => s.setEditingBookmarkId);
   const close = () => setEditingBookmarkId(null);
+  const navigate = useNavigate();
 
   const { data: bookmark, isLoading } = useBookmark(id);
   const update = useUpdateBookmark();
+  const setPrivate = useSetBookmarkPrivate();
 
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -46,6 +52,22 @@ export function BookmarkEditor({ id }: { id: string }) {
       },
       { onSuccess: close },
     );
+  };
+
+  /**
+   * Moves this bookmark into the encrypted vault. The ciphertext is built from
+   * the *saved* record, not the unsaved form state — encrypting a half-typed
+   * edit would silently discard whatever the user had not committed yet.
+   */
+  const moveToVault = () => {
+    if (!bookmark) return;
+    if (!useVault.getState().getKey()) {
+      toast.info('请先解锁私密保险库', '解锁后即可把书签加密移入私密空间。');
+      close();
+      navigate('/private');
+      return;
+    }
+    setPrivate.mutate(bookmark, { onSuccess: close });
   };
 
   return (
@@ -125,6 +147,27 @@ export function BookmarkEditor({ id }: { id: string }) {
               label="归档"
               hint="从主列表移除，但保留内容"
             />
+            <div className="h-px bg-line" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-medium text-ink">
+                  <Lock size={13} aria-hidden />
+                  私密书签
+                </p>
+                <p className="mt-0.5 text-2xs leading-relaxed text-ink-faint">
+                  在本地加密后保存，并从全部列表、搜索、标签与分享中彻底隐藏。请先保存未提交的改动。
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={moveToVault}
+                loading={setPrivate.isPending}
+                className="shrink-0"
+              >
+                移入保险库
+              </Button>
+            </div>
           </div>
 
           {bookmark.aiSummary && (

@@ -62,7 +62,7 @@ export async function resolveScopeIds(env: Env, userId: string, scope: ClassifyS
 
   const rows = await env.DB.prepare(
     `SELECT b.id AS id FROM bookmarks b
-      WHERE b.user_id = ? AND b.deleted_at IS NULL ${untaggedClause}
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0 ${untaggedClause}
       ORDER BY b.created_at DESC`,
   )
     .bind(userId)
@@ -80,7 +80,7 @@ async function loadBookmarks(env: Env, userId: string, ids: string[]): Promise<L
        FROM bookmarks b
        LEFT JOIN bookmark_tags bt ON bt.bookmark_id = b.id
        LEFT JOIN tags t ON t.id = bt.tag_id AND t.user_id = ?
-      WHERE b.user_id = ? AND b.deleted_at IS NULL AND b.id IN (${placeholders})`,
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0 AND b.id IN (${placeholders})`,
   )
     .bind(userId, userId, ...ids)
     .all<Record<string, unknown>>();

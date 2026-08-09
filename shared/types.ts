@@ -126,9 +126,70 @@ export interface BookmarkInput {
   isFavorite?: boolean;
   isArchived?: boolean;
   tagNames?: string[];
+  /** Set true to move a bookmark into the encrypted vault (with `encryptedBlob`). */
+  isPrivate?: boolean;
+  /** Base64 AES-GCM ciphertext blob for the vault; required when `isPrivate` is true. */
+  encryptedBlob?: string;
 }
 
 export type BookmarkPatch = Partial<BookmarkInput>;
+
+/* ------------------------------------------------------------------ *
+ * Private (encrypted) bookmarks — the zero-knowledge vault
+ *
+ * A private bookmark is encrypted in the browser with a key derived from a
+ * user-chosen passphrase (PBKDF2 + AES-GCM). The server stores only the
+ * ciphertext and a `is_private` flag that hides the row from every ordinary
+ * query. These contracts describe the dedicated /api/private endpoints.
+ * ------------------------------------------------------------------ */
+
+/** GET /api/private/vault */
+export interface PrivateVaultStatus {
+  /** True once the user has set a vault passphrase. */
+  configured: boolean;
+  /** PBKDF2 salt (public, safe to expose); null until the vault is configured. */
+  salt: string | null;
+  /** AES-GCM verifier blob (client-side, safe to expose); decryptable only with
+   *  the correct passphrase-derived key. Lets the client confirm a typed
+   *  passphrase without the server ever holding the key. */
+  verifier: string | null;
+}
+
+/** POST /api/private/vault — both values are produced client-side from the passphrase. */
+export interface SetVaultRequest {
+  /** Base64 PBKDF2 salt. */
+  salt: string;
+  /** Base64 AES-GCM encryption of a known constant, used to verify the passphrase. */
+  verifier: string;
+}
+
+/** A private bookmark as returned to the (unlocked) client: ciphertext only. */
+export interface PrivateBookmarkListItem {
+  id: string;
+  /** Base64 AES-GCM blob; decrypt locally with the vault key. */
+  encryptedBlob: string;
+  isFavorite: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /api/private/bookmarks */
+export interface PrivateBookmarksResponse {
+  items: PrivateBookmarkListItem[];
+}
+
+/** POST /api/private/bookmarks — the client encrypts the fields before sending. */
+export interface PrivateBookmarkInput {
+  encryptedBlob: string;
+  isFavorite?: boolean;
+  isArchived?: boolean;
+}
+
+/** PATCH /api/private/bookmarks/:id */
+export interface PrivateBookmarkPatch {
+  encryptedBlob: string;
+}
 
 /** One entry in the real-time website snapshot monitor strip. */
 export interface SnapshotMonitorItem {

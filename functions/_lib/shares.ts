@@ -123,7 +123,7 @@ export async function renderShare(
   userId: string,
 ): Promise<PublicShare> {
   const params: unknown[] = [userId];
-  const where = ['b.user_id = ?', 'b.deleted_at IS NULL', 'b.is_archived = 0'];
+  const where = ['b.user_id = ?', 'b.deleted_at IS NULL', 'b.is_archived = 0', 'b.is_private = 0'];
 
   const ownerRow = await env.DB.prepare(
     `SELECT display_name FROM users WHERE id = ? LIMIT 1`,

@@ -1,8 +1,9 @@
 import type { Bookmark, BookmarkScope, BookmarkSort, Tag } from '../../shared/types';
 import { TAG_COLOR_COUNT } from '../../shared/types';
 import type { Env } from './env';
-import { badRequest } from './http';
+import { badRequest, conflict } from './http';
 import { base64UrlDecode, base64UrlEncode, newId, nowIso } from './ids';
+import { canonicalUrl, urlKey } from './urlkey';
 
 /* ------------------------------------------------------------------ *
  * Row mappers
@@ -28,6 +29,14 @@ const bool = (v: unknown) => v === 1 || v === true;
  */
 export const D1_MAX_PARAMS = 100;
 export const D1_IN_CHUNK = D1_MAX_PARAMS - 1;
+
+/**
+ * Clause that hides a user's private (encrypted) bookmarks from every ordinary
+ * query. Private bookmarks are stored with `is_private = 1` and blanked
+ * plaintext, so the only places that should ever see them are the dedicated
+ * vault endpoints, which query the column explicitly instead of via this.
+ */
+export const PRIVATE_BOOKMARK_CLAUSE = 'b.is_private = 0';
 
 /**
  * Runs `makeSql(placeholders)` once per chunk of `values`, binding `leadParams`
@@ -394,8 +403,8 @@ function searchClause(q: string, useFts: boolean): ScopeClause {
   };
 }
 
-function buildWhere(p: ListParams, useFts: boolean): ScopeClause {
-  const parts = ['b.user_id = ?'];
+export function buildWhere(p: ListParams, useFts: boolean): ScopeClause {
+  const parts = ['b.user_id = ?', PRIVATE_BOOKMARK_CLAUSE];
   const params: unknown[] = [p.userId];
 
   const scope = scopeClause(p.scope);
@@ -516,7 +525,8 @@ export async function loadBookmark(
   id: string,
 ): Promise<Bookmark | null> {
   const row = await env.DB.prepare(
-    `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks b WHERE b.id = ? AND b.user_id = ? LIMIT 1`,
+    `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks b
+      WHERE b.id = ? AND b.user_id = ? AND b.is_private = 0 LIMIT 1`,
   )
     .bind(id, userId)
     .first<Row>();
@@ -577,6 +587,7 @@ export async function listBookmarksWithSnapshots(
       WHERE b.user_id = ?
         AND b.deleted_at IS NULL
         AND b.is_archived = 0
+        AND b.is_private = 0
         AND b.snapshot_key IS NOT NULL
       ORDER BY b.visit_count DESC,
                json_extract(b.snapshot_keys, '$[#-1]') DESC,
@@ -638,7 +649,9 @@ export async function loadAllBookmarkSnapshotRefs(
   userId: string,
 ): Promise<BookmarkSnapshotRefs[]> {
   const rows = await env.DB.prepare(
-    `SELECT id, snapshot_key, snapshot_keys FROM bookmarks WHERE user_id = ? AND (snapshot_key IS NOT NULL OR snapshot_keys IS NOT NULL)`,
+    `SELECT id, snapshot_key, snapshot_keys FROM bookmarks
+      WHERE user_id = ? AND is_private = 0
+        AND (snapshot_key IS NOT NULL OR snapshot_keys IS NOT NULL)`,
   )
     .bind(userId)
     .all<Row>();
@@ -659,4 +672,239 @@ export async function loadSnapshotRetentionLimit(env: Env, userId: string): Prom
   const n = Number(row?.snapshot_retention_limit);
   if (Number.isInteger(n) && (n === -1 || n >= 1)) return n;
   return 5;
+}
+
+/* ------------------------------------------------------------------ *
+ * Private (encrypted) bookmarks — the zero-knowledge vault
+ *
+ * These functions deliberately bypass PRIVATE_BOOKMARK_CLAUSE: they are the
+ * only code paths allowed to read or write private rows, and they exist behind
+ * dedicated /api/private endpoints. Every other reader in this file filters
+ * private rows out via PRIVATE_BOOKMARK_CLAUSE.
+ * ------------------------------------------------------------------ */
+
+/** A private bookmark as returned to the (already unlocked) client: only the
+ * ciphertext plus non-sensitive flags — never plaintext. */
+export interface PrivateBookmarkRow {
+  id: string;
+  encryptedBlob: string;
+  isFavorite: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Fields the client sends back when cancelling privacy (restoring a bookmark). */
+export interface RestoredBookmarkFields {
+  url: string;
+  title: string;
+  description: string | null;
+  note: string | null;
+  faviconUrl: string | null;
+  coverUrl: string | null;
+  tagNames: string[];
+}
+
+const PRIVATE_COLUMNS = `
+  b.id, b.encrypted_blob, b.is_favorite, b.is_archived,
+  b.created_at, b.updated_at
+`;
+
+/** Lists a user's private bookmarks (ciphertext only), newest first. */
+export async function listPrivateBookmarkRows(env: Env, userId: string): Promise<PrivateBookmarkRow[]> {
+  const rows = await env.DB.prepare(
+    `SELECT ${PRIVATE_COLUMNS}
+       FROM bookmarks b
+      WHERE b.user_id = ? AND b.is_private = 1 AND b.deleted_at IS NULL
+      ORDER BY b.created_at DESC`,
+  )
+    .bind(userId)
+    .all<Row>();
+  return rows.results.map((r) => ({
+    id: r.id as string,
+    encryptedBlob: (r.encrypted_blob as string) ?? '',
+    isFavorite: bool(r.is_favorite),
+    isArchived: bool(r.is_archived),
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  }));
+}
+
+/** Loads a single private bookmark (ciphertext only), or null. */
+export async function loadPrivateBookmarkRow(
+  env: Env,
+  userId: string,
+  id: string,
+): Promise<PrivateBookmarkRow | null> {
+  const row = await env.DB.prepare(
+    `SELECT ${PRIVATE_COLUMNS}
+       FROM bookmarks b
+      WHERE b.id = ? AND b.user_id = ? AND b.is_private = 1 LIMIT 1`,
+  )
+    .bind(id, userId)
+    .first<Row>();
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    encryptedBlob: (row.encrypted_blob as string) ?? '',
+    isFavorite: bool(row.is_favorite),
+    isArchived: bool(row.is_archived),
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+/**
+ * Marks a live bookmark private: blanks its readable columns, stores the
+ * client-supplied ciphertext, and removes its tag links so the bookmark cannot
+ * surface in any tag view, share, or count. The row's `url_key` is rewritten to
+ * a per-bookmark constant to keep the (user_id, url_key) unique index happy.
+ */
+export async function setBookmarkPrivate(
+  env: Env,
+  userId: string,
+  id: string,
+  encryptedBlob: string,
+): Promise<boolean> {
+  const ts = nowIso();
+  const res = await env.DB.prepare(
+    `UPDATE bookmarks
+        SET is_private = 1,
+            url = '',
+            url_key = ?,
+            title = '',
+            description = NULL,
+            favicon_url = NULL,
+            cover_url = NULL,
+            note = NULL,
+            encrypted_blob = ?,
+            updated_at = ?
+      WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND is_private = 0`,
+  )
+    .bind(`private:${id}`, encryptedBlob, ts, id, userId)
+    .run();
+  if (Number((res as { meta?: { changes?: number } }).meta?.changes ?? 0) === 0) return false;
+  // Drop tag links so the private bookmark is invisible to the tag system.
+  await env.DB.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id = ?`).bind(id).run();
+  return true;
+}
+
+/**
+ * Restores a private bookmark to a normal, visible one. The client supplies the
+ * decrypted plaintext (it just unlocked the vault), which we write back and
+ * re-link to its original tags by name. A URL that now collides with another
+ * live bookmark is reported as a conflict, exactly like editing a URL.
+ */
+export async function clearBookmarkPrivate(
+  env: Env,
+  userId: string,
+  id: string,
+  fields: RestoredBookmarkFields,
+): Promise<Bookmark | null> {
+  // The plaintext arrives from the client, so it is re-validated here rather
+  // than trusted: an unparseable URL would otherwise write a NULL url column
+  // and produce a bookmark that can never be opened again.
+  const url = canonicalUrl(fields.url);
+  if (!url) throw badRequest('网址格式不正确', { url: '网址格式不正确' });
+  const key = urlKey(url);
+  const clash = await env.DB.prepare(
+    `SELECT id FROM bookmarks
+      WHERE user_id = ? AND url_key = ? AND deleted_at IS NULL AND id <> ? LIMIT 1`,
+  )
+    .bind(userId, key, id)
+    .first<{ id: string }>();
+  if (clash) throw conflict('该网址已在书签库中', { id: clash.id });
+
+  const ts = nowIso();
+  await env.DB.prepare(
+    `UPDATE bookmarks
+        SET is_private = 0,
+            url = ?,
+            url_key = ?,
+            title = ?,
+            description = ?,
+            favicon_url = ?,
+            cover_url = ?,
+            note = ?,
+            encrypted_blob = NULL,
+            updated_at = ?
+      WHERE id = ? AND user_id = ? AND is_private = 1`,
+  )
+    .bind(
+      url,
+      key,
+      fields.title.slice(0, 300),
+      fields.description ? fields.description.slice(0, 2000) : null,
+      fields.faviconUrl ? fields.faviconUrl.slice(0, 500) : null,
+      fields.coverUrl ? fields.coverUrl.slice(0, 500) : null,
+      fields.note ? fields.note.slice(0, 20000) : null,
+      ts,
+      id,
+      userId,
+    )
+    .run();
+
+  if (fields.tagNames.length > 0) {
+    const { ids } = await ensureTags(env, userId, fields.tagNames.slice(0, 30));
+    await setBookmarkTags(env, id, ids);
+  }
+
+  return loadBookmark(env, userId, id);
+}
+
+/** Creates a brand-new private bookmark directly inside the vault. */
+export async function createPrivateBookmark(
+  env: Env,
+  userId: string,
+  encryptedBlob: string,
+  isFavorite: boolean,
+  isArchived: boolean,
+): Promise<string> {
+  const id = newId();
+  const ts = nowIso();
+  await env.DB.prepare(
+    `INSERT INTO bookmarks
+       (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
+        ai_summary, is_favorite, is_archived, is_private, encrypted_blob,
+        visit_count, last_visited_at, created_at, updated_at, deleted_at)
+     VALUES (?, ?, '', ?, '', NULL, NULL, NULL, NULL, NULL, ?, ?, 1, ?, 0, NULL, ?, ?, NULL)`,
+  )
+    .bind(
+      id,
+      userId,
+      `private:${id}`,
+      isFavorite ? 1 : 0,
+      isArchived ? 1 : 0,
+      encryptedBlob,
+      ts,
+      ts,
+    )
+    .run();
+  return id;
+}
+
+/** Re-encrypts an existing private bookmark's payload. */
+export async function updatePrivateBookmark(
+  env: Env,
+  userId: string,
+  id: string,
+  encryptedBlob: string,
+): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE bookmarks SET encrypted_blob = ?, updated_at = ?
+      WHERE id = ? AND user_id = ? AND is_private = 1`,
+  )
+    .bind(encryptedBlob, nowIso(), id, userId)
+    .run();
+  return Number((res as { meta?: { changes?: number } }).meta?.changes ?? 0) > 0;
+}
+
+/** Permanently deletes a private bookmark. */
+export async function deletePrivateBookmark(env: Env, userId: string, id: string): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `DELETE FROM bookmarks WHERE id = ? AND user_id = ? AND is_private = 1`,
+  )
+    .bind(id, userId)
+    .run();
+  return Number((res as { meta?: { changes?: number } }).meta?.changes ?? 0) > 0;
 }

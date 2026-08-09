@@ -85,7 +85,11 @@ export interface ExportCtx {
  */
 export async function* pageRows(ctx: ExportCtx): AsyncGenerator<ExportRow[]> {
   const { env, userId, includeTrash } = ctx;
-  const trashClause = includeTrash ? '' : 'AND b.deleted_at IS NULL';
+  // Private (encrypted) bookmarks are hidden from exports just like every
+  // other view — they only exist behind the vault, never in a file.
+  const trashClause = includeTrash
+    ? 'AND b.is_private = 0'
+    : 'AND b.deleted_at IS NULL AND b.is_private = 0';
   const pageSize = 100;
   let cursorCreated: string | null = null;
   let cursorId: string | null = null;
