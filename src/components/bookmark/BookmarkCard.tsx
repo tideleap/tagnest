@@ -16,6 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Bookmark } from '@shared/types';
+import { snapshotServePath } from '@shared/snapshotUrl';
 import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { Button, IconButton, Menu, Modal, TagChip, RemoteImage, tagColorVars } from '@/components/ui';
@@ -389,7 +390,7 @@ function BookmarkCardBase({
           {liveSnapshotKey ? (
             <div className="relative h-6 w-10 overflow-hidden rounded bg-sunken">
               <RemoteImage
-                src={`/api/snapshots/${liveSnapshotKey}`}
+                src={snapshotServePath(liveSnapshotKey)}
                 alt=""
                 className="h-full w-full object-cover"
                 fallback={<FaviconBadge bookmark={b} size={22} />}
@@ -427,7 +428,7 @@ function BookmarkCardBase({
               <div className="relative -mx-3 -mt-3 mb-3 aspect-[16/10] overflow-hidden rounded-t-lg bg-sunken">
                 {liveSnapshotKey ? (
                   <RemoteImage
-                    src={`/api/snapshots/${liveSnapshotKey}`}
+                    src={snapshotServePath(liveSnapshotKey)}
                     alt=""
                     className="h-full w-full object-cover"
                     fallback={
@@ -528,7 +529,7 @@ function BookmarkCardBase({
                 {liveSnapshotKey ? (
                   <div className="relative h-10 w-16 overflow-hidden rounded-md bg-sunken">
                     <RemoteImage
-                      src={`/api/snapshots/${liveSnapshotKey}`}
+                      src={snapshotServePath(liveSnapshotKey)}
                       alt=""
                       className="h-full w-full object-cover"
                       fallback={<FaviconBadge bookmark={b} size={40} />}

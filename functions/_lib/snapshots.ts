@@ -1,4 +1,5 @@
 import type { Env } from './env';
+import { encodeSnapshotKey } from '../../shared/snapshotUrl';
 
 /**
  * Website snapshots ("website preview image").
@@ -91,7 +92,7 @@ export function snapshotContentType(): string {
  * `/api/snapshots/` is enforced by the middleware).
  */
 export function snapshotServePath(key: string): string {
-  return `/api/snapshots/${encodeURIComponent(key)}`;
+  return `/api/snapshots/${encodeSnapshotKey(key)}`;
 }
 
 /** Snapshot is considered stale after this many milliseconds. */

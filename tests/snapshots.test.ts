@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { encodeSnapshotKey, decodeSnapshotKey } from '../shared/snapshotUrl';
 import {
   captureWithBrowserRun,
   classifySnapshotError,
@@ -257,11 +258,18 @@ describe('putSnapshot / getSnapshot', () => {
 });
 
 describe('snapshotServePath', () => {
-  it('builds the unauthenticated image path from a full key', () => {
+  it('builds a single-segment, slash-free image path from a full key', () => {
     const key = `snapshots/${userId}/${bookmarkId}-123.webp`;
-    expect(snapshotServePath(key)).toBe(
-      `/api/snapshots/${encodeURIComponent(key)}`,
-    );
+    const path = snapshotServePath(key);
+    expect(path.startsWith('/api/snapshots/')).toBe(true);
+    // The encoded key must be a single path segment (no slashes) so the
+    // /api/snapshots/[key] route receives the whole key intact.
+    expect(path.slice('/api/snapshots/'.length)).not.toContain('/');
+  });
+
+  it('round-trips through the shared base64url codec', () => {
+    const key = `snapshots/${userId}/${bookmarkId}-123.webp`;
+    expect(decodeSnapshotKey(encodeSnapshotKey(key))).toBe(key);
   });
 });
 
