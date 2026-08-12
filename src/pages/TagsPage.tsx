@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Combine, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-react';
+import { Combine, Lock, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-react';
 import type { Tag } from '@shared/types';
 import { TAG_COLOR_COUNT } from '@shared/types';
 import {
@@ -17,7 +17,7 @@ import {
   TagChip,
   tagColorVars,
 } from '@/components/ui';
-import { useCreateTag, useDeleteTag, useMergeTags, useTags, useUpdateTag } from '@/hooks/queries';
+import { useCreateTag, useDeleteTag, useMergeTags, useSetTagPrivate, useTags, useUpdateTag } from '@/hooks/queries';
 import { cx } from '@/lib/cx';
 
 type SortKey = 'count' | 'name' | 'recent';
@@ -34,6 +34,7 @@ export function TagsPage() {
   const [mergeSource, setMergeSource] = useState<Tag | null>(null);
 
   const deleteTag = useDeleteTag();
+  const setTagPrivate = useSetTagPrivate();
 
   const visible = useMemo(() => {
     const lower = filter.trim().toLowerCase();
@@ -124,9 +125,15 @@ export function TagsPage() {
               >
                 <span
                   style={tagColorVars(tag.colorIndex)}
-                  className="h-8 w-8 shrink-0 rounded-md bg-[var(--tag-bg)]"
+                  className="relative h-8 w-8 shrink-0 rounded-md bg-[var(--tag-bg)]"
                   aria-hidden
-                />
+                >
+                  {tag.isPrivate && (
+                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-surface bg-ink text-surface">
+                      <Lock size={9} />
+                    </span>
+                  )}
+                </span>
 
                 <button
                   type="button"
@@ -136,6 +143,7 @@ export function TagsPage() {
                   <span className="block truncate text-sm font-medium text-ink">{tag.name}</span>
                   <span className="block text-2xs tabular-nums text-ink-faint">
                     {tag.count} 个书签
+                    {tag.isPrivate && <span className="ml-1 text-brand-ink">· 私密</span>}
                   </span>
                 </button>
 
@@ -164,6 +172,13 @@ export function TagsPage() {
                       icon: <Combine size={15} />,
                       disabled: (tags?.length ?? 0) < 2,
                       onSelect: () => setMergeSource(tag),
+                    },
+                    {
+                      id: 'private',
+                      label: tag.isPrivate ? '取消私密' : '设为私密',
+                      icon: <Lock size={15} />,
+                      onSelect: () =>
+                        setTagPrivate.mutate({ id: tag.id, isPrivate: !tag.isPrivate }),
                     },
                     {
                       id: 'delete',

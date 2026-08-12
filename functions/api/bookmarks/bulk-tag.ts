@@ -2,7 +2,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
-import { D1_IN_CHUNK, ensureTags } from '../../_lib/db';
+import { D1_IN_CHUNK, ensureTags, PRIVATE_BOOKMARK_CLAUSE } from '../../_lib/db';
 import { readIds } from './trash';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
@@ -24,7 +24,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Ownership check up front: without it, a crafted id list could attach the
   // caller's tags to another account's rows.
   const owned = await ctx.env.DB.prepare(
-    `SELECT id FROM bookmarks WHERE user_id = ? AND is_private = 0 AND id IN (${ids.map(() => '?').join(',')})`,
+    `SELECT id FROM bookmarks b WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE} AND b.id IN (${ids.map(() => '?').join(',')})`,
   )
     .bind(userId, ...ids)
     .all<{ id: string }>();

@@ -11,8 +11,9 @@ import {
   encryptVaultFields,
   type DecryptedPrivateFields,
 } from '@/hooks/queries/vault';
-import { Button, IconButton, Modal, PageHeader, ConfirmDialog, EmptyState } from '@/components/ui';
+import { Button, IconButton, Modal, PageHeader, ConfirmDialog, EmptyState, tagColorVars } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
+import { usePrivateTags, useSetTagPrivate } from '@/hooks/queries';
 import { displayHost, relativeTime } from '@/lib/url';
 
 function blankData(): VaultBookmarkData {
@@ -346,6 +347,8 @@ export function PrivateVaultPage() {
             onRequestDelete={setPurgeId}
           />
         )}
+
+        <CategoryPrivateSection />
       </div>
 
       {editor && <PrivateBookmarkEditor state={editor} onClose={() => setEditor(null)} />}
@@ -631,5 +634,103 @@ function UnlockedPanel({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Category-private section of the private space.
+ *
+ * Unlike the encrypted vault above, category-private tags are NOT encrypted —
+ * they are simply hidden from every other user via PRIVATE_BOOKMARK_CLAUSE. The
+ * owner always sees them here, grouped by the private tag, with the plaintext
+ * bookmarks each one hides and a one-click "取消私密" to restore visibility.
+ * Rendered regardless of vault lock state because hiding is account-scoped, not
+ * passphrase-scoped.
+ */
+function CategoryPrivateSection() {
+  const { data, isLoading } = usePrivateTags();
+  const setPrivate = useSetTagPrivate();
+  const [unsetId, setUnsetId] = useState<string | null>(null);
+
+  const entries = data?.tags ?? [];
+  if (!isLoading && entries.length === 0) return null;
+
+  return (
+    <section className="mt-5 border-t border-line pt-4">
+      <div className="mb-1 flex items-center gap-2">
+        <Lock size={15} className="text-brand-ink" aria-hidden />
+        <h2 className="text-sm font-semibold text-ink">类别私密</h2>
+        <span className="text-2xs text-ink-faint">仅对其他人隐藏（未加密）</span>
+      </div>
+      <p className="mb-3 text-2xs leading-relaxed text-ink-faint">
+        将某个标签设为私密后，它及其所有子标签下的书签会对其他用户完全隐藏，只有你能在此查看与恢复。
+      </p>
+
+      {isLoading ? (
+        <p className="text-sm text-ink-faint">加载中…</p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {entries.map(({ tag, bookmarks }) => (
+            <li key={tag.id} className="rounded-lg border border-line bg-surface p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  style={tagColorVars(tag.colorIndex)}
+                  className="h-4 w-4 shrink-0 rounded bg-[var(--tag-bg)]"
+                  aria-hidden
+                />
+                <span className="text-sm font-medium text-ink">{tag.name}</span>
+                <span className="text-2xs tabular-nums text-ink-faint">
+                  {bookmarks.length} 个书签被隐藏
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto"
+                  iconLeft={<LockOpen size={14} />}
+                  onClick={() => setUnsetId(tag.id)}
+                >
+                  取消私密
+                </Button>
+              </div>
+
+              {bookmarks.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
+                  {bookmarks.slice(0, 12).map((b) => (
+                    <li key={b.id} className="flex min-w-0 items-center gap-2 text-2xs text-ink-soft">
+                      {b.faviconUrl ? (
+                        <img
+                          src={b.faviconUrl}
+                          alt=""
+                          className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                        />
+                      ) : null}
+                      <span className="truncate">
+                        {b.title?.trim() || displayHost(b.url)}
+                      </span>
+                    </li>
+                  ))}
+                  {bookmarks.length > 12 && (
+                    <li className="text-2xs text-ink-faint">…还有 {bookmarks.length - 12} 个</li>
+                  )}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <ConfirmDialog
+        open={unsetId !== null}
+        onClose={() => setUnsetId(null)}
+        onConfirm={() => {
+          if (unsetId) setPrivate.mutate({ id: unsetId, isPrivate: false });
+          setUnsetId(null);
+        }}
+        title="取消该类别的私密？"
+        message="取消后，该标签及其所有子标签下的书签会重新对所有人可见。"
+        confirmLabel="取消私密"
+        loading={setPrivate.isPending}
+      />
+    </section>
   );
 }

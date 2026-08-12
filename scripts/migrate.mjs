@@ -90,6 +90,11 @@ const MIGRATION_PROBES = {
   // Probe the first added column as the representative "already applied" marker.
   '0014_private_bookmarks.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('bookmarks') WHERE name='is_private'`,
+  // 0015 adds is_private to tags via ALTER (non-idempotent). Probe the column
+  // so a file already applied directly via `wrangler d1 execute --file` is
+  // recognised and skipped on a re-run.
+  '0015_tag_private.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('tags') WHERE name='is_private'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

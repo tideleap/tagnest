@@ -1,4 +1,4 @@
-import type { Bookmark, BookmarkScope, BookmarkSort, Tag } from '../../shared/types';
+import type { Bookmark, BookmarkScope, BookmarkSort, PrivateTagBookmark, Tag } from '../../shared/types';
 import { TAG_COLOR_COUNT } from '../../shared/types';
 import type { Env } from './env';
 import { badRequest, conflict } from './http';
@@ -31,12 +31,26 @@ export const D1_MAX_PARAMS = 100;
 export const D1_IN_CHUNK = D1_MAX_PARAMS - 1;
 
 /**
- * Clause that hides a user's private (encrypted) bookmarks from every ordinary
- * query. Private bookmarks are stored with `is_private = 1` and blanked
- * plaintext, so the only places that should ever see them are the dedicated
+ * Clause that hides a user's private bookmarks from every ordinary query.
+ *
+ * A bookmark is private in either of two ways:
+ *   1. it was individually vaulted (`is_private = 1`, encrypted, plaintext
+ *      blanked) — the original zero-knowledge path; or
+ *   2. it carries at least one tag whose `is_private = 1` — the category-private
+ *      path. Hiding is derived in SQL (not materialised per bookmark) so it is
+ *      real-time: tagging a bookmark with a private tag hides it instantly, and
+ *      unsetting the tag restores it instantly.
+ *
+ * The only places that should ever see private bookmarks are the dedicated
  * vault endpoints, which query the column explicitly instead of via this.
+ * `bt_pv` / `t_pv` are deliberately distinct aliases so this clause never
+ * collides with a caller's own `bt` / `t` joins.
  */
-export const PRIVATE_BOOKMARK_CLAUSE = 'b.is_private = 0';
+export const PRIVATE_BOOKMARK_CLAUSE =
+  `b.is_private = 0 AND NOT EXISTS (` +
+  `SELECT 1 FROM bookmark_tags bt_pv ` +
+  `JOIN tags t_pv ON t_pv.id = bt_pv.tag_id ` +
+  `WHERE bt_pv.bookmark_id = b.id AND t_pv.user_id = b.user_id AND t_pv.is_private = 1)`;
 
 /**
  * Runs `makeSql(placeholders)` once per chunk of `values`, binding `leadParams`
@@ -77,6 +91,7 @@ export function mapTag(row: Row): Tag {
     parentId: (row.parent_id as string | null) ?? null,
     sortOrder: Number(row.sort_order ?? 0),
     count: Number(row.count ?? 0),
+    isPrivate: bool(row.is_private),
     createdAt: row.created_at as string,
   };
 }
@@ -526,7 +541,7 @@ export async function loadBookmark(
 ): Promise<Bookmark | null> {
   const row = await env.DB.prepare(
     `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks b
-      WHERE b.id = ? AND b.user_id = ? AND b.is_private = 0 LIMIT 1`,
+      WHERE b.id = ? AND b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE} LIMIT 1`,
   )
     .bind(id, userId)
     .first<Row>();
@@ -587,7 +602,7 @@ export async function listBookmarksWithSnapshots(
       WHERE b.user_id = ?
         AND b.deleted_at IS NULL
         AND b.is_archived = 0
-        AND b.is_private = 0
+        AND ${PRIVATE_BOOKMARK_CLAUSE}
         AND b.snapshot_key IS NOT NULL
       ORDER BY b.visit_count DESC,
                json_extract(b.snapshot_keys, '$[#-1]') DESC,
@@ -649,9 +664,9 @@ export async function loadAllBookmarkSnapshotRefs(
   userId: string,
 ): Promise<BookmarkSnapshotRefs[]> {
   const rows = await env.DB.prepare(
-    `SELECT id, snapshot_key, snapshot_keys FROM bookmarks
-      WHERE user_id = ? AND is_private = 0
-        AND (snapshot_key IS NOT NULL OR snapshot_keys IS NOT NULL)`,
+    `SELECT id, snapshot_key, snapshot_keys FROM bookmarks b
+      WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE}
+        AND (b.snapshot_key IS NOT NULL OR b.snapshot_keys IS NOT NULL)`,
   )
     .bind(userId)
     .all<Row>();
@@ -850,6 +865,97 @@ export async function clearBookmarkPrivate(
   }
 
   return loadBookmark(env, userId, id);
+}
+
+/**
+ * Sets or clears a tag's private flag, cascading to every descendant tag so a
+ * "big category" private toggle hides (or restores) the whole subtree at once.
+ *
+ * Because hiding is derived in SQL (`PRIVATE_BOOKMARK_CLAUSE`), no bookmark row
+ * is touched — visibility updates in real time: a bookmark tagged with a
+ * private tag disappears from every list/search/share/export instantly, and
+ * unsetting the tag makes it reappear instantly. `UNION` (not `UNION ALL`)
+ * de-duplicates, which also terminates safely should the tree ever contain a
+ * cycle. Returns the number of tags (root included) whose flag changed.
+ */
+export async function setTagPrivate(
+  env: Env,
+  userId: string,
+  tagId: string,
+  isPrivate: boolean,
+): Promise<number> {
+  const flag = isPrivate ? 1 : 0;
+  const ts = nowIso();
+  const res = await env.DB.prepare(
+    `WITH RECURSIVE sub(id) AS (
+       SELECT ?
+       UNION
+       SELECT t.id FROM tags t JOIN sub ON t.parent_id = sub.id WHERE t.user_id = ?
+     )
+     UPDATE tags SET is_private = ?, updated_at = ?
+     WHERE id IN (SELECT id FROM sub) AND user_id = ?`,
+  )
+    .bind(tagId, userId, flag, ts, userId)
+    .run();
+  return Number((res as { meta?: { changes?: number } }).meta?.changes ?? 0);
+}
+
+/**
+ * Lists every private tag for a user together with the plaintext bookmarks each
+ * one currently hides. Powers the authorized-only listing at GET /api/private/tags.
+ *
+ * This is a vault path, so it deliberately does NOT filter through
+ * `PRIVATE_BOOKMARK_CLAUSE` — its entire job is to surface what that clause
+ * hides. Two guards keep the payload safe/honest:
+ *   - only bookmarks whose own plaintext is still readable (`is_private = 0`,
+ *     i.e. NOT individually vaulted) are returned, so the encrypted-blob path
+ *     never leaks decrypted content;
+ *   - trashed bookmarks (`deleted_at IS NOT NULL`) are excluded.
+ * The per-tag `count` mirrors `mapTag`'s live-usage semantics (readable,
+ * non-trashed members) rather than the raw `bookmark_tags` row count.
+ */
+export async function listPrivateTagsWithBookmarks(
+  env: Env,
+  userId: string,
+): Promise<Array<{ tag: Tag; bookmarks: PrivateTagBookmark[] }>> {
+  const tagRows = await env.DB.prepare(
+    `SELECT t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.is_private, t.created_at,
+            (SELECT COUNT(*) FROM bookmark_tags bt
+               JOIN bookmarks b ON b.id = bt.bookmark_id
+              WHERE bt.tag_id = t.id AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0) AS count
+       FROM tags t
+      WHERE t.user_id = ? AND t.is_private = 1
+      ORDER BY t.sort_order, t.name COLLATE NOCASE`,
+  )
+    .bind(userId, userId)
+    .all<Row>();
+
+  const entries: Array<{ tag: Tag; bookmarks: PrivateTagBookmark[] }> = [];
+  for (const tagRow of tagRows.results) {
+    const tag = mapTag(tagRow);
+    const bmRows = await env.DB.prepare(
+      `SELECT DISTINCT b.id, b.url, b.title, b.favicon_url, b.note,
+              b.is_favorite, b.is_archived, b.created_at
+         FROM bookmarks b
+         JOIN bookmark_tags bt ON bt.bookmark_id = b.id
+        WHERE bt.tag_id = ? AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0
+        ORDER BY b.title COLLATE NOCASE`,
+    )
+      .bind(tag.id, userId)
+      .all<Row>();
+
+    const bookmarks: PrivateTagBookmark[] = bmRows.results.map((r) => ({
+      id: r.id as string,
+      url: r.url as string,
+      title: (r.title as string) ?? '',
+      faviconUrl: (r.favicon_url as string | null) ?? null,
+      note: (r.note as string | null) ?? null,
+      isFavorite: bool(r.is_favorite),
+      isArchived: bool(r.is_archived),
+    }));
+    entries.push({ tag, bookmarks });
+  }
+  return entries;
 }
 
 /** Creates a brand-new private bookmark directly inside the vault. */

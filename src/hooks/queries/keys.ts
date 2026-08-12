@@ -37,6 +37,8 @@ export const keys = {
   /** User-curated named bookmark sets (design plan module). */
   collections: ['collections'] as const,
   collection: (id: string) => ['collection', id] as const,
+  /** Authorized listing of private tags + the bookmarks each hides. */
+  privateTags: ['private-tags'] as const,
 };
 
 export const PAGE_SIZE = 40;

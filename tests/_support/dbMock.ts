@@ -409,16 +409,113 @@ export class MockDb {
       }
     }
 
+    // --- tags: category-private listing (listPrivateTagsWithBookmarks) -
+    if (
+      u.startsWith(
+        'SELECT T.ID, T.NAME, T.COLOR_INDEX, T.PARENT_ID, T.SORT_ORDER, T.IS_PRIVATE, T.CREATED_AT',
+      )
+    ) {
+      const userId = params[0] as string;
+      return this.tags
+        .filter((t) => t.user_id === userId && t.is_private === 1)
+        .sort((a, b) => {
+          const so = Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0);
+          if (so !== 0) return so;
+          return String(a.name).localeCompare(String(b.name), 'zh-CN');
+        })
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          color_index: t.color_index,
+          parent_id: t.parent_id ?? null,
+          sort_order: Number(t.sort_order ?? 0),
+          is_private: t.is_private,
+          created_at: t.created_at,
+          count: this.bookmark_tags.filter((bt) => {
+            if (bt.tag_id !== t.id) return false;
+            const b = this.bookmarks.find(
+              (x) => x.id === bt.bookmark_id && x.user_id === userId && x.deleted_at == null && x.is_private !== 1,
+            );
+            return Boolean(b);
+          }).length,
+        }));
+    }
+
+    // --- bookmarks: members of a private tag (listPrivateTagsWithBookmarks)
+    if (
+      u.startsWith(
+        'SELECT DISTINCT B.ID, B.URL, B.TITLE, B.FAVICON_URL, B.NOTE, B.IS_FAVORITE, B.IS_ARCHIVED, B.CREATED_AT FROM BOOKMARKS B JOIN BOOKMARK_TAGS',
+      )
+    ) {
+      const tagId = params[0] as string;
+      const userId = params[1] as string;
+      const members = this.bookmark_tags
+        .filter((bt) => bt.tag_id === tagId)
+        .map((bt) => this.bookmarks.find((b) => b.id === bt.bookmark_id))
+        .filter(
+          (b): b is MockRow =>
+            Boolean(b) &&
+            b!.user_id === userId &&
+            b!.deleted_at == null &&
+            b!.is_private !== 1,
+        )
+        .sort((a, b) => String(a.title).localeCompare(String(b.title), 'zh-CN'));
+      return members.map((b) => ({
+        id: b.id,
+        url: b.url,
+        title: b.title,
+        favicon_url: b.favicon_url ?? null,
+        note: b.note ?? null,
+        is_favorite: b.is_favorite === 1 ? 1 : 0,
+        is_archived: b.is_archived === 1 ? 1 : 0,
+        created_at: b.created_at,
+      }));
+    }
+
+    // --- tags: setTagPrivate recursive-cascade UPDATE -----------------
+    if (u.startsWith('WITH RECURSIVE SUB(ID) AS') && u.includes('UPDATE TAGS SET IS_PRIVATE')) {
+      const [tagId, userId, flag, ts] = params as [string, string, number, string];
+      // Collect the whole subtree rooted at tagId (the tag itself + every
+      // descendant reached by walking parent_id). Mirrors the SQL CTE; the
+      // UNION (not UNION ALL) in the real query also de-dups, which guards a
+      // theoretical cycle — the visited set here does the same.
+      const ids = new Set<string>();
+      const stack = [tagId];
+      while (stack.length) {
+        const cur = stack.pop() as string;
+        if (ids.has(cur)) continue;
+        ids.add(cur);
+        for (const t of this.tags) {
+          if (t.user_id === userId && t.parent_id === cur) stack.push(t.id);
+        }
+      }
+      let changes = 0;
+      for (const t of this.tags) {
+        if (t.user_id === userId && ids.has(t.id) && t.is_private !== flag) {
+          t.is_private = flag;
+          t.updated_at = ts;
+          changes += 1;
+        }
+      }
+      this.lastChanges = changes;
+      return [];
+    }
+
     // --- bookmarks: public single read (loadBookmark) ----------------
     if (
       u.startsWith(
-        'SELECT B.ID, B.URL, B.TITLE, B.DESCRIPTION, B.FAVICON_URL, B.COVER_URL, B.SNAPSHOT_KEY, B.SNAPSHOT_KEYS, B.NOTE, B.AI_SUMMARY, B.IS_FAVORITE, B.IS_ARCHIVED, B.VISIT_COUNT, B.LAST_VISITED_AT, B.MANUAL_ORDER, B.CREATED_AT, B.UPDATED_AT, B.DELETED_AT FROM BOOKMARKS B WHERE B.ID = ? AND B.USER_ID = ? AND B.IS_PRIVATE = 0 LIMIT 1',
+        'SELECT B.ID, B.URL, B.TITLE, B.DESCRIPTION, B.FAVICON_URL, B.COVER_URL, B.SNAPSHOT_KEY, B.SNAPSHOT_KEYS, B.NOTE, B.AI_SUMMARY, B.IS_FAVORITE, B.IS_ARCHIVED, B.VISIT_COUNT, B.LAST_VISITED_AT, B.MANUAL_ORDER, B.CREATED_AT, B.UPDATED_AT, B.DELETED_AT FROM BOOKMARKS B WHERE B.ID = ? AND B.USER_ID = ? AND B.IS_PRIVATE = 0 AND NOT EXISTS',
       )
     ) {
       const [id, userId] = params as string[];
       return this.bookmarks
         .filter(
-          (b) => b.id === id && b.user_id === userId && b.is_private !== 1 && b.deleted_at == null,
+          (b) =>
+            b.id === id &&
+            b.user_id === userId &&
+            b.is_private !== 1 &&
+            b.deleted_at == null &&
+            !this.hasPrivateTag(b.id, userId),
         )
         .slice(0, 1)
         .map((b) => ({ ...b }));
@@ -431,8 +528,68 @@ export class MockDb {
     ) {
       const userId = params[0] as string;
       return this.bookmarks
-        .filter((b) => b.user_id === userId && b.is_private !== 1 && b.deleted_at == null)
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.is_private !== 1 &&
+            b.deleted_at == null &&
+            !this.hasPrivateTag(b.id, userId),
+        )
         .map((b) => ({ ...b }));
+    }
+
+    // --- bookmarks: snapshot monitor list (listBookmarksWithSnapshots) -
+    if (
+      u.startsWith(
+        'SELECT B.ID, B.URL, B.TITLE, B.SNAPSHOT_KEY, B.SNAPSHOT_KEYS, B.VISIT_COUNT, B.LAST_VISITED_AT FROM BOOKMARKS B WHERE',
+      )
+    ) {
+      const userId = params[0] as string;
+      return this.bookmarks
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.is_private !== 1 &&
+            b.deleted_at == null &&
+            b.is_archived !== 1 &&
+            b.snapshot_key != null &&
+            !this.hasPrivateTag(b.id, userId),
+        )
+        .sort((a, b) => Number(b.visit_count) - Number(a.visit_count))
+        .map((b) => ({
+          id: b.id,
+          url: b.url,
+          title: b.title,
+          snapshot_key: b.snapshot_key,
+          snapshot_keys: b.snapshot_keys,
+          visit_count: b.visit_count,
+          last_visited_at: b.last_visited_at,
+        }));
+    }
+
+    // --- bookmarks: snapshot maintenance scan (loadAllBookmarkSnapshotRefs)
+    if (
+      u.startsWith(
+        'SELECT B.ID, B.URL, B.TITLE, B.SNAPSHOT_KEY, B.SNAPSHOT_KEYS, B.VISIT_COUNT, B.LAST_VISITED_AT FROM BOOKMARKS B WHERE B.USER_ID = ? AND B.IS_PRIVATE = 0 AND NOT EXISTS',
+      )
+    ) {
+      const userId = params[0] as string;
+      return this.bookmarks
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.is_private !== 1 &&
+            !this.hasPrivateTag(b.id, userId),
+        )
+        .map((b) => ({
+          id: b.id,
+          url: b.url,
+          title: b.title,
+          snapshot_key: b.snapshot_key,
+          snapshot_keys: b.snapshot_keys,
+          visit_count: b.visit_count,
+          last_visited_at: b.last_visited_at,
+        }));
     }
 
     // --- bookmarks: private single read ------------------------------
@@ -592,6 +749,15 @@ export class MockDb {
     }
 
     return [];
+  }
+
+  /** A bookmark is hidden by category privacy when any tag it carries is private. */
+  private hasPrivateTag(bookmarkId: string, userId: string): boolean {
+    return this.bookmark_tags.some((bt) => {
+      if (bt.bookmark_id !== bookmarkId) return false;
+      const tag = this.tags.find((t) => t.id === bt.tag_id && t.user_id === userId);
+      return Boolean(tag && tag.is_private === 1);
+    });
   }
 
   private toCollectionRow(c: MockRow): MockRow {

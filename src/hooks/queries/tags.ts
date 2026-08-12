@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Tag, TagInput } from '@shared/types';
+import type { PrivateTagsResponse, Tag, TagInput } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -61,5 +61,38 @@ export function useMergeTags() {
       toast.success(`已合并 ${res.merged} 个标签`);
     },
     onError: (e: Error) => toast.error('合并失败', e.message),
+  });
+}
+
+/**
+ * Authorized listing of every private tag and the plaintext bookmarks it
+ * currently hides. Surfaces what PRIVATE_BOOKMARK_CLAUSE hides so the owner
+ * can review and un-private a category from the /private page.
+ */
+export function usePrivateTags() {
+  return useQuery({
+    queryKey: keys.privateTags,
+    queryFn: () => api.get<PrivateTagsResponse>('/private/tags'),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Toggles a tag's category-private flag. Setting it true cascades (server-side,
+ * via the recursive CTE in setTagPrivate) to the whole subtree; clearing it
+ * restores every descendant tag and re-surfaces all affected bookmarks.
+ */
+export function useSetTagPrivate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isPrivate }: { id: string; isPrivate: boolean }) =>
+      api.patch<Tag>(`/tags/${id}`, { isPrivate } as Partial<TagInput>),
+    onSuccess: (_res, vars) => {
+      void qc.invalidateQueries({ queryKey: keys.tags });
+      void qc.invalidateQueries({ queryKey: keys.privateTags });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      toast.success(vars.isPrivate ? '类别已设为私密' : '类别已取消私密');
+    },
+    onError: (e: Error) => toast.error('操作失败', e.message),
   });
 }

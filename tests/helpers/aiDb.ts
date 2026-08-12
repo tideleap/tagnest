@@ -224,7 +224,11 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     if (sql.startsWith('SELECT B.ID AS ID FROM BOOKMARKS B') || sql.startsWith('SELECT B.ID FROM BOOKMARKS B')) {
       const userId = String(params[0]);
       let rows = state.bookmarks.filter((b) => b.user_id === userId && b.deleted_at === null);
-      if (sql.includes('NOT EXISTS (SELECT 1 FROM BOOKMARK_TAGS')) {
+      // The `untagged` scope is the ONLY one that hides tagged bookmarks. Match
+      // its exact subquery (alias `bt WHERE`) so the unrelated PRIVATE_BOOKMARK_CLAUSE
+      // (alias `bt_pv JOIN tags t_pv ...`) does not get misread as untagged and
+      // silently drop every normally-tagged bookmark from an `all`/explicit scope.
+      if (sql.includes('NOT EXISTS (SELECT 1 FROM BOOKMARK_TAGS BT WHERE')) {
         rows = rows.filter((b) => !state.bookmark_tags.some((bt) => bt.bookmark_id === b.id));
       }
       return rows.map((b) => ({ id: b.id }));

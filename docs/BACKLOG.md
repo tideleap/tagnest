@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 49 条（其中 2 条为跨文档别名），独立需求 47 项：✅ done 44 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
+> 登记 51 条（其中 2 条为跨文档别名），独立需求 49 项：✅ done 46 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -173,6 +173,8 @@ npm run backlog:write   # 重新生成下方状态表
 | `B7` | api 客户端请求超时与重试分流 | P1 | ✅ done | 2/2 |  |
 | `B8` | 概览页 /dashboard | P3 | ✅ done | 3/3 | 登录落地首页：核心指标（书签/近7天/标签/收藏）+ 维护（未打标/归档/回收站）+ 快捷入口；数据源自 /stats。 |
 | `B9` | CI/CD 自动化部署流水线 | P2 | ✅ done | 4/4 | push main → CI→Deploy 自动把 dist 部署到 Cloudflare Pages 生产；PR 走 pr-<n> 预览；prod push 顺带逐文件幂等 D1 迁移（非阻塞）；手动 workflow_dispatch 带迁移开关；已实测 success。回滚见 docs/CICD.md §7。 |
+| `PRIV-1` | 私密保险库：单书签零知识加密（隐藏不加密之外的强保密） | P1 | ✅ done | 5/5 | 服务端只存 AES-256-GCM 密文 + 公开 salt，从所有列表/搜索/分享/导出/AI 隐藏；实现见 docs/PRIVATE-VAULT.md §1-§7。 |
+| `PRIV-2` | 类别私密：标签级整体隐藏（实时级联子树，取消即恢复） | P1 | ✅ done | 6/6 | tags.is_private 标记 + PRIVATE_BOOKMARK_CLAUSE 的 NOT EXISTS 派生隐藏；setTagPrivate 用递归 CTE 级联整棵子树；GET /api/private/tags 供本人查看/取消。仅隐藏不加密（与 §零知识并存独立）。实现见 docs/PRIVATE-VAULT.md §8。 |
 
 **当前执行队列**：空 —— 所有需求已进入终态。
 

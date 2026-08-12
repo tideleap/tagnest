@@ -8,6 +8,7 @@ import type {
 import type { Env } from './env';
 import { badRequest } from './http';
 import { newId } from './ids';
+import { PRIVATE_BOOKMARK_CLAUSE } from './db';
 
 /**
  * Public share pages.
@@ -123,7 +124,7 @@ export async function renderShare(
   userId: string,
 ): Promise<PublicShare> {
   const params: unknown[] = [userId];
-  const where = ['b.user_id = ?', 'b.deleted_at IS NULL', 'b.is_archived = 0', 'b.is_private = 0'];
+  const where = ['b.user_id = ?', 'b.deleted_at IS NULL', 'b.is_archived = 0', PRIVATE_BOOKMARK_CLAUSE];
 
   const ownerRow = await env.DB.prepare(
     `SELECT display_name FROM users WHERE id = ? LIMIT 1`,

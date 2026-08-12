@@ -51,16 +51,26 @@
 
 ```ts
 // functions/_lib/db.ts
-export const PRIVATE_BOOKMARK_CLAUSE = 'b.is_private = 0';
+export const PRIVATE_BOOKMARK_CLAUSE =
+  `b.is_private = 0 AND NOT EXISTS (
+     SELECT 1 FROM bookmark_tags bt_pv
+     JOIN tags t_pv ON t_pv.id = bt_pv.tag_id
+     WHERE bt_pv.bookmark_id = b.id AND t_pv.user_id = b.user_id AND t_pv.is_private = 1)`;
 function buildWhere(...) {
   const where = ['b.user_id = ?', PRIVATE_BOOKMARK_CLAUSE];  // 默认就带上
   ...
 }
 ```
 
-该条件被注入到全部 8 处普通查询：书签列表 / 全文搜索 / 单条读取 / 统计
-（`/api/stats`）/ AI 概览 / 批量打标签 / 分享内容 / 导出与导出预览。
-只有 `functions/api/private/*` 下的三个端点绕过它。
+该条件被注入到全部普通查询：书签列表 / 全文搜索 / 单条读取 / 统计
+（`/api/stats`）/ AI 概览 / 批量打标签 / 分享内容 / 导出与导出预览。它隐藏两类私密书签：
+
+1. **单书签私密**（零知识加密）：`is_private = 1`，明文已清空，服务端只存密文（见下文 §2）。
+2. **类别私密**（仅隐藏不加密）：书签本身带着某个 `is_private = 1` 的标签。
+
+第 2 类用 `NOT EXISTS` 在 SQL 层**派生**隐藏，因此实时——给书签打上私密标签立刻消失，
+取消标签立刻回来，且**不改写任何书签行**。只有 `functions/api/private/*` 下的端点绕过它
+（含下方 §8 的 `GET /api/private/tags`，供本人查看与恢复）。
 
 转私密时（`setBookmarkPrivate`）还会**主动破坏可读性**，而不只是加一个标记位：
 
@@ -87,6 +97,7 @@ function buildWhere(...) {
 | PATCH | `/api/private/bookmarks/:id` | 用新密文覆盖（前端改完重新加密） |
 | DELETE | `/api/private/bookmarks/:id` | 永久删除（非软删除） |
 | PATCH | `/api/bookmarks/:id` | `{ isPrivate: true, encryptedBlob }` 转私密；`{ isPrivate: false, ...明文字段 }` 还原 |
+| GET | `/api/private/tags` | 列出本人全部私密标签及其隐藏的明文书签（按标签分组），供在 `/private` 查看与取消类别私密 |
 
 转私密/还原刻意复用普通书签端点：它是同一条记录的状态变化，拆成独立端点会让
 "这条书签现在归谁管"变得含糊。
@@ -139,4 +150,49 @@ CREATE INDEX IF NOT EXISTS idx_bm_user_private
 - 还原后字段恢复、标签按名重建、URL 冲突返回 409；
 - 三个 `/api/private/*` 端点的正常路径与 400 / 404 / 409 分支。
 
-后端全量：**510 passed**。
+`tests/category-private.test.ts`（7 个用例）覆盖类别私密：
+
+- `PRIVATE_BOOKMARK_CLAUSE` 的 `NOT EXISTS` 确实排除带私密标签的书签；
+- `listBookmarks` / `loadBookmark` 看不到类别私密书签，而 `listPrivateTagsWithBookmarks`
+  把它们以明文列出；
+- `setTagPrivate` 用递归 CTE **级联整棵子树**（父 + 全部后代）翻转 `is_private`；
+- 取消类别私密后书签重新出现在所有列表；
+- `listPrivateTagsWithBookmarks` 不把"已单独加密"的书签当作明文成员泄漏。
+
+后端全量：**517 passed**。
+
+---
+
+## 8. 类别私密（仅隐藏，不加密）
+
+与 §2 的零知识加密保险库**并存但独立**。适用场景：把一整个大类（如"成人视频"）整体藏起来，
+不用逐条加密，也不用逐条设置。
+
+### 工作机制
+
+- `tags` 表新增 `is_private` 标记（迁移 `0015_tag_private.sql`）。
+- 在标签页把某标签「设为私密」→ `PATCH /api/tags/:id` 带 `{ isPrivate: true }`
+  → 服务端用一条 `WITH RECURSIVE` CTE 把**该标签及其整棵子树**的 `is_private` 一次性翻转。
+  因为可见性是 SQL 派生（`PRIVATE_BOOKMARK_CLAUSE` 的 `NOT EXISTS`），**不触碰任何书签行**，
+  所以实时生效、取消即恢复。
+- 普通用户（非本人）在所有列表 / 搜索 / 分享 / 导出 / AI 处理中都看不到这些书签；
+  本人可在 `/private` 页面的「类别私密」区块查看被隐藏的成员，并一键「取消私密」。
+
+### 与零知识保险库的区别
+
+| 维度 | 单书签私密（§2） | 类别私密（本节） |
+| --- | --- | --- |
+| 服务端是否存明文 | 否（仅密文） | 是（仅隐藏） |
+| 受拖库保护 | ✅ | ❌（运维直接查 D1 可见明文） |
+| 适用范围 | 单条书签 | 一个标签及其全部子标签下的所有书签 |
+| 实现 | `is_private=1` + `encrypted_blob` | `tags.is_private=1` 派生隐藏 |
+| 实时性 | 转/还原需改写书签行 | 标签标记即时生效，零书签改写 |
+
+> 类别私密是"对**其他用户**完全隐藏"的轻量方案，不是"对服务端保密"。若需服务端也读不到，
+> 请用 §2 的零知识保险库逐条加密。
+
+### 前端入口
+
+- **标签页**：私密标签带锁形角标 + 「私密」字样；卡片菜单新增「设为私密 / 取消私密」开关。
+- **`/private` 页面**：解锁区下方新增「类别私密」区块，按标签分组列出被隐藏的明文书签，
+  每条标签可一键「取消私密」（带二次确认）。

@@ -2,6 +2,7 @@ import type { Stats } from '../../shared/types';
 import type { Env, RequestData } from '../_lib/env';
 import { requireUserId } from '../_lib/auth';
 import { json } from '../_lib/http';
+import { PRIVATE_BOOKMARK_CLAUSE } from '../_lib/db';
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -17,9 +18,9 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
        SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS trashed,
        SUM(CASE WHEN deleted_at IS NULL AND created_at >= ? THEN 1 ELSE 0 END) AS recent,
        SUM(CASE WHEN deleted_at IS NULL AND NOT EXISTS (
-             SELECT 1 FROM bookmark_tags bt WHERE bt.bookmark_id = bookmarks.id
+             SELECT 1 FROM bookmark_tags bt WHERE bt.bookmark_id = b.id
            ) THEN 1 ELSE 0 END) AS untagged
-     FROM bookmarks WHERE user_id = ? AND is_private = 0`,
+     FROM bookmarks b WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE}`,
   )
     .bind(since, userId)
     .first<Record<string, number | null>>();

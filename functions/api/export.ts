@@ -1,6 +1,7 @@
 import type { Env, RequestData } from '../_lib/env';
 import { requireUserId } from '../_lib/auth';
 import { badRequest } from '../_lib/http';
+import { PRIVATE_BOOKMARK_CLAUSE } from '../_lib/db';
 
 type Format = 'json' | 'html' | 'csv';
 
@@ -88,8 +89,8 @@ export async function* pageRows(ctx: ExportCtx): AsyncGenerator<ExportRow[]> {
   // Private (encrypted) bookmarks are hidden from exports just like every
   // other view — they only exist behind the vault, never in a file.
   const trashClause = includeTrash
-    ? 'AND b.is_private = 0'
-    : 'AND b.deleted_at IS NULL AND b.is_private = 0';
+    ? `AND ${PRIVATE_BOOKMARK_CLAUSE}`
+    : `AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}`;
   const pageSize = 100;
   let cursorCreated: string | null = null;
   let cursorId: string | null = null;

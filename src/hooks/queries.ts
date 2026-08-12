@@ -25,6 +25,8 @@ export {
   useUpdateTag,
   useDeleteTag,
   useMergeTags,
+  usePrivateTags,
+  useSetTagPrivate,
 } from './queries/tags';
 
 export {

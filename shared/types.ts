@@ -47,7 +47,39 @@ export interface Tag {
   sortOrder: number;
   /** Bookmarks currently referencing this tag (excludes trashed ones). */
   count: number;
+  /** When true the tag (and its whole subtree) is private: every bookmark
+   * carrying it is hidden from all normal lists/search/share/export. */
+  isPrivate: boolean;
   createdAt: string;
+}
+
+/**
+ * A bookmark as surfaced inside the authorized private-tags listing
+ * (GET /api/private/tags). Only the plaintext fields the owner needs to
+ * recognise and later un-hide a category-private bookmark are returned; the
+ * full `Bookmark` shape (with snapshots, AI summary, etc.) is intentionally
+ * omitted to keep the vault payload small.
+ */
+export interface PrivateTagBookmark {
+  id: string;
+  url: string;
+  title: string;
+  faviconUrl: string | null;
+  /** User-authored note, shown so the owner can identify the entry. */
+  note: string | null;
+  isFavorite: boolean;
+  isArchived: boolean;
+}
+
+/** A private tag paired with the plaintext bookmarks it currently hides. */
+export interface PrivateTagEntry {
+  tag: Tag;
+  bookmarks: PrivateTagBookmark[];
+}
+
+/** Response envelope for GET /api/private/tags. */
+export interface PrivateTagsResponse {
+  tags: PrivateTagEntry[];
 }
 
 export interface Bookmark {
@@ -226,6 +258,7 @@ export interface TagInput {
   name: string;
   colorIndex?: number;
   parentId?: string | null;
+  isPrivate?: boolean;
 }
 
 export interface ImportPreviewItem {

@@ -1,6 +1,7 @@
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { json } from '../../_lib/http';
+import { PRIVATE_BOOKMARK_CLAUSE } from '../../_lib/db';
 
 /**
  * GET /api/export/preview
@@ -14,13 +15,13 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const userId = requireUserId(ctx);
 
   const live = await ctx.env.DB.prepare(
-    `SELECT COUNT(*) AS c FROM bookmarks WHERE user_id = ? AND is_private = 0 AND deleted_at IS NULL`,
+    `SELECT COUNT(*) AS c FROM bookmarks b WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE} AND b.deleted_at IS NULL`,
   )
     .bind(userId)
     .first<{ c: number }>();
 
   const trash = await ctx.env.DB.prepare(
-    `SELECT COUNT(*) AS c FROM bookmarks WHERE user_id = ? AND is_private = 0 AND deleted_at IS NOT NULL`,
+    `SELECT COUNT(*) AS c FROM bookmarks b WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE} AND b.deleted_at IS NOT NULL`,
   )
     .bind(userId)
     .first<{ c: number }>();
@@ -33,7 +34,7 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
 
   const withSnapshots = await ctx.env.DB.prepare(
     `SELECT COUNT(*) AS c FROM bookmarks b
-      WHERE b.user_id = ? AND b.is_private = 0 AND b.snapshot_key IS NOT NULL AND b.deleted_at IS NULL`,
+      WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE} AND b.snapshot_key IS NOT NULL AND b.deleted_at IS NULL`,
   )
     .bind(userId)
     .first<{ c: number }>();

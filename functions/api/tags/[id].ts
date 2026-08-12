@@ -2,7 +2,7 @@ import { TAG_COLOR_COUNT } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../_lib/http';
-import { mapTag } from '../../_lib/db';
+import { mapTag, setTagPrivate } from '../../_lib/db';
 
 export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -16,9 +16,12 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
     .first<Record<string, unknown>>();
   if (!current) throw notFound('标签不存在');
 
-  const body = await readJson<{ name?: string; colorIndex?: number; parentId?: string | null }>(
-    ctx.request,
-  );
+  const body = await readJson<{
+    name?: string;
+    colorIndex?: number;
+    parentId?: string | null;
+    isPrivate?: boolean;
+  }>(ctx.request);
 
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -57,9 +60,15 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
       .run();
   }
 
+  // Category privacy cascades to the whole subtree (parent + every descendant)
+  // in one statement; visibility is derived in SQL so no bookmark is rewritten.
+  if (typeof body.isPrivate === 'boolean') {
+    await setTagPrivate(ctx.env, userId, id, body.isPrivate);
+  }
+
   const updated = await ctx.env.DB.prepare(
-    `SELECT t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.created_at,
-            COUNT(b.id) AS count
+    `SELECT t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.is_private,
+            t.created_at, COUNT(b.id) AS count
        FROM tags t
        LEFT JOIN bookmark_tags bt ON bt.tag_id = t.id
        LEFT JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL

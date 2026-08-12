@@ -552,12 +552,12 @@
         {
           "type": "grep",
           "path": "README.md",
-          "pattern": "Public share pages"
+          "pattern": "公开分享页"
         },
         {
           "type": "grep",
           "path": "README.md",
-          "pattern": "Personal API keys"
+          "pattern": "个人 API Key"
         }
       ]
     },
@@ -835,6 +835,74 @@
         {
           "type": "file",
           "path": "docs/CICD.md"
+        }
+      ]
+    },
+    {
+      "id": "PRIV-1",
+      "title": "私密保险库：单书签零知识加密（隐藏不加密之外的强保密）",
+      "source": "用户需求 · 私密书签",
+      "priority": "P1",
+      "status": "done",
+      "note": "服务端只存 AES-256-GCM 密文 + 公开 salt，从所有列表/搜索/分享/导出/AI 隐藏；实现见 docs/PRIVATE-VAULT.md §1-§7。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "migrations/0014_private_bookmarks.sql"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/db.ts",
+          "pattern": "setBookmarkPrivate"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/private/vault.ts"
+        },
+        {
+          "type": "test",
+          "name": "private"
+        },
+        {
+          "type": "file",
+          "path": "docs/PRIVATE-VAULT.md"
+        }
+      ]
+    },
+    {
+      "id": "PRIV-2",
+      "title": "类别私密：标签级整体隐藏（实时级联子树，取消即恢复）",
+      "source": "用户需求 · 私密保险库（类别）",
+      "priority": "P1",
+      "status": "done",
+      "note": "tags.is_private 标记 + PRIVATE_BOOKMARK_CLAUSE 的 NOT EXISTS 派生隐藏；setTagPrivate 用递归 CTE 级联整棵子树；GET /api/private/tags 供本人查看/取消。仅隐藏不加密（与 §零知识并存独立）。实现见 docs/PRIVATE-VAULT.md §8。",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "migrations/0015_tag_private.sql"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/db.ts",
+          "pattern": "setTagPrivate"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/private/tags.ts"
+        },
+        {
+          "type": "grep",
+          "path": "src/hooks/queries/tags.ts",
+          "pattern": "usePrivateTags"
+        },
+        {
+          "type": "test",
+          "name": "category-private"
+        },
+        {
+          "type": "grep",
+          "path": "docs/PRIVATE-VAULT.md",
+          "pattern": "类别私密"
         }
       ]
     }
