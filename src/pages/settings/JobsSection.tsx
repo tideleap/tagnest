@@ -34,8 +34,7 @@ const TARGET_LABEL: Record<AiJobTarget, string> = {
 
 const ENGINE_LABEL: Record<string, string> = {
   model: '模型',
-  heuristic: '本地规则',
-  mixed: '模型 + 本地规则',
+  fallback: '域名兜底',
   none: '无',
 };
 

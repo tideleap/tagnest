@@ -107,7 +107,7 @@ describe('resolveCandidates', () => {
   it('de-duplicates model and heuristic output that resolve to the same tag', () => {
     const out = resolveCandidates(
       [
-        { name: '前端', confidence: 0.8, source: 'heuristic', reason: '域名 github.com' },
+        { name: '前端', confidence: 0.8, source: 'fallback', reason: '域名 github.com' },
         { name: 'frontend', confidence: 0.7, source: 'model', reason: '模型建议' },
       ],
       v,
@@ -122,7 +122,7 @@ describe('resolveCandidates', () => {
   it('adds a consensus bonus and a reason when two independent engines agree', () => {
     const out = resolveCandidates(
       [
-        { name: '前端', confidence: 0.8, source: 'heuristic' },
+        { name: '前端', confidence: 0.8, source: 'fallback' },
         { name: 'frontend', confidence: 0.7, source: 'model' },
       ],
       v,

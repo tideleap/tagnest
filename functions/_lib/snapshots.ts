@@ -102,20 +102,33 @@ export interface SnapshotStatus {
   snapshotKey: string | null;
   snapshotUrl: string | null;
   capturedAt: string | null;
+  /** True when a snapshot image actually exists for this bookmark. */
+  hasSnapshot: boolean;
+  /**
+   * True only when a snapshot EXISTS but is older than the freshness
+   * threshold. Note this is deliberately distinct from `hasSnapshot`: a
+   * bookmark with no snapshot is `hasSnapshot: false, isStale: false`, so the
+   * UI can tell "needs a first capture" apart from "needs a refresh".
+   */
   isStale: boolean;
 }
 
 /**
  * Builds a status view for a single snapshot key.
- * Returns `isStale: true` when the key is missing or older than the threshold.
+ *
+ * `hasSnapshot` separates "never captured" from "captured but old": the key
+ * being missing yields `hasSnapshot: false, isStale: false`, which lets the
+ * frontend treat a first capture (backfill) differently from a refresh.
  */
 export function buildSnapshotStatus(snapshotKey: string | null): SnapshotStatus {
   const ts = snapshotKey ? snapshotTimestamp(snapshotKey) : 0;
+  const has = ts > 0;
   return {
     snapshotKey,
     snapshotUrl: snapshotKey ? snapshotServePath(snapshotKey) : null,
     capturedAt: ts ? new Date(ts).toISOString() : null,
-    isStale: ts ? Date.now() - ts > SNAPSHOT_STALE_THRESHOLD_MS : true,
+    hasSnapshot: has,
+    isStale: has ? Date.now() - ts > SNAPSHOT_STALE_THRESHOLD_MS : false,
   };
 }
 

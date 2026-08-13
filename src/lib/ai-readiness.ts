@@ -11,8 +11,9 @@ import type { AiSettings } from '@shared/types';
  * cannot drift apart again.
  *
  * Returns the reasons the model is NOT usable; an empty list means it is.
- * Note this describes the *model* only — with heuristics on, the organiser
- * still produces suggestions when this returns a non-empty list.
+ * Note this describes the *model* only — without a model, a job run still
+ * produces domain-derived fallback tags for every bookmark, so the organiser
+ * is never fully dead; it is just less accurate.
  *
  * Kept as a pure function so the UI logic is unit-testable.
  */

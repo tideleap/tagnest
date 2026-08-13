@@ -1,6 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Combine, Lock, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Combine,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Tag as TagIcon,
+  Trash2,
+} from 'lucide-react';
 import type { Tag } from '@shared/types';
 import { TAG_COLOR_COUNT } from '@shared/types';
 import {
@@ -14,40 +24,60 @@ import {
   PageHeader,
   Select,
   Skeleton,
+  Switch,
   TagChip,
   tagColorVars,
 } from '@/components/ui';
 import { useCreateTag, useDeleteTag, useMergeTags, useSetTagPrivate, useTags, useUpdateTag } from '@/hooks/queries';
 import { cx } from '@/lib/cx';
-
-type SortKey = 'count' | 'name' | 'recent';
+import {
+  buildTagTree,
+  filterTagTree,
+  type TagSortKey,
+  type TreeNode,
+} from '@/components/tags/buildTagTree';
 
 export function TagsPage() {
   const navigate = useNavigate();
   const { data: tags, isLoading } = useTags();
 
   const [filter, setFilter] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('count');
+  const [sortKey, setSortKey] = useState<TagSortKey>('count');
   const [editing, setEditing] = useState<Tag | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Tag | null>(null);
   const [mergeSource, setMergeSource] = useState<Tag | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const deleteTag = useDeleteTag();
   const setTagPrivate = useSetTagPrivate();
 
-  const visible = useMemo(() => {
-    const lower = filter.trim().toLowerCase();
-    const list = (tags ?? []).filter((t) => (lower ? t.name.toLowerCase().includes(lower) : true));
+  // Grouped forest (reuses the same builder as the sidebar nav tree) so the
+  // page and the nav never disagree about hierarchy.
+  const tree = useMemo(() => buildTagTree(tags ?? [], sortKey), [tags, sortKey]);
+  const filtered = useMemo(() => filterTagTree(tree, filter), [tree, filter]);
 
-    return list.sort((a, b) => {
-      if (sortKey === 'name') return a.name.localeCompare(b.name, 'zh-CN');
-      if (sortKey === 'recent') return b.createdAt.localeCompare(a.createdAt);
-      return b.count - a.count || a.name.localeCompare(b.name, 'zh-CN');
+  // Expand top-level groups by default once the list loads.
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const top of tree) if (top.children.length > 0) next.add(top.id);
+      return next;
     });
-  }, [tags, filter, sortKey]);
+  }, [tree]);
 
   const unused = (tags ?? []).filter((t) => t.count === 0);
+
+  const togglePrivate = (tag: Tag) =>
+    setTagPrivate.mutate({ id: tag.id, isPrivate: !tag.isPrivate });
+  const goToTag = (id: string) => navigate(`/library/all?tagIds=${encodeURIComponent(id)}`);
+  const toggleExpand = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,7 +85,7 @@ export function TagsPage() {
         icon={<TagIcon size={14} aria-hidden />}
         eyebrow="整理分类"
         title="标签"
-        description="把书签收进一致的词汇表——合并、重命名或清理从不使用的标签。"
+        description="按分组管理你的标签词汇表——把书签收进一致的层级，合并、重命名或清理从不使用的标签。"
       >
         {tags && (
           <span className="mr-1 text-xs tabular-nums text-ink-faint">{tags.length} 个</span>
@@ -78,7 +108,7 @@ export function TagsPage() {
           aria-label="排序方式"
           size="sm"
           value={sortKey}
-          onChange={(e) => setSortKey(e.target.value as SortKey)}
+          onChange={(e) => setSortKey(e.target.value as TagSortKey)}
           options={[
             { value: 'count', label: '按使用量' },
             { value: 'name', label: '按名称' },
@@ -92,14 +122,14 @@ export function TagsPage() {
       </div>
 
       {isLoading ? (
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="flex flex-col gap-1.5">
           {Array.from({ length: 6 }).map((_, i) => (
             <li key={i}>
-              <Skeleton className="h-16 w-full rounded-md" />
+              <Skeleton className="h-12 w-full rounded-md" />
             </li>
           ))}
         </ul>
-      ) : visible.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<TagIcon size={22} />}
           title={filter ? '没有匹配的标签' : '还没有标签'}
@@ -115,83 +145,21 @@ export function TagsPage() {
           }
         />
       ) : (
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {visible.map((tag) => (
-            <li key={tag.id}>
-              <div
-                className={cx(
-                  'group flex items-center gap-3 rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong',
-                )}
-              >
-                <span
-                  style={tagColorVars(tag.colorIndex)}
-                  className="relative h-8 w-8 shrink-0 rounded-md bg-[var(--tag-bg)]"
-                  aria-hidden
-                >
-                  {tag.isPrivate && (
-                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-surface bg-ink text-surface">
-                      <Lock size={9} />
-                    </span>
-                  )}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => navigate(`/library/all?tagIds=${encodeURIComponent(tag.id)}`)}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <span className="block truncate text-sm font-medium text-ink">{tag.name}</span>
-                  <span className="block text-2xs tabular-nums text-ink-faint">
-                    {tag.count} 个书签
-                    {tag.isPrivate && <span className="ml-1 text-brand-ink">· 私密</span>}
-                  </span>
-                </button>
-
-                <Menu
-                  align="end"
-                  width={170}
-                  trigger={(props) => (
-                    <IconButton
-                      {...props}
-                      label={`${tag.name} 的操作`}
-                      size="sm"
-                      icon={<Pencil size={14} />}
-                      className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
-                    />
-                  )}
-                  items={[
-                    {
-                      id: 'rename',
-                      label: '重命名 / 改色',
-                      icon: <Pencil size={15} />,
-                      onSelect: () => setEditing(tag),
-                    },
-                    {
-                      id: 'merge',
-                      label: '合并到其他标签',
-                      icon: <Combine size={15} />,
-                      disabled: (tags?.length ?? 0) < 2,
-                      onSelect: () => setMergeSource(tag),
-                    },
-                    {
-                      id: 'private',
-                      label: tag.isPrivate ? '取消私密' : '设为私密',
-                      icon: <Lock size={15} />,
-                      onSelect: () =>
-                        setTagPrivate.mutate({ id: tag.id, isPrivate: !tag.isPrivate }),
-                    },
-                    {
-                      id: 'delete',
-                      label: '删除标签',
-                      icon: <Trash2 size={15} />,
-                      tone: 'danger',
-                      separatorBefore: true,
-                      onSelect: () => setDeleting(tag),
-                    },
-                  ]}
-                />
-              </div>
-            </li>
+        <ul className="flex flex-col gap-1.5">
+          {filtered.map((top) => (
+            <GroupRow
+              key={top.id}
+              node={top}
+              depth={0}
+              expanded={expanded}
+              onToggleExpand={toggleExpand}
+              onNavigate={goToTag}
+              onSetPrivate={togglePrivate}
+              onRename={setEditing}
+              onMerge={setMergeSource}
+              onDelete={setDeleting}
+              totalCount={tags?.length ?? 0}
+            />
           ))}
         </ul>
       )}
@@ -229,6 +197,157 @@ export function TagsPage() {
         loading={deleteTag.isPending}
       />
     </div>
+  );
+}
+
+function GroupRow({
+  node,
+  depth,
+  expanded,
+  onToggleExpand,
+  onNavigate,
+  onSetPrivate,
+  onRename,
+  onMerge,
+  onDelete,
+  totalCount,
+}: {
+  node: TreeNode;
+  depth: number;
+  expanded: Set<string>;
+  onToggleExpand: (id: string) => void;
+  onNavigate: (id: string) => void;
+  onSetPrivate: (tag: Tag) => void;
+  onRename: (tag: Tag) => void;
+  onMerge: (tag: Tag) => void;
+  onDelete: (tag: Tag) => void;
+  totalCount: number;
+}) {
+  const hasChildren = node.children.length > 0;
+  const isOpen = expanded.has(node.id);
+  const indent = depth * 14;
+
+  return (
+    <li className="flex flex-col">
+      <div
+        className={cx(
+          'group flex w-full items-center gap-2 rounded-md border border-line bg-surface px-2 py-2 transition-colors hover:border-line-strong',
+          isOpen && 'bg-surface-hover/40',
+        )}
+        style={{ paddingLeft: `${8 + indent}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => onToggleExpand(node.id)}
+            className="shrink-0 rounded p-0.5 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            aria-label={isOpen ? '收起分组' : '展开分组'}
+            aria-expanded={isOpen}
+          >
+            {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </button>
+        ) : (
+          <span className="w-6" />
+        )}
+
+        <span
+          style={tagColorVars(node.colorIndex)}
+          className="relative h-7 w-7 shrink-0 rounded-md bg-[var(--tag-bg)]"
+          aria-hidden
+        >
+          {node.isPrivate && (
+            <span
+              title="私密"
+              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-surface bg-ink text-surface"
+            >
+              <Lock size={9} />
+            </span>
+          )}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => onNavigate(node.id)}
+          className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink transition-colors hover:text-brand-ink"
+        >
+          {node.name}
+        </button>
+
+        <span className="shrink-0 text-2xs tabular-nums text-ink-faint">
+          {node.count} 个书签
+        </span>
+
+        <Switch
+          checked={node.isPrivate}
+          onChange={() => onSetPrivate(node)}
+          label={node.isPrivate ? `取消「${node.name}」私密` : `将「${node.name}」设为私密`}
+          labelHidden
+        />
+
+        <Menu
+          align="end"
+          width={180}
+          trigger={(props) => (
+            <IconButton
+              {...props}
+              label={`${node.name} 的操作`}
+              size="sm"
+              icon={<MoreHorizontal size={16} />}
+              className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+            />
+          )}
+          items={[
+            {
+              id: 'rename',
+              label: '重命名 / 改色',
+              icon: <Pencil size={15} />,
+              onSelect: () => onRename(node),
+            },
+            {
+              id: 'merge',
+              label: '合并到其他标签',
+              icon: <Combine size={15} />,
+              disabled: totalCount < 2,
+              onSelect: () => onMerge(node),
+            },
+            {
+              id: 'private',
+              label: node.isPrivate ? '取消私密' : '设为私密',
+              icon: <Lock size={15} />,
+              onSelect: () => onSetPrivate(node),
+            },
+            {
+              id: 'delete',
+              label: '删除标签',
+              icon: <Trash2 size={15} />,
+              tone: 'danger',
+              separatorBefore: true,
+              onSelect: () => onDelete(node),
+            },
+          ]}
+        />
+      </div>
+
+      {hasChildren && isOpen && (
+        <ul className="flex flex-col">
+          {node.children.map((child) => (
+            <GroupRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              expanded={expanded}
+              onToggleExpand={onToggleExpand}
+              onNavigate={onNavigate}
+              onSetPrivate={onSetPrivate}
+              onRename={onRename}
+              onMerge={onMerge}
+              onDelete={onDelete}
+              totalCount={totalCount}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 

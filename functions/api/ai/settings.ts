@@ -35,7 +35,6 @@ const DEFAULTS: AiSettings = {
   autoTag: false,
   enabled: false,
   autoApplyThreshold: 1,
-  heuristicsEnabled: true,
   maxTags: 4,
 };
 
@@ -73,8 +72,6 @@ function mapSettings(row: Record<string, unknown> | null): AiSettings {
     autoTag: row.auto_tag === 1,
     enabled: false,
     autoApplyThreshold: clamp(row.auto_apply_threshold, 0, 1, 1),
-    // Absent column (a row written before migration 0006) reads as on.
-    heuristicsEnabled: row.heuristics_enabled === undefined ? true : row.heuristics_enabled === 1,
     maxTags: Math.trunc(clamp(row.max_tags, 1, 8, 4)),
   };
 
@@ -114,7 +111,6 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
   }
   if ('autoSummarize' in body) merged.autoSummarize = Boolean(body.autoSummarize);
   if ('autoTag' in body) merged.autoTag = Boolean(body.autoTag);
-  if ('heuristicsEnabled' in body) merged.heuristicsEnabled = Boolean(body.heuristicsEnabled);
   if ('autoApplyThreshold' in body) {
     merged.autoApplyThreshold = clamp(body.autoApplyThreshold, 0, 1, 1);
   }
@@ -150,7 +146,6 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       'auto_tag = ?',
       'enabled = ?',
       'auto_apply_threshold = ?',
-      'heuristics_enabled = ?',
       'max_tags = ?',
       'updated_at = ?',
     ];
@@ -162,7 +157,6 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       merged.autoTag ? 1 : 0,
       merged.enabled ? 1 : 0,
       merged.autoApplyThreshold,
-      merged.heuristicsEnabled ? 1 : 0,
       merged.maxTags,
       ts,
     ];
@@ -179,8 +173,8 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       `INSERT INTO ai_settings
          (user_id, provider, base_url, model, api_key_encrypted,
           auto_summarize, auto_tag, enabled,
-          auto_apply_threshold, heuristics_enabled, max_tags, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          auto_apply_threshold, max_tags, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         userId,
@@ -192,7 +186,6 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
         merged.autoTag ? 1 : 0,
         merged.enabled ? 1 : 0,
         merged.autoApplyThreshold,
-        merged.heuristicsEnabled ? 1 : 0,
         merged.maxTags,
         ts,
       )

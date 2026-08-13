@@ -19,7 +19,6 @@ const base: AiConfig = {
   autoTag: true,
   autoSummarize: true,
   autoApplyThreshold: 1,
-  heuristicsEnabled: true,
   maxTags: 4,
 };
 

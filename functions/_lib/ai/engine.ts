@@ -1,4 +1,4 @@
-import { heuristicCandidates, type RawCandidate } from './heuristics';
+import { domainFallbackTag } from './domain-fallback';
 import { BATCH_SIZE, buildTaggingPrompt, parseTaggingResponse } from './prompt';
 import { callProvider, isFatal, isRetryable } from './providers';
 import { resolveCandidates } from './taxonomy';
@@ -8,29 +8,24 @@ import {
   vocabularyEntryFor,
 } from './scoring';
 import { renameByFeedback, type FeedbackProfile } from './feedback';
-import type { AiConfig, EnrichInput, LocalConfig, TagCandidate, Vocabulary } from './types';
+import type { AiConfig, EnrichInput, LocalConfig, RawCandidate, TagCandidate, Vocabulary } from './types';
 import type { AiTopicCount } from '../../../shared/types';
 
 /**
  * The orchestrator: turns bookmarks into reviewed-ready tag proposals.
  *
- * The pipeline is deliberately two-track rather than "call the model and hope":
+ * ## Model-first, with a coverage safety net
  *
- *   heuristics ─┐
- *               ├─> resolveCandidates (normalise against the user's taxonomy,
- *   model      ─┘                      merge duplicates, reward agreement)
- *
- * Why both tracks matter:
- *
- *  - **Availability.** No key, dead provider, exhausted quota — the heuristic
- *    track still produces a usable result. The feature degrades instead of
- *    disappearing, which is the difference between "AI tagging" being a core
- *    capability and being a demo.
- *  - **Calibration.** Two independent engines reaching the same tag is
- *    meaningfully stronger evidence than one engine asserting it confidently.
- *    That consensus bonus is what makes an auto-apply threshold trustworthy.
- *  - **Grounding.** Local signals are passed into the prompt as hints, so the
- *    model starts from observable facts about the URL rather than from nothing.
+ * The model is the sole tag generator. The local rule engine (`heuristics`) and
+ * the naive-Bayes classifier were removed — a deliberate simplification decided
+ * after evaluating the local tagging strategy (see docs/AI-HIERARCHY.md §评估):
+ * keeping them meant maintaining two engines, a consensus bonus, and a silent
+ * downgrade path, all for coverage the model now owns. When the model is
+ * unavailable, or returns nothing for a bookmark, a minimal **domain-derived
+ * fallback** (`domainFallbackTag`) guarantees the bookmark still receives at
+ * least one tag. Those fallback proposals are flagged `needsReview` and counted
+ * in `SuggestOutcome.uncovered`, so "no model output" is never silent and never
+ * leaves a bookmark untagged.
  */
 
 export interface BookmarkInput extends EnrichInput {
@@ -45,28 +40,25 @@ export interface SuggestionResult {
   needsReview: boolean;
 }
 
-export type EngineKind = 'model' | 'heuristic' | 'mixed' | 'none';
+export type EngineKind = 'model' | 'fallback' | 'none';
 
 export interface SuggestOutcome {
   results: SuggestionResult[];
-  /** Which engine actually produced the output — surfaced so a silent fallback is visible. */
+  /** Which engine actually produced the output — surfaced so a fallback is visible. */
   engine: EngineKind;
   /** Human-readable reason the model did not contribute, if it did not. */
   modelError: string | null;
   /** True when the caller should stop the whole job (bad key, missing model). */
   fatal: boolean;
+  /** Number of bookmarks that received only the domain fallback (no model tag). */
+  uncovered: number;
 }
 
 export interface SuggestOptions {
   vocab: Vocabulary;
-  /** Null when no model is available; heuristics still run. */
+  /** Null when no model is available; the domain fallback still runs. */
   config: AiConfig | null;
   local: LocalConfig;
-  /**
-   * User feedback memory. When supplied, the engine lifts tags the user
-   * repeatedly accepts, drops ones they keep rejecting, and prefers the
-   * spellings they have switched to. Loaded by callers via `loadFeedbackProfile`.
-   */
   feedback?: FeedbackProfile | null;
   fetchImpl?: typeof fetch;
 }
@@ -79,29 +71,20 @@ const MAX_ATTEMPTS = 2;
  *
  * Safe to call with anything from one bookmark to a few dozen; the model track
  * chunks internally at `BATCH_SIZE`. Never throws — a failing model degrades to
- * heuristics-only and reports why.
+ * the domain fallback and reports why.
  */
 export async function suggestForBookmarks(
   inputs: BookmarkInput[],
   options: SuggestOptions,
 ): Promise<SuggestOutcome> {
   if (inputs.length === 0) {
-    return { results: [], engine: 'none', modelError: null, fatal: false };
+    return { results: [], engine: 'none', modelError: null, fatal: false, uncovered: 0 };
   }
 
   const { vocab, config, local } = options;
   const feedback = options.feedback ?? null;
 
-  // ---- Track 1: local heuristics -------------------------------------
-  const heuristics = new Map<number, RawCandidate[]>();
-  if (local.heuristicsEnabled) {
-    inputs.forEach((input, index) => {
-      const candidates = heuristicCandidates(input);
-      if (candidates.length > 0) heuristics.set(index, candidates);
-    });
-  }
-
-  // ---- Track 2: the model --------------------------------------------
+  // ---- The model track (sole generator) -------------------------------
   const modelTags = new Map<number, RawCandidate[]>();
   const summaries = new Map<number, string>();
   /** Bookmark index → topic phrase (model-supplied, used for clustering). */
@@ -118,16 +101,9 @@ export async function suggestForBookmarks(
     for (let start = 0; start < inputs.length; start += BATCH_SIZE) {
       const slice = inputs.slice(start, start + BATCH_SIZE);
 
-      const hints = new Map<number, RawCandidate[]>();
-      slice.forEach((_, localIndex) => {
-        const found = heuristics.get(start + localIndex);
-        if (found) hints.set(localIndex, found.slice(0, 4));
-      });
-
       const prompt = buildTaggingPrompt(slice, vocab, {
         maxTags: local.maxTags,
         wantSummary: config.autoSummarize,
-        hints,
       });
 
       let text: string | null = null;
@@ -175,34 +151,40 @@ export async function suggestForBookmarks(
       }
     }
   } else if (!config) {
-    modelError = '未配置可用的模型，本次使用本地规则整理';
+    modelError = '未配置可用的模型，使用域名派生兜底标签';
   }
 
-  // ---- Merge, normalise, rank, and score -----------------------------
+  // ---- Normalise, rank, score, and guarantee coverage -----------------
+  let uncovered = 0;
   const results: SuggestionResult[] = inputs.map((input, index) => {
     // Apply the user's rename history before resolution: a tag they have
     // repeatedly switched ("React" → "React.js") is proposed under their
     // preferred spelling, so resolution can merge it with the right existing
     // tag rather than inventing a near-duplicate.
-    const raw: RawCandidate[] = [
-      ...(modelTags.get(index) ?? []),
-      ...(heuristics.get(index) ?? []),
-    ].map((c) => {
+    const raw: RawCandidate[] = (modelTags.get(index) ?? []).map((c) => {
       if (!feedback) return c;
       const renamed = renameByFeedback(c.name, feedback);
       if (renamed === c.name) return c;
       return { ...c, name: renamed, reason: `按你以往偏好改用「${renamed}」` };
     });
 
-    // Base resolution: normalise against the user's taxonomy, merge duplicate
-    // engines, and rank by agreement (as before).
-    const resolved = raw.length > 0 ? resolveCandidates(raw, vocab, local.maxTags) : [];
+    let resolved = raw.length > 0 ? resolveCandidates(raw, vocab, local.maxTags) : [];
 
-    // Multi-dimensional scoring pass: for each candidate, fold in the user's
-    // tag-usage frequency, the page's own lexical evidence, and the same-host
-    // neighbourhood signal. Drop anything that falls below the confidence
-    // floor — a pipeline that forces weak associations on the user is worse
-    // than one that proposes fewer, better tags.
+    // Coverage guarantee: a bookmark with no model tag still gets exactly one
+    // domain-derived fallback tag, flagged for review.
+    let needsReview = needsReviewFlags.get(index) ?? false;
+    if (resolved.length === 0) {
+      const fb = domainFallbackTag(input);
+      if (fb) {
+        resolved = resolveCandidates([fb], vocab, local.maxTags);
+        needsReview = true;
+        uncovered += 1;
+      }
+    }
+
+    // Multi-dimensional scoring pass: fold in the user's tag-usage frequency,
+    // the page's own lexical evidence, and the same-host neighbourhood signal.
+    // Drop anything that falls below the confidence floor.
     const hostBoostCache = (name: string) => sameHostBoost(inputs, index, name);
     const scored: TagCandidate[] = [];
     for (const candidate of resolved) {
@@ -216,13 +198,11 @@ export async function suggestForBookmarks(
       );
       if (boosted) scored.push(boosted);
     }
-    scored.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
+    scored.sort((a, b) => b.confidence - a.name.localeCompare(b.name));
 
     // Prefer the model's own topic phrase; fall back to the top resolved tag
-    // so the in-job topic distribution is still populated for heuristic-only
-    // runs (e.g. no API key configured).
+    // so the in-job topic distribution is still populated for fallback runs.
     const topic = topics.get(index) ?? (scored.length > 0 ? scored[0].name : null);
-    const needsReview = needsReviewFlags.get(index) ?? false;
 
     return {
       bookmarkId: input.id,
@@ -233,13 +213,11 @@ export async function suggestForBookmarks(
     };
   });
 
-  const usedHeuristics = local.heuristicsEnabled && heuristics.size > 0;
   let engine: EngineKind = 'none';
-  if (modelContributed && usedHeuristics) engine = 'mixed';
-  else if (modelContributed) engine = 'model';
-  else if (usedHeuristics) engine = 'heuristic';
+  if (modelContributed) engine = 'model';
+  else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal };
+  return { results, engine, modelError, fatal, uncovered };
 }
 
 /**

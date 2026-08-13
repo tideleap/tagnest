@@ -198,6 +198,8 @@ export interface RunState {
   engine: AiEngineKind | null;
   modelError: string | null;
   autoApplied: number;
+  /** Bookmarks that received only the domain fallback across the run. */
+  uncovered: number;
   error: string | null;
   /** Topic distribution accumulated across chunks, for the result chart. */
   topics: AiTopicCount[];
@@ -214,6 +216,7 @@ const IDLE: RunState = {
   engine: null,
   modelError: null,
   autoApplied: 0,
+  uncovered: 0,
   error: null,
   topics: [],
   autoGrouped: null,
@@ -301,6 +304,7 @@ export function useOrganizeRun() {
       setState((s) => ({ ...s, job, running: true }));
 
       let autoApplied = 0;
+      let uncovered = 0;
 
       // Bounded so a server bug that never advances `processed` cannot spin
       // forever; +2 covers the settle call after the last chunk.
@@ -325,12 +329,14 @@ export function useOrganizeRun() {
         }
 
       autoApplied += result.autoApplied;
+      uncovered += result.uncovered;
       setState((s) => ({
         job: result.job,
         running: !result.done,
         engine: result.engine,
         modelError: result.modelError,
         autoApplied,
+        uncovered,
         error: result.job.status === 'failed' ? result.job.error : null,
         topics: mergeTopicCounts(s.topics, result.topics),
         autoGrouped: result.autoGrouped ?? s.autoGrouped,

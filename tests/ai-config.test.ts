@@ -34,7 +34,6 @@ describe('isModelReady — the five gates', () => {
     autoTag: true,
     autoSummarize: false,
     autoApplyThreshold: 1,
-    heuristicsEnabled: true,
     maxTags: 4,
   };
 
@@ -71,7 +70,6 @@ describe('loadConfigRow — defaults and mapping', () => {
     const row = await loadConfigRow(envWith(null), 'u1');
     expect(row.provider).toBe('none');
     expect(row.autoTag).toBe(false);
-    expect(row.heuristicsEnabled).toBe(true); // missing column defaults on
     expect(row.maxTags).toBe(4);
   });
 
@@ -81,7 +79,6 @@ describe('loadConfigRow — defaults and mapping', () => {
     expect(row.autoTag).toBe(true);
     expect(row.autoSummarize).toBe(false);
     expect(row.maxTags).toBe(6);
-    expect(row.heuristicsEnabled).toBe(true);
   });
 });
 

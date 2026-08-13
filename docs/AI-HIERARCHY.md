@@ -1,6 +1,12 @@
 # 书签三级 ML 分类体系（设计规范）
 
-> 源码：`functions/_lib/ai/taxonomy-ml.ts`、`functions/_lib/ai/classifier.ts`、
+> **本文档现状（2026-08 重构）**：§1–§10 描述的「朴素贝叶斯三级 ML 分类体系」
+> （`taxonomy-ml.ts` / `classifier.ts` / `classify-apply.ts` / `POST /api/ai/classify`）
+> 及更早的 `heuristics` 规则引擎**已于本轮整体退役**，源码已删除。现行标签生成
+> 改为「模型优先 + 域名兜底」单轨架构（见 §11 评估结论）。保留本节以记录被推翻的
+> 原始设计决策与评估过程。
+
+> 源码（已删除）：`functions/_lib/ai/taxonomy-ml.ts`、`functions/_lib/ai/classifier.ts`、
 > `functions/_lib/ai/classify-apply.ts`、`functions/api/ai/classify.ts`、`shared/types.ts`
 > 提交：`af9b00b`（已推送 `origin/main`）
 
@@ -233,3 +239,51 @@ confidence = clamp01(confidence)
 - 从用户的「采纳 / 忽略」反馈中重新训练模型（特征词表形状不变，仅更新权重）。
 - 在 API 暴露 `temperature / zeroSignalFactor / minCoverage`，让调用方按需调参。
 - 修正 §5.1 注释中遗留的 `0.6` 与运行时 `0.5` 的不一致。
+
+---
+
+## 11. 评估结论：移除本地打标，改为「模型优先 + 域名兜底」
+
+> 对应提交：本轮重构（引擎单轨化）；源码 `engine.ts` `suggestForBookmarks`、
+> `domain-fallback.ts`；前端 `RunPanel` / `EvaluationPanel` / `JobsSection` /
+> `SuggestionReview` 的引擎标签与兜底提示。
+
+### 11.1 决策背景
+
+原 §1–§10 的「三级 ML 分类体系」与更早的 `heuristics` 规则引擎，本质上是**两套并行的
+标签生成引擎**：模型负责主生成，本地分类/规则负责「模型不可用时的兜底」。评估后认为这套
+双轨结构长期是负担，故整体退役（见 `tests/` 中已删除的 `heuristics.test.ts` /
+`classifier.test.ts`，以及 `engine.test.ts` 重写为「模型优先 + 域名兜底」语义）。
+
+### 11.2 为什么移除本地打标
+
+1. **维护成本翻倍**：两套引擎意味着两套共识逻辑、一套「模型失败→本地降级」的静默路径，
+   以及两套需要持续校准的特征/词表。
+2. **兜底质量低**：本地分类的覆盖率与准确度本就不如模型；保留它只为极低频的兜底场景，
+   却容易让用户误以为书签已被正确归类，反而引入「静默错分」。
+3. **边际价值趋零**：模型（LLM）已成为唯一标签生成器，本地打标对主路径的贡献趋近于零，
+   却长期占用复杂度预算。
+
+### 11.3 新架构：模型优先 + 域名兜底
+
+- `engine.suggestForBookmarks` 改为**单轨**：仅模型生成标签。
+- **空标签兜底**：当模型不可用或某条书签模型未返回任何标签时，`domainFallbackTag(input)`
+  由域名派生一个标签（如 `github.com → GitHub`、`gitlab.com → GitLab`），**保证每条书签
+  ≥ 1 个标签，绝不遗留未归类书签**（对应需求 #125）。
+- 兜底提案标记为 `needsReview: true`，并在 `SuggestOutcome.uncovered` 计数；前端
+  `RunPanel` 据此弹出提示，把「仅域名兜底」的书签显式送入确认队列，做到**兜底可见、不静默**。
+- 引擎类型收敛为 `EngineKind = 'model' | 'fallback' | 'none'`，前端展示
+  「模型 / 域名兜底 / 未运行」，移除原 `heuristic` / `mixed` 标签。
+
+### 11.4 不变量（与零知识保险库共存）
+
+- 类别私密仍**仅**通过 `tags.is_private` + `PRIVATE_BOOKMARK_CLAUSE` 在 SQL 层**派生隐藏**
+  其下书签；`bookmarks.is_private` 这一列始终保留给零知识加密保险库。本重构**绝不**真实置位
+  `bookmarks.is_private = 1`（见 `db.ts` 的 `setTagPrivate` 递归 CTE 与 `PRIVATE_BOOKMARK_CLAUSE`
+  注释），因此类别私密与加密保险库两套机制互不污染。
+
+### 11.5 覆盖率保证（#125）
+
+- `domain-fallback.ts` 对任何可解析 host 都返回非空标签；对无法解析 host 的输入返回「未分类」，
+  但 `suggestForBookmarks` 仍确保结果 `tags` 至少含一项（最终回退到「未分类」标签），从而
+  `store.saveSuggestions` 的逐标签 summary 写入不会因空 tags 而丢失。

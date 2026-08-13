@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
@@ -25,10 +25,12 @@ import { toast } from '@/components/ui/Toast';
 import {
   useBookmarkSnapshots,
   useBookmarkSnapshotStatus,
+  useCaptureSnapshotSilent,
   useGenerateSnapshot,
   useRefreshBookmarkSnapshot,
 } from '@/hooks/queries/snapshots';
 import { useAddToCollection, useCollections } from '@/hooks/queries';
+import { scheduleSnapshotRefresh, releaseSnapshotRefresh } from '@/lib/snapshotScheduler';
 import type { ViewMode } from '@/stores/ui';
 
 export interface BookmarkCardProps {
@@ -202,6 +204,7 @@ function BookmarkCardBase({
   // viewer modal and only runs once it is actually opened.
   const generate = useGenerateSnapshot();
   const refreshSnapshot = useRefreshBookmarkSnapshot();
+  const capture = useCaptureSnapshotSilent();
   const [showSnapshots, setShowSnapshots] = useState(false);
   const {
     data: snapList,
@@ -210,18 +213,52 @@ function BookmarkCardBase({
     refetch: refetchSnaps,
   } = useBookmarkSnapshots(b.id, showSnapshots);
 
-  // Real-time snapshot status: each card polls its own lightweight endpoint.
-  // When the backend reports the image is stale, we refresh it automatically so
-  // the user sees the latest website visual state without clicking anything.
-  const { data: snapStatus } = useBookmarkSnapshotStatus(b.id, !inTrash);
+  const rootRef = useRef<HTMLElement>(null);
+  // Whether this card is currently on screen. Drives both the (cheap) status
+  // poll below and the lazy (re)capture, so a long off-screen list never floods
+  // the backend with requests.
+  const [inView, setInView] = useState(false);
+
+  // Real-time snapshot status: each card polls its own lightweight endpoint,
+  // but ONLY while it is actually on screen — off-screen cards show their
+  // cached image and stay quiet.
+  const { data: snapStatus } = useBookmarkSnapshotStatus(b.id, !inTrash && inView);
+
+  // Keep the latest status in a ref so the intersection observer (set up once)
+  // always reads fresh values without being torn down on every poll tick.
+  const snapStatusRef = useRef(snapStatus);
+  snapStatusRef.current = snapStatus;
+
+  // Lazy (re)capture — replaces the old "refresh every stale card on page
+  // load". On entry we only show the cached image; a capture fires once when
+  // the card scrolls into view, and the scheduler throttles per-bookmark and
+  // caps concurrency so hundreds of cards never screenshot at once.
   useEffect(() => {
-    if (snapStatus?.isStale && !refreshSnapshot.isPending && !inTrash) {
-      refreshSnapshot.mutate(b.id);
-    }
-    // refreshSnapshot.mutate is stable from TanStack Query; listing the whole
-    // mutation object would cause an infinite loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapStatus?.isStale, refreshSnapshot.isPending, b.id, inTrash]);
+    const el = rootRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          setInView(true);
+          observer.unobserve(el);
+          if (inTrash) break;
+          const status = snapStatusRef.current;
+          const hasSnapshot = (status?.snapshotKey ?? b.snapshotKey) !== null;
+          const isStale = status?.isStale ?? false;
+          if (!hasSnapshot || isStale) {
+            scheduleSnapshotRefresh(b.id, () =>
+              capture.mutate(b.id, { onSettled: () => releaseSnapshotRefresh() }),
+            );
+          }
+          break;
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [b.id, b.snapshotKey, inTrash, capture]);
 
   const open = () => {
     onVisit(b.id);
@@ -389,6 +426,7 @@ function BookmarkCardBase({
   return (
     <>
       <article
+      ref={rootRef}
       className={cx(
         'card-halo group relative flex bg-surface',
         'card-lift border border-line hover:border-line-strong',

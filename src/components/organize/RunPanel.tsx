@@ -31,8 +31,7 @@ interface Props {
 
 const ENGINE_LABEL: Record<AiEngineKind, string> = {
   model: '模型',
-  heuristic: '本地规则',
-  mixed: '模型 + 本地规则',
+  fallback: '域名兜底',
   none: '未运行',
 };
 
@@ -44,9 +43,9 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
   const job = run.job;
   const percent = job && job.total > 0 ? Math.round((job.processed / job.total) * 100) : 0;
 
-  // Neither engine available means the button cannot do anything useful; say
-  // why rather than letting the request fail.
-  const noEngine = overview ? !overview.modelReady && !overview.heuristicsEnabled : false;
+  // No model configured means the button cannot do anything useful; say why
+  // rather than letting the request fail.
+  const noEngine = overview ? !overview.modelReady : false;
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-line bg-surface p-4">
@@ -151,13 +150,21 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
 
       {noEngine && (
         <Notice tone="caution">
-          未配置模型，且本地规则引擎已关闭。请到「设置 → AI」填写模型信息，或重新开启本地规则。
+          未配置模型。请到「设置 → AI」填写模型信息，整理将用模型生成更精准的标签。
         </Notice>
       )}
 
       {/* A fallback is not an error, but it must not be invisible either. */}
       {run.modelError && !run.error && (
-        <Notice tone="info">模型未参与：{run.modelError}（已使用本地规则继续）</Notice>
+        <Notice tone="info">模型未参与：{run.modelError}（已使用域名兜底标签继续）</Notice>
+      )}
+
+      {/* Surface bookmarks that only got the fallback so they are never
+          silently mislabeled as model-tagged. */}
+      {run.uncovered > 0 && (
+        <Notice tone="caution">
+          本次有 {run.uncovered} 条书签仅生成了「域名兜底标签」，建议进入确认队列人工核对。
+        </Notice>
       )}
 
       {run.error && <Notice tone="critical">{run.error}</Notice>}
@@ -219,7 +226,7 @@ function EngineBadge({
 }) {
   if (engine) {
     return (
-      <Badge tone={engine === 'model' || engine === 'mixed' ? 'brand' : 'neutral'}>
+      <Badge tone={engine === 'model' ? 'brand' : 'neutral'}>
         <Cpu size={11} aria-hidden />
         {ENGINE_LABEL[engine]}
       </Badge>

@@ -22,8 +22,7 @@ interface Props {
 
 const ENGINE_LABEL: Record<string, string> = {
   model: '模型',
-  heuristic: '本地规则',
-  mixed: '模型 + 本地规则',
+  fallback: '域名兜底',
   none: '未运行',
 };
 
@@ -184,7 +183,7 @@ function JobRow({ job }: { job: AiJob }) {
   return (
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
       <span className="tabular-nums">{date}</span>
-      <Badge tone={engine === 'model' || engine === 'mixed' ? 'brand' : 'neutral'}>
+      <Badge tone={engine === 'model' ? 'brand' : 'neutral'}>
         <Cpu size={11} aria-hidden />
         {ENGINE_LABEL[engine] ?? engine}
       </Badge>

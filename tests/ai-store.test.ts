@@ -36,7 +36,7 @@ describe('saveSuggestions — write-once, attribute everything', () => {
         needsReview: true,
         tags: [
           { name: '前端', tagId: 'fe', confidence: 0.9, source: 'model', reason: 'r1' },
-          { name: '后端', tagId: null, confidence: 0.8, source: 'heuristic', reason: 'r2' },
+          { name: '后端', tagId: null, confidence: 0.8, source: 'fallback', reason: 'r2' },
         ],
       },
     ];
@@ -45,7 +45,7 @@ describe('saveSuggestions — write-once, attribute everything', () => {
     expect(written).toBe(2);
     expect(state.tag_suggestions).toHaveLength(2);
     expect(state.tag_suggestions.every((s) => s.status === 'pending')).toBe(true);
-    expect(state.tag_suggestions.map((s) => s.source).sort()).toEqual(['heuristic', 'model']);
+    expect(state.tag_suggestions.map((s) => s.source).sort()).toEqual(['fallback', 'model']);
     // The per-bookmark topic + review flag ride along on every tag row so the
     // query can surface them grouped by bookmark.
     expect(state.tag_suggestions.every((s) => s.topic === '前端框架')).toBe(true);
@@ -74,7 +74,7 @@ describe('saveSuggestions — write-once, attribute everything', () => {
     const results: SuggestionResult[] = [
       { bookmarkId: 'b1', summary: null, tags: [
         { name: '前端', tagId: 'fe', confidence: 0.9, source: 'model', reason: 'r' },
-        { name: '后端', tagId: null, confidence: 0.8, source: 'heuristic', reason: 'r' },
+        { name: '后端', tagId: null, confidence: 0.8, source: 'fallback', reason: 'r' },
       ] },
     ];
     await saveSuggestions(env, 'u1', 'j1', results);
@@ -112,7 +112,7 @@ describe('decideSuggestions — accept / reject with attribution', () => {
       ],
       tag_suggestions: [
         { id: 's1', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '前端', tag_id: 'fe', confidence: 0.9, source: 'model', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
-        { id: 's2', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '后端', tag_id: null, confidence: 0.8, source: 'heuristic', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
+        { id: 's2', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '后端', tag_id: null, confidence: 0.8, source: 'fallback', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
       ],
       bookmark_tags: [],
       ai_jobs: [],
@@ -163,7 +163,7 @@ describe('autoApply — high-confidence skip-review path', () => {
     ],
     tag_suggestions: [
       { id: 'hi', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '前端', tag_id: 'fe', confidence: 0.9, source: 'model', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
-      { id: 'lo', user_id: 'u1', bookmark_id: 'b2', job_id: 'j1', tag_name: '后端', tag_id: null, confidence: 0.5, source: 'heuristic', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
+      { id: 'lo', user_id: 'u1', bookmark_id: 'b2', job_id: 'j1', tag_name: '后端', tag_id: null, confidence: 0.5, source: 'fallback', reason: 'r', status: 'pending' as const, decided_at: null, created_at: '2024' },
     ],
   };
 
@@ -240,11 +240,11 @@ describe('jobs — create / read / update', () => {
     const fetched = await getJob(env, 'u1', job.id);
     expect(fetched?.id).toBe(job.id);
 
-    await updateJob(env, 'u1', job.id, { status: 'running', processed: 1, engine: 'mixed' });
+    await updateJob(env, 'u1', job.id, { status: 'running', processed: 1, engine: 'model' });
     const updated = await getJob(env, 'u1', job.id);
     expect(updated?.status).toBe('running');
     expect(updated?.processed).toBe(1);
-    expect(updated?.engine).toBe('mixed');
+    expect(updated?.engine).toBe('model');
 
     const jobs = await listJobs(env, 'u1', 5);
     expect(jobs.some((j) => j.id === job.id)).toBe(true);

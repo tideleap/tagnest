@@ -65,7 +65,6 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
 
   const overview: AiOverview = {
     modelReady: isModelReady(row),
-    heuristicsEnabled: row.heuristicsEnabled,
     pendingSuggestions: pending,
     untaggedBookmarks: Number(counts?.untagged ?? 0),
     totalBookmarks: Number(counts?.total ?? 0),

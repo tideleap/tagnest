@@ -204,7 +204,7 @@ export function scoreTagCandidate(
 
   const capped = Math.min(1, Math.max(0, confidence));
   const floor =
-    candidate.source === 'heuristic' ? MIN_HEURISTIC_CONFIDENCE : MIN_MODEL_CONFIDENCE;
+    candidate.source === 'fallback' ? MIN_HEURISTIC_CONFIDENCE : MIN_MODEL_CONFIDENCE;
 
   if (capped < floor) return null;
 

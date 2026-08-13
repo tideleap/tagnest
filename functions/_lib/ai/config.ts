@@ -39,7 +39,6 @@ export interface ConfigRow {
   autoTag: boolean;
   autoSummarize: boolean;
   autoApplyThreshold: number;
-  heuristicsEnabled: boolean;
   maxTags: number;
 }
 
@@ -73,7 +72,6 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
       autoTag: false,
       autoSummarize: false,
       autoApplyThreshold: DEFAULT_THRESHOLD,
-      heuristicsEnabled: true,
       maxTags: DEFAULT_MAX_TAGS,
     };
   }
@@ -86,8 +84,6 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
     autoTag: row.auto_tag === 1,
     autoSummarize: row.auto_summarize === 1,
     autoApplyThreshold: clampThreshold(row.auto_apply_threshold),
-    // Missing column (pre-0006 row) reads as undefined; default to on.
-    heuristicsEnabled: row.heuristics_enabled === undefined ? true : row.heuristics_enabled === 1,
     maxTags: clampMaxTags(row.max_tags),
   };
 }
@@ -111,8 +107,8 @@ export function isModelReady(row: ConfigRow): boolean {
 /**
  * Config for a model call, or null when the model cannot run.
  *
- * Null is not an error: it means "fall back to local heuristics", which is a
- * fully supported mode rather than a failure.
+ * Null is not an error: it means "fall back to the domain-derived fallback",
+ * which is a fully supported mode rather than a failure.
  */
 export async function loadAiConfig(env: Env, userId: string): Promise<AiConfig | null> {
   const row = await loadConfigRow(env, userId);
@@ -126,7 +122,6 @@ export async function loadAiConfig(env: Env, userId: string): Promise<AiConfig |
     autoTag: row.autoTag,
     autoSummarize: row.autoSummarize,
     autoApplyThreshold: row.autoApplyThreshold,
-    heuristicsEnabled: row.heuristicsEnabled,
     maxTags: row.maxTags,
   };
 }
@@ -135,7 +130,6 @@ export async function loadAiConfig(env: Env, userId: string): Promise<AiConfig |
 export function toLocalConfig(row: ConfigRow): LocalConfig {
   return {
     autoApplyThreshold: row.autoApplyThreshold,
-    heuristicsEnabled: row.heuristicsEnabled,
     maxTags: row.maxTags,
   };
 }

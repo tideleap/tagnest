@@ -1,5 +1,4 @@
 import type { EnrichInput, Vocabulary } from './types';
-import type { RawCandidate } from './heuristics';
 
 /**
  * Prompt construction and response parsing.
@@ -46,8 +45,6 @@ export const PROMPT_VERSION = '2026-08-09';
 export interface PromptOptions {
   maxTags: number;
   wantSummary: boolean;
-  /** Local candidates offered to the model as hints, keyed by bookmark index. */
-  hints?: Map<number, RawCandidate[]>;
   /** Optional few-shot examples to personalise output. */
   examples?: Example[];
 }
@@ -79,16 +76,11 @@ function truncate(value: string, limit: number): string {
   return trimmed.length > limit ? `${trimmed.slice(0, limit)}…` : trimmed;
 }
 
-function renderBookmark(input: EnrichInput, index: number, hints?: RawCandidate[]): string {
+function renderBookmark(input: EnrichInput, index: number): string {
   const parts = [`[${index + 1}] 标题：${truncate(input.title || '(无标题)', MAX_TITLE)}`];
   parts.push(`    网址：${truncate(input.url, 200)}`);
   if (input.description) {
     parts.push(`    描述：${truncate(String(input.description), MAX_DESCRIPTION)}`);
-  }
-  if (hints && hints.length > 0) {
-    // Local signals are offered as a hint, not an instruction: the model is
-    // free to reject them, and disagreement is itself informative.
-    parts.push(`    本地线索（仅供参考，可忽略）：${hints.map((h) => h.name).join('、')}`);
   }
   return parts.join('\n');
 }
@@ -235,7 +227,7 @@ export function buildTaggingPrompt(
 
   lines.push('', '待整理书签：');
   inputs.forEach((input, index) => {
-    lines.push(renderBookmark(input, index, options.hints?.get(index)));
+    lines.push(renderBookmark(input, index));
   });
 
   lines.push('', '仅输出一个 JSON 对象，不要代码块、不要解释。');

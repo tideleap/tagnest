@@ -30,12 +30,10 @@ const modelConfig: AiConfig = {
   autoTag: true,
   autoSummarize: false,
   autoApplyThreshold: 1,
-  heuristicsEnabled: true,
   maxTags: 4,
 };
 const local: LocalConfig = {
   autoApplyThreshold: 1,
-  heuristicsEnabled: true,
   maxTags: 4,
 };
 
@@ -94,7 +92,7 @@ describe('scoreTagCandidate with feedback', () => {
   // Title deliberately omits "React" so the lexical-evidence bonus does not
   // muddy the confidence math being asserted here.
   const input = { url: 'https://github.com/foo/bar', title: 'A repo' };
-  const base: TagCandidate = { name: 'React', tagId: null, confidence: 0.6, source: 'heuristic', reason: '' };
+  const base: TagCandidate = { name: 'React', tagId: null, confidence: 0.6, source: 'fallback', reason: '' };
 
   it('boosts a strongly-accepted tag on the same domain', () => {
     const profile = buildFeedbackProfile([

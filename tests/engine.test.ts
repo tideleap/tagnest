@@ -20,13 +20,11 @@ const modelConfig: AiConfig = {
   autoTag: true,
   autoSummarize: false,
   autoApplyThreshold: 1,
-  heuristicsEnabled: true,
   maxTags: 4,
 };
 
 const local: LocalConfig = {
   autoApplyThreshold: 1,
-  heuristicsEnabled: true,
   maxTags: 4,
 };
 
@@ -40,48 +38,61 @@ const MODEL_JSON = JSON.stringify({
 beforeEach(() => mockedCall.mockReset());
 afterEach(() => mockedCall.mockReset());
 
-describe('suggestForBookmarks — two-track orchestration', () => {
+describe('suggestForBookmarks — model-first with domain fallback', () => {
   it('returns an empty none outcome for no input', async () => {
     const out = await suggestForBookmarks([], { vocab: emptyVocab, config: null, local });
     expect(out.engine).toBe('none');
     expect(out.results).toEqual([]);
     expect(out.fatal).toBe(false);
+    expect(out.uncovered).toBe(0);
   });
 
-  it('runs heuristics only when no model is configured', async () => {
+  it('uses the domain fallback when no model is configured', async () => {
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://github.com/foo/bar', title: 'A repo' }],
       { vocab: emptyVocab, config: null, local },
     );
-    expect(out.engine).toBe('heuristic');
-    expect(out.modelError).toContain('本地规则');
-    expect(out.results[0].tags.map((t) => t.name)).toContain('开源');
+    expect(out.engine).toBe('fallback');
+    expect(out.uncovered).toBe(1);
+    expect(out.modelError).toContain('域名派生兜底');
+    expect(out.results[0].tags.map((t) => t.name)).toContain('GitHub');
+    expect(out.results[0].needsReview).toBe(true);
   });
 
-  it('runs the model only when heuristics are switched off', async () => {
+  it('falls back to 未分类 for an unparseable host', async () => {
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: '::not a url::', title: 'x' }],
+      { vocab: emptyVocab, config: null, local },
+    );
+    expect(out.engine).toBe('fallback');
+    expect(out.results[0].tags.map((t) => t.name)).toContain('未分类');
+  });
+
+  it('runs the model as the sole tag generator when configured', async () => {
     mockedCall.mockResolvedValue({ ok: true, text: MODEL_JSON });
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://example.com/anything', title: 'A page' }],
-      { vocab: emptyVocab, config: modelConfig, local: { ...local, heuristicsEnabled: false } },
+      { vocab: emptyVocab, config: modelConfig, local },
     );
     expect(out.engine).toBe('model');
+    expect(out.uncovered).toBe(0);
     expect(out.modelError).toBeNull();
     expect(out.results[0].tags.map((t) => t.name)).toContain('前端');
   });
 
-  it('reports mixed when both engines contribute, and keeps both tag sets', async () => {
-    mockedCall.mockResolvedValue({ ok: true, text: MODEL_JSON });
+  it('falls back per-bookmark when the model returns no tags for it', async () => {
+    const json = JSON.stringify({ results: [{ i: 1, tags: [] }] });
+    mockedCall.mockResolvedValue({ ok: true, text: json });
     const out = await suggestForBookmarks(
-      [{ id: 'b1', url: 'https://github.com/foo/bar', title: 'A repo' }],
+      [{ id: 'b1', url: 'https://github.com/foo', title: 'A repo' }],
       { vocab: emptyVocab, config: modelConfig, local },
     );
-    expect(out.engine).toBe('mixed');
-    const names = out.results[0].tags.map((t) => t.name);
-    expect(names).toContain('开源'); // heuristic
-    expect(names).toContain('前端'); // model
+    expect(out.engine).toBe('fallback');
+    expect(out.uncovered).toBe(1);
+    expect(out.results[0].tags.map((t) => t.name)).toContain('GitHub');
   });
 
-  it('stops the job on a fatal provider error but still keeps heuristic output', async () => {
+  it('stops the job on a fatal provider error but still produces fallback tags', async () => {
     mockedCall.mockResolvedValue({ ok: false, error: { status: 401, message: 'API Key 无效' } });
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://github.com/foo/bar', title: 'A repo' }],
@@ -89,9 +100,9 @@ describe('suggestForBookmarks — two-track orchestration', () => {
     );
     expect(out.fatal).toBe(true);
     expect(out.modelError).toContain('API Key');
-    // Degradation, not disappearance: heuristics still produced a result.
-    expect(out.engine).toBe('heuristic');
-    expect(out.results[0].tags.map((t) => t.name)).toContain('开源');
+    expect(out.engine).toBe('fallback');
+    expect(out.uncovered).toBe(1);
+    expect(out.results[0].tags.map((t) => t.name)).toContain('GitHub');
   });
 
   it('retries a single transient failure before succeeding', async () => {
@@ -100,29 +111,19 @@ describe('suggestForBookmarks — two-track orchestration', () => {
       .mockResolvedValueOnce({ ok: true, text: MODEL_JSON });
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://example.com/anything', title: 'A page' }],
-      { vocab: emptyVocab, config: modelConfig, local: { ...local, heuristicsEnabled: false } },
+      { vocab: emptyVocab, config: modelConfig, local },
     );
     expect(mockedCall).toHaveBeenCalledTimes(2);
     expect(out.results[0].tags.map((t) => t.name)).toContain('前端');
   });
 
-  it('produces nothing when both model and heuristics are unavailable', async () => {
-    const out = await suggestForBookmarks(
-      [{ id: 'b1', url: 'https://example.com/x', title: 'A page' }],
-      { vocab: emptyVocab, config: null, local: { ...local, heuristicsEnabled: false } },
-    );
-    expect(out.engine).toBe('none');
-    expect(out.results[0].tags).toEqual([]);
-  });
-
-  it('does not throw on a malformed model response', async () => {
+  it('does not throw on a malformed model response and degrades to fallback', async () => {
     mockedCall.mockResolvedValue({ ok: true, text: 'not json at all' });
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://github.com/foo', title: 'A repo' }],
       { vocab: emptyVocab, config: modelConfig, local },
     );
-    // Heuristics still carry the result; the bad model output is ignored.
-    expect(out.engine).toBe('heuristic');
+    expect(out.engine).toBe('fallback');
     expect(out.results[0].tags.length).toBeGreaterThan(0);
   });
 
@@ -140,20 +141,38 @@ describe('suggestForBookmarks — two-track orchestration', () => {
     mockedCall.mockResolvedValue({ ok: true, text: json });
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://example.com/x', title: 'A page' }],
-      { vocab: emptyVocab, config: modelConfig, local: { ...local, heuristicsEnabled: false } },
+      { vocab: emptyVocab, config: modelConfig, local },
     );
     expect(out.results[0].topic).toBe('前端框架');
     expect(out.results[0].needsReview).toBe(true);
   });
 
-  it('falls back to the top tag as topic when the model is absent', async () => {
+  it('counts uncovered bookmarks across a batch', async () => {
+    const json = JSON.stringify({
+      results: [{ i: 1, tags: [{ name: '前端', confidence: 0.9, reason: 'r' }] }],
+    });
+    mockedCall.mockResolvedValue({ ok: true, text: json });
+    const out = await suggestForBookmarks(
+      [
+        { id: 'b1', url: 'https://example.com/x', title: 'A page' },
+        { id: 'b2', url: 'https://github.com/foo', title: 'A repo' },
+        { id: 'b3', url: 'https://gitlab.com/bar', title: 'Another repo' },
+      ],
+      { vocab: emptyVocab, config: modelConfig, local },
+    );
+    // b1 got a model tag; b2 and b3 got only the domain fallback.
+    expect(out.engine).toBe('model');
+    expect(out.uncovered).toBe(2);
+    expect(out.results[1].tags.map((t) => t.name)).toContain('GitHub');
+    expect(out.results[2].tags.map((t) => t.name)).toContain('GitLab');
+  });
+
+  it('uses the top tag as the topic when the model provides none', async () => {
     const out = await suggestForBookmarks(
       [{ id: 'b1', url: 'https://github.com/foo/bar', title: 'A repo' }],
       { vocab: emptyVocab, config: null, local },
     );
-    // Heuristics tag github repos as 开源; with no model there is no topic
-    // phrase, so the top tag doubles as the clustering key.
-    expect(out.results[0].topic).toBe('开源');
-    expect(out.results[0].needsReview).toBe(false);
+    expect(out.results[0].topic).toBe('GitHub');
+    expect(out.results[0].needsReview).toBe(true);
   });
 });

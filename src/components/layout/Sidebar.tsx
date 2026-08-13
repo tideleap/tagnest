@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Tag } from '@shared/types';
+import { buildTagTree, type TreeNode } from '@/components/tags/buildTagTree';
 import { cx } from '@/lib/cx';
 import { IconButton, Skeleton } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
@@ -261,25 +262,6 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
       </ul>
     </nav>
   );
-}
-
-interface TreeNode extends Tag {
-  children: TreeNode[];
-}
-
-function buildTagTree(tags: Tag[]): TreeNode[] {
-  const nodes = new Map<string, TreeNode>();
-  for (const t of tags) nodes.set(t.id, { ...t, children: [] });
-  const tops: TreeNode[] = [];
-  for (const t of tags) {
-    const node = nodes.get(t.id)!;
-    if (t.parentId && nodes.has(t.parentId)) nodes.get(t.parentId)!.children.push(node);
-    else tops.push(node);
-  }
-  // Stable, readable order: by usage then name.
-  const sort = (a: TreeNode, b: TreeNode) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN');
-  for (const node of nodes.values()) node.children.sort(sort);
-  return tops.sort(sort);
 }
 
 function TagTree({

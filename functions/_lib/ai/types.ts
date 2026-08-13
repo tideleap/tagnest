@@ -17,8 +17,6 @@ export interface AiConfig {
   autoSummarize: boolean;
   /** Suggestions at or above this confidence skip human review. 1 = review all. */
   autoApplyThreshold: number;
-  /** Whether the local heuristic engine may contribute candidates. */
-  heuristicsEnabled: boolean;
   /** Per-bookmark ceiling on suggested tags. */
   maxTags: number;
 }
@@ -32,7 +30,6 @@ export interface AiConfig {
  */
 export interface LocalConfig {
   autoApplyThreshold: number;
-  heuristicsEnabled: boolean;
   maxTags: number;
 }
 
@@ -43,7 +40,15 @@ export interface EnrichInput {
 }
 
 /** Which engine produced a candidate. Surfaced in the UI and used for scoring. */
-export type CandidateSource = 'model' | 'heuristic' | 'taxonomy';
+export type CandidateSource = 'model' | 'fallback' | 'taxonomy';
+
+/** A pre-normalisation tag proposal produced by an engine (model or fallback). */
+export interface RawCandidate {
+  name: string;
+  confidence: number;
+  source: CandidateSource;
+  reason: string;
+}
 
 /**
  * One proposed tag, with everything the review UI needs to justify it.

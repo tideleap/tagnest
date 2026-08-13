@@ -93,12 +93,8 @@ export function AiSection() {
                 <li key={m}>{m}</li>
               ))}
             </ul>
-            {/* Without this line the warning reads as "the feature is dead",
-                which is no longer true — the local engine covers this case. */}
             <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">
-              {data.heuristicsEnabled
-                ? '本地规则引擎已开启，即使不配置模型也能生成标签建议，只是覆盖面更窄。'
-                : '本地规则引擎也已关闭，当前无法生成任何标签建议。'}
+              未配置模型时，整理任务仍会为每条书签生成「域名派生兜底标签」，但覆盖面和准确度有限，建议补齐模型配置后重跑整理。
             </p>
           </div>
         </section>
@@ -179,17 +175,6 @@ export function AiSection() {
 
       <Card title="整理策略">
         <div className="flex flex-col gap-3">
-          {/* The local engine is what keeps the feature usable with no key at
-              all, so it gets a first-class switch rather than being hidden. */}
-          <Switch
-            checked={data.heuristicsEnabled}
-            onChange={(next) => update.mutate({ heuristicsEnabled: next })}
-            label="本地规则引擎"
-            hint="无需 API Key，根据域名、路径和关键词生成标签建议；与模型结果互相印证可提高置信度"
-          />
-
-          <div className="h-px bg-line" />
-
           <Select
             label="每条书签最多推荐"
             value={String(data.maxTags)}

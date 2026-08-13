@@ -16,26 +16,21 @@ import type { EnrichInput } from './types';
  *   types       shared vocabulary, no dependencies
  *   config      settings + taxonomy loading, the "can the model run?" decision
  *   taxonomy    normalisation, dedupe, duplicate-cluster detection   (pure)
- *   heuristics  local rule engine, works with no API key             (pure)
  *   prompt      prompt construction + response parsing               (pure)
  *   providers   the three JSON envelopes and one fetch
- *   engine      orchestration: two tracks in, ranked candidates out
+ *   engine      orchestration: model-first, domain fallback for coverage
  *   store       jobs and the suggestion queue
  *
- * Four of the eight modules are pure functions, which is why the algorithm is
+ * Most of the modules are pure functions, which is why the algorithm is
  * testable without a database, a network or a key.
  */
 
 export * from './types';
 export * from './config';
 export * from './taxonomy';
-export * from './heuristics';
 export * from './scoring';
 export * from './grouping';
 export * from './grouping-apply';
-export * from './taxonomy-ml';
-export * from './classifier';
-export * from './classify-apply';
 export * from './prompt';
 export * from './providers';
 export * from './engine';
@@ -74,9 +69,12 @@ export async function enrichBookmark(
     const local = toLocalConfig(row);
     const config = await loadAiConfig(env, userId);
 
-    // Nothing to do only when the model is unavailable *and* the local engine
-    // is switched off. Otherwise heuristics still produce useful proposals.
-    if (!config && !local.heuristicsEnabled) return;
+    // When no model is configured the caller (a job run) still gets
+    // domain-derived fallback tags from suggestForBookmarks. On the silent
+    // save path we skip enrichment entirely — key-less users have explicitly
+    // accepted losing automatic organisation (they can run a job for fallback
+    // tags). Model-backed saves always proceed.
+    if (!config) return;
 
     const vocab = await loadVocabulary(env, userId);
     const feedback = await loadFeedbackProfile(env, userId);

@@ -49,7 +49,7 @@ describe('scoreTagCandidate — confidence floor + signal boosts', () => {
   });
 
   it('keeps a strong heuristic candidate, boosted by lexical evidence', () => {
-    const scored = scoreTagCandidate(base('heuristic', 0.5), input, 1, null);
+    const scored = scoreTagCandidate(base('fallback', 0.5), input, 1, null);
     expect(scored).not.toBeNull();
     // 0.5 + LEXICAL_BONUS (page mentions Python) => 0.62
     expect(scored!.confidence).toBeCloseTo(0.5 + LEXICAL_BONUS);
@@ -57,11 +57,11 @@ describe('scoreTagCandidate — confidence floor + signal boosts', () => {
 
   it('drops a weak heuristic candidate that lands below the floor', () => {
     // No lexical evidence and a low base confidence -> 0.3 < 0.4 floor.
-    const weak = scoreTagCandidate(base('heuristic', 0.3), { url: 'u', title: 'x', description: '' }, 1, null);
+    const weak = scoreTagCandidate(base('fallback', 0.3), { url: 'u', title: 'x', description: '' }, 1, null);
     expect(weak).toBeNull();
     // Even with lexical help, a very weak candidate can be rescued above the
     // floor — that is the intended behaviour, not a bug.
-    const rescued = scoreTagCandidate(base('heuristic', 0.2), input, 1, null);
+    const rescued = scoreTagCandidate(base('fallback', 0.2), input, 1, null);
     // 0.2 + 0.12 (Python appears in text) = 0.32 < 0.4 still dropped.
     expect(rescued).toBeNull();
   });
@@ -95,7 +95,7 @@ describe('scoreTagCandidate — confidence floor + signal boosts', () => {
   });
 
   it('caps confidence at 1', () => {
-    const scored = scoreTagCandidate(base('heuristic', 0.9), input, 1.15, { id: 't', name: 'Python', aliases: [], count: 99 });
+    const scored = scoreTagCandidate(base('fallback', 0.9), input, 1.15, { id: 't', name: 'Python', aliases: [], count: 99 });
     expect(scored!.confidence).toBeLessThanOrEqual(1);
   });
 });

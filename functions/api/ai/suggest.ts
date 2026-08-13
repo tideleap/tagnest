@@ -42,12 +42,12 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const local = toLocalConfig(row);
   const config = await loadAiConfig(ctx.env, userId);
 
-  // Neither engine available is a configuration problem with a specific fix,
-  // so it gets its own code instead of a generic failure.
-  if (!config && !local.heuristicsEnabled) {
+  // With the local rule engine removed, a missing model is the only thing that
+  // blocks an explicit re-analyse; a job run still falls back to domain tags.
+  if (!config) {
     throw badRequestCode(
       'ai_no_engine',
-      '未配置模型，且本地规则引擎已关闭，无法生成标签建议',
+      '未配置可用的模型，无法生成标签建议',
     );
   }
 

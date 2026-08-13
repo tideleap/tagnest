@@ -162,7 +162,6 @@ describe('generateModelAliases', () => {
     autoTag: true,
     autoSummarize: false,
     autoApplyThreshold: 1,
-    heuristicsEnabled: true,
     maxTags: 4,
   };
 

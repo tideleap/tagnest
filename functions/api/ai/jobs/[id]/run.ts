@@ -67,6 +67,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       done: true,
       suggested: 0,
       autoApplied: 0,
+      uncovered: 0,
       engine: 'none',
       modelError: null,
     };
@@ -151,6 +152,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     done: finished || failed,
     suggested: written,
     autoApplied,
+    uncovered: outcome.uncovered,
     engine: outcome.engine,
     modelError: outcome.modelError,
     topics: aggregateTopics(outcome.results),

@@ -118,7 +118,7 @@ const SAFE_THRESHOLD = 0.8;
 
 const SOURCE_LABEL: Record<string, string> = {
   model: '模型',
-  heuristic: '规则',
+  fallback: '域名兜底',
   taxonomy: '标签体系',
 };
 

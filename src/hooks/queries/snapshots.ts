@@ -128,3 +128,23 @@ export function useRefreshBookmarkSnapshot() {
     onError: (e: Error) => toast.error('刷新快照失败', e.message),
   });
 }
+
+/**
+ * Silent variant of the capture mutation: same POST + invalidation, but no
+ * toast. Used by the lazy snapshot scheduler (src/lib/snapshotScheduler.ts),
+ * which may (re)capture many cards as they scroll into view — surfacing a
+ * toast per capture would be noise. Failures are swallowed here because the
+ * scheduler will simply retry the card on its next interval.
+ */
+export function useCaptureSnapshotSilent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ snapshotKey: string }>(`/bookmarks/${id}/snapshot`),
+    onSuccess: (_res, id) => {
+      void qc.invalidateQueries({ queryKey: bookmarkSnapshotStatusKey(id) });
+      void qc.invalidateQueries({ queryKey: ['bookmark-snapshots', id] });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.bookmark(id) });
+    },
+  });
+}
