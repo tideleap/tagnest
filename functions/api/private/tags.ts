@@ -16,6 +16,7 @@ import { listPrivateTagsWithBookmarks } from '../../_lib/db';
  */
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
-  const tags = await listPrivateTagsWithBookmarks(ctx.env, userId);
+  const q = new URL(ctx.request.url).searchParams.get('q')?.trim().slice(0, 200);
+  const tags = await listPrivateTagsWithBookmarks(ctx.env, userId, q);
   return json({ tags });
 };

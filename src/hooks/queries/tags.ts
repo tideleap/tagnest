@@ -69,10 +69,11 @@ export function useMergeTags() {
  * currently hides. Surfaces what PRIVATE_BOOKMARK_CLAUSE hides so the owner
  * can review and un-private a category from the /private page.
  */
-export function usePrivateTags() {
+export function usePrivateTags(q?: string) {
   return useQuery({
-    queryKey: keys.privateTags,
-    queryFn: () => api.get<PrivateTagsResponse>('/private/tags'),
+    queryKey: [...keys.privateTags, q?.trim().toLowerCase() ?? ''],
+    queryFn: () =>
+      api.get<PrivateTagsResponse>(`/private/tags${q ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
     staleTime: 30_000,
   });
 }

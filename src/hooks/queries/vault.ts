@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Bookmark, PrivateBookmarksResponse } from '@shared/types';
+import type { Bookmark, BookmarkInput, PrivateBookmarksResponse } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from './keys';
@@ -133,6 +133,56 @@ export function useUnsetBookmarkPrivate() {
       toast.success('已移出私密保险库');
     },
     onError: (e: Error) => toast.error('操作失败', e.message),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Category-private bookmarks inside the vault view
+ *
+ * These are plaintext rows hidden by PRIVATE_BOOKMARK_CLAUSE because they
+ * carry a private tag. They are not encrypted; the vault page merely offers
+ * a single place to review and manage them alongside zero-knowledge items.
+ * ------------------------------------------------------------------ */
+
+/** Loads a single bookmark that is hidden by a private tag. */
+export function usePrivateTagBookmark(id: string | null) {
+  return useQuery({
+    queryKey: ['private-tag-bookmark', id],
+    queryFn: () => api.get<Bookmark>(`/private/category-bookmarks/${id}`),
+    enabled: Boolean(id),
+    staleTime: 30_000,
+  });
+}
+
+/** Edits a category-private bookmark from the vault view. */
+export function useUpdatePrivateTagBookmark() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<BookmarkInput> }) =>
+      api.patch<Bookmark | { removedFromVault: true; bookmark: Bookmark }>(`/private/category-bookmarks/${id}`, patch),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.privateTags });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.stats });
+      void qc.invalidateQueries({ queryKey: ['private-tag-bookmark'] });
+      toast.success('已保存');
+    },
+    onError: (e: Error) => toast.error('保存失败', e.message),
+  });
+}
+
+/** Soft-deletes a category-private bookmark from the vault view. */
+export function useDeletePrivateTagBookmark() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/private/category-bookmarks/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.privateTags });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.stats });
+      toast.success('已删除');
+    },
+    onError: (e: Error) => toast.error('删除失败', e.message),
   });
 }
 

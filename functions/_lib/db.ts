@@ -624,6 +624,77 @@ export async function listBookmarksWithSnapshots(
 }
 
 /**
+ * Generic field update used by both ordinary and vault-only bookmark edits.
+ * The caller must already have verified ownership and privacy scope; this
+ * helper only writes columns and (optionally) replaces tags.
+ */
+export async function updateBookmarkFields(
+  env: Env,
+  userId: string,
+  id: string,
+  patch: {
+    url?: string;
+    title?: string;
+    description?: string | null;
+    note?: string | null;
+    faviconUrl?: string | null;
+    coverUrl?: string | null;
+    isFavorite?: boolean;
+    isArchived?: boolean;
+    tagNames?: string[];
+  },
+): Promise<Bookmark | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  const text = (value: string | null | undefined, column: string, max: number) => {
+    if (value === undefined) return;
+    sets.push(`${column} = ?`);
+    params.push(value === null || value === '' ? null : String(value).slice(0, max));
+  };
+
+  if (patch.url !== undefined) {
+    sets.push('url = ?', 'url_key = ?');
+    params.push(patch.url, urlKey(patch.url));
+  }
+
+  text(patch.title, 'title', 300);
+  text(patch.description, 'description', 2000);
+  text(patch.note, 'note', 20000);
+  text(patch.faviconUrl, 'favicon_url', 500);
+  text(patch.coverUrl, 'cover_url', 500);
+
+  if (patch.isFavorite !== undefined) {
+    sets.push('is_favorite = ?');
+    params.push(patch.isFavorite ? 1 : 0);
+  }
+  if (patch.isArchived !== undefined) {
+    sets.push('is_archived = ?');
+    params.push(patch.isArchived ? 1 : 0);
+  }
+
+  if (sets.length === 0 && !patch.tagNames) {
+    return loadBookmark(env, userId, id);
+  }
+
+  if (sets.length > 0) {
+    sets.push('updated_at = ?');
+    params.push(nowIso(), id, userId);
+    await env.DB.prepare(`UPDATE bookmarks SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`)
+      .bind(...params)
+      .run();
+  }
+
+  if (patch.tagNames !== undefined) {
+    const { ids } = await ensureTags(env, userId, patch.tagNames.slice(0, 30));
+    await setBookmarkTags(env, id, ids);
+  }
+
+  return loadBookmark(env, userId, id);
+}
+
+
+/**
  * Persists the snapshot state after a capture: the latest key (for the card's
  * `snapshot_key`) and the full retained list (`snapshot_keys`, oldest→newest).
  * Consistent update of both columns in one statement avoids a torn state.
@@ -917,45 +988,125 @@ export async function setTagPrivate(
 export async function listPrivateTagsWithBookmarks(
   env: Env,
   userId: string,
+  q?: string,
 ): Promise<Array<{ tag: Tag; bookmarks: PrivateTagBookmark[] }>> {
+  const normalizedQ = q?.trim().toLowerCase();
+
   const tagRows = await env.DB.prepare(
     `SELECT t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.is_private, t.created_at,
             (SELECT COUNT(*) FROM bookmark_tags bt
                JOIN bookmarks b ON b.id = bt.bookmark_id
-              WHERE bt.tag_id = t.id AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0) AS count
+              WHERE bt.tag_id = t.id AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0
+                ${normalizedQ ? `AND (LOWER(b.title) LIKE ? OR LOWER(b.url) LIKE ? OR (b.note IS NOT NULL AND LOWER(b.note) LIKE ?))` : ''}
+            ) AS count
        FROM tags t
       WHERE t.user_id = ? AND t.is_private = 1
       ORDER BY t.sort_order, t.name COLLATE NOCASE`,
   )
-    .bind(userId, userId)
+    .bind(
+      userId,
+      ...(normalizedQ
+        ? [`%${normalizedQ}%`, `%${normalizedQ}%`, `%${normalizedQ}%`]
+        : []),
+      userId,
+    )
     .all<Row>();
 
   const entries: Array<{ tag: Tag; bookmarks: PrivateTagBookmark[] }> = [];
+  const allIds: string[] = [];
   for (const tagRow of tagRows.results) {
     const tag = mapTag(tagRow);
+    const params: unknown[] = [tag.id, userId];
+    let where = `bt.tag_id = ? AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0`;
+    if (normalizedQ) {
+      where += ` AND (LOWER(b.title) LIKE ? OR LOWER(b.url) LIKE ? OR (b.note IS NOT NULL AND LOWER(b.note) LIKE ?))`;
+      params.push(`%${normalizedQ}%`, `%${normalizedQ}%`, `%${normalizedQ}%`);
+    }
+
     const bmRows = await env.DB.prepare(
       `SELECT DISTINCT b.id, b.url, b.title, b.favicon_url, b.note,
               b.is_favorite, b.is_archived, b.created_at
          FROM bookmarks b
          JOIN bookmark_tags bt ON bt.bookmark_id = b.id
-        WHERE bt.tag_id = ? AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0
+        WHERE ${where}
         ORDER BY b.title COLLATE NOCASE`,
     )
-      .bind(tag.id, userId)
+      .bind(...params)
       .all<Row>();
 
-    const bookmarks: PrivateTagBookmark[] = bmRows.results.map((r) => ({
-      id: r.id as string,
-      url: r.url as string,
-      title: (r.title as string) ?? '',
-      faviconUrl: (r.favicon_url as string | null) ?? null,
-      note: (r.note as string | null) ?? null,
-      isFavorite: bool(r.is_favorite),
-      isArchived: bool(r.is_archived),
-    }));
+    const bookmarks: PrivateTagBookmark[] = bmRows.results.map((r) => {
+      const id = r.id as string;
+      allIds.push(id);
+      return {
+        id,
+        url: r.url as string,
+        title: (r.title as string) ?? '',
+        faviconUrl: (r.favicon_url as string | null) ?? null,
+        note: (r.note as string | null) ?? null,
+        isFavorite: bool(r.is_favorite),
+        isArchived: bool(r.is_archived),
+        createdAt: r.created_at as string,
+        tags: [],
+      };
+    });
     entries.push({ tag, bookmarks });
   }
-  return entries;
+
+  if (allIds.length > 0) {
+    const tagsByBm = await attachTags(env, userId, [...new Set(allIds)]);
+    for (const entry of entries) {
+      for (const bm of entry.bookmarks) {
+        bm.tags = tagsByBm.get(bm.id) ?? [];
+      }
+    }
+  }
+
+  // When searching, omit tags whose filter left no bookmarks.
+  return normalizedQ ? entries.filter((e) => e.bookmarks.length > 0) : entries;
+}
+
+/**
+ * Determines whether a bookmark is currently hidden by at least one private tag
+ * belonging to the user. Used by vault-only endpoints to gate access to rows
+ * that ordinary paths filter out via `PRIVATE_BOOKMARK_CLAUSE`.
+ */
+export async function isBookmarkHiddenByPrivateTag(
+  env: Env,
+  userId: string,
+  bookmarkId: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM bookmark_tags bt
+       JOIN tags t ON t.id = bt.tag_id
+      WHERE bt.bookmark_id = ? AND t.user_id = ? AND t.is_private = 1 LIMIT 1`,
+  )
+    .bind(bookmarkId, userId)
+    .first<Row>();
+  return row !== null;
+}
+
+/**
+ * Loads a single bookmark that is hidden from ordinary views because it carries
+ * a private tag. Returns `null` if the bookmark does not exist, is individually
+ * vaulted (`is_private = 1`), is trashed, or is not hidden by a private tag.
+ * This is the vault path counterpart to `loadBookmark`.
+ */
+export async function loadPrivateTagBookmark(
+  env: Env,
+  userId: string,
+  id: string,
+): Promise<Bookmark | null> {
+  const hidden = await isBookmarkHiddenByPrivateTag(env, userId, id);
+  if (!hidden) return null;
+  const row = await env.DB.prepare(
+    `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks b
+      WHERE b.id = ? AND b.user_id = ? AND b.is_private = 0 AND b.deleted_at IS NULL LIMIT 1`,
+  )
+    .bind(id, userId)
+    .first<Row>();
+  if (!row) return null;
+  const tags = await attachTags(env, userId, [id]);
+  return mapBookmark(row, tags.get(id) ?? []);
 }
 
 /** Creates a brand-new private bookmark directly inside the vault. */

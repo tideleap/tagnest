@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Lock, LockOpen, Plus, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { Lock, LockOpen, Plus, RotateCcw, ShieldCheck, Star, Trash2 } from 'lucide-react';
 import type { EncryptedBlob, VaultBookmarkData } from '@/lib/vault-crypto';
 import { useVault } from '@/stores/vault';
 import {
@@ -14,6 +14,7 @@ import {
 import { Button, IconButton, Modal, PageHeader, ConfirmDialog, EmptyState, tagColorVars } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { usePrivateTags, useSetTagPrivate } from '@/hooks/queries';
+import { CategoryPrivateBookmarkEditor } from '@/components/vault/CategoryPrivateBookmarkEditor';
 import { displayHost, relativeTime } from '@/lib/url';
 
 function blankData(): VaultBookmarkData {
@@ -648,12 +649,22 @@ function UnlockedPanel({
  * passphrase-scoped.
  */
 function CategoryPrivateSection() {
-  const { data, isLoading } = usePrivateTags();
+  const [rawQ, setRawQ] = useState('');
+  const [q, setQ] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setQ(rawQ.trim()), 250);
+    return () => clearTimeout(t);
+  }, [rawQ]);
+
+  const { data, isLoading } = usePrivateTags(q);
   const setPrivate = useSetTagPrivate();
   const [unsetId, setUnsetId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const entries = data?.tags ?? [];
-  if (!isLoading && entries.length === 0) return null;
+
+  if (!isLoading && entries.length === 0 && !q && !rawQ.trim()) return null;
 
   return (
     <section className="mt-5 border-t border-line pt-4">
@@ -663,11 +674,27 @@ function CategoryPrivateSection() {
         <span className="text-2xs text-ink-faint">仅对其他人隐藏（未加密）</span>
       </div>
       <p className="mb-3 text-2xs leading-relaxed text-ink-faint">
-        将某个标签设为私密后，它及其所有子标签下的书签会对其他用户完全隐藏，只有你能在此查看与恢复。
+        将某个标签设为私密后，它及其所有子标签下的书签会对其他用户完全隐藏，只有你能在此查看、检索与管理。
       </p>
+
+      <label className="mb-3 flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
+        <input
+          type="text"
+          value={rawQ}
+          onChange={(e) => setRawQ(e.target.value)}
+          placeholder="搜索被隐藏的书签…"
+          className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+        />
+      </label>
 
       {isLoading ? (
         <p className="text-sm text-ink-faint">加载中…</p>
+      ) : entries.length === 0 ? (
+        <EmptyState
+          icon={<Lock size={22} />}
+          title="未找到类别私密书签"
+          description={q.trim() ? '没有匹配当前搜索的书签。' : '当前没有私密类别。'}
+        />
       ) : (
         <ul className="flex flex-col gap-3">
           {entries.map(({ tag, bookmarks }) => (
@@ -695,28 +722,48 @@ function CategoryPrivateSection() {
 
               {bookmarks.length > 0 && (
                 <ul className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
-                  {bookmarks.slice(0, 12).map((b) => (
-                    <li key={b.id} className="flex min-w-0 items-center gap-2 text-2xs text-ink-soft">
-                      {b.faviconUrl ? (
-                        <img
-                          src={b.faviconUrl}
-                          alt=""
-                          className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                        />
-                      ) : null}
-                      <span className="truncate">
-                        {b.title?.trim() || displayHost(b.url)}
-                      </span>
+                  {bookmarks.slice(0, 20).map((b) => (
+                    <li key={b.id}>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(b.id)}
+                        className="flex w-full min-w-0 items-center gap-2 rounded px-1 py-1 text-left text-2xs text-ink-soft transition-colors hover:bg-surface-hover"
+                      >
+                        {b.faviconUrl ? (
+                          <img
+                            src={b.faviconUrl}
+                            alt=""
+                            className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                          />
+                        ) : null}
+                        <span className="truncate">{b.title?.trim() || displayHost(b.url)}</span>
+                        {b.isFavorite && (
+                          <Star size={10} className="shrink-0 fill-caution text-caution" />
+                        )}
+                      </button>
                     </li>
                   ))}
-                  {bookmarks.length > 12 && (
-                    <li className="text-2xs text-ink-faint">…还有 {bookmarks.length - 12} 个</li>
+                  {bookmarks.length > 20 && (
+                    <li className="px-1 text-2xs text-ink-faint">
+                      …还有 {bookmarks.length - 20} 个
+                    </li>
                   )}
                 </ul>
               )}
             </li>
           ))}
         </ul>
+      )}
+
+      {editingId && (
+        <CategoryPrivateBookmarkEditor
+          id={editingId}
+          onClose={() => setEditingId(null)}
+          onDeleted={() => {
+            // Query invalidation happens inside the mutation; the modal closes
+            // via onDeleted + onClose.
+          }}
+        />
       )}
 
       <ConfirmDialog

@@ -69,6 +69,10 @@ export interface PrivateTagBookmark {
   note: string | null;
   isFavorite: boolean;
   isArchived: boolean;
+  createdAt: string;
+  /** Full tag list for this bookmark (the private tag(s) that hide it plus any
+   * ordinary tags). */
+  tags: Tag[];
 }
 
 /** A private tag paired with the plaintext bookmarks it currently hides. */
