@@ -3,6 +3,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../_lib/http';
 import { mapTag, setTagPrivate } from '../../_lib/db';
+import { nowIso } from '../../_lib/ids';
 
 export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -54,7 +55,9 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
   }
 
   if (sets.length > 0) {
-    params.push(id, userId);
+    const ts = nowIso();
+    sets.push('updated_at = ?');
+    params.push(ts, id, userId);
     await ctx.env.DB.prepare(`UPDATE tags SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`)
       .bind(...params)
       .run();

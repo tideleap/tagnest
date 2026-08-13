@@ -95,6 +95,10 @@ const MIGRATION_PROBES = {
   // recognised and skipped on a re-run.
   '0015_tag_private.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('tags') WHERE name='is_private'`,
+  // 0016 adds updated_at to tags via ALTER (non-idempotent). setTagPrivate
+  // references this column; probe it so a manual fix or re-run is safe.
+  '0016_tags_updated_at.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('tags') WHERE name='updated_at'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
