@@ -109,3 +109,17 @@ export function titleFallback(input: string): string {
     200,
   );
 }
+
+/**
+ * Hostname without a leading `www.`, lower-cased. Returns null for unparseable
+ * input. This is the single, shared host-normalisation used by the AI tagger
+ * (domain fallback, same-host boost, feedback domain) and any future callers,
+ * so the `new URL(...).hostname` logic lives in exactly one place.
+ */
+export function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}

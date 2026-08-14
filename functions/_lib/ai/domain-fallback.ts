@@ -1,13 +1,5 @@
 import type { CandidateSource, EnrichInput, RawCandidate } from './types';
-
-/** Hostname without `www.`, lowercase. Returns null for unparseable input. */
-export function hostOf(url: string): string | null {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-  } catch {
-    return null;
-  }
-}
+import { hostOf } from '../urlkey';
 
 /**
  * Known brands → friendly tag name.

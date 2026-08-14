@@ -1,7 +1,8 @@
 import type { Env } from '../env';
 import { ensureTags, PRIVATE_BOOKMARK_CLAUSE } from '../db';
+import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
-import { domainOf, recordFeedback, type FeedbackRecord } from './feedback';
+import { recordFeedback, type FeedbackRecord } from './feedback';
 import type { SuggestionResult } from './engine';
 
 /**
@@ -446,7 +447,7 @@ export async function decideSuggestions(
   // by both branches so the accept/reject loop is recorded consistently.
   const feedback: FeedbackRecord[] = rows.results.map((r) => {
     const url = String(r.bookmark_url ?? '');
-    const domain = domainOf(url);
+    const domain = hostOf(url);
     const context = `${String(r.bookmark_title ?? '')} · ${domain ?? ''}`.trim();
     return {
       bookmarkId: String(r.bookmark_id),

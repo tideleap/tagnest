@@ -1,6 +1,7 @@
 import type { EnrichInput, TagCandidate, VocabEntry, Vocabulary } from './types';
 import { normalizeKey } from './taxonomy';
-import { domainOf, feedbackMultiplier, type FeedbackProfile } from './feedback';
+import { hostOf } from '../urlkey';
+import { feedbackMultiplier, type FeedbackProfile } from './feedback';
 
 /**
  * Multi-dimensional scoring signals that raise the precision of the AI
@@ -144,15 +145,6 @@ export function sameHostBoost(
   return 1 + 0.15 * Math.min(1, agreeing / Math.max(1, peers));
 }
 
-/** Same hostname normalisation as the heuristics engine. */
-function hostOf(url: string): string | null {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Applies the lexical + frequency + host signals to a resolved candidate and
  * returns whether it clears the confidence floor.
@@ -185,7 +177,7 @@ export function scoreTagCandidate(
   //    lifted; a mixed history is chipped down but never below the mixed floor.
   let feedbackBoosted = false;
   if (feedback) {
-    const domain = domainOf(input.url);
+    const domain = hostOf(input.url);
     const tagEffect = feedbackMultiplier(feedback.byTag.get(normalizeKey(candidate.name)));
     if (tagEffect.drop) return null;
     let mult = tagEffect.mult;

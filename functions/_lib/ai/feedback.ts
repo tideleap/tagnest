@@ -154,16 +154,6 @@ export function buildFeedbackProfile(
   return { byTag, byTagDomain, modifiedTo, total };
 }
 
-/** Host of a URL, lower-cased and stripped of a leading `www.`; null if unparseable. */
-export function domainOf(url: string): string | null {
-  try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-    return host || null;
-  } catch {
-    return null;
-  }
-}
-
 /** Returns the user-preferred spelling for `name`, or `name` if none recorded. */
 export function renameByFeedback(name: string, profile: FeedbackProfile): string {
   if (profile.modifiedTo.size === 0) return name;
