@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run --config vitest.backend.config.ts",
+    "test:fast": "vitest run --config vitest.backend.fast.config.ts --no-file-parallelism --pool=forks",
     "test:ui": "vitest run --config vitest.ui.config.ts",
     "backlog:check": "node scripts/backlog-check.mjs",
     "backlog:write": "node scripts/backlog-check.mjs --write",
