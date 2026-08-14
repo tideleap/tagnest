@@ -13,7 +13,7 @@ import {
   saveSuggestions,
   updateJob,
 } from '../functions/_lib/ai/store';
-import { createAiDb, type AiDbState } from './helpers/aiDb';
+import { createAiDb, type AiDbState, type BookmarkRow, type SuggestionRow } from './helpers/aiDb';
 
 function makeEnv(seed?: Partial<AiDbState>): { env: Env; state: AiDbState } {
   const { db, state } = createAiDb(seed);
@@ -152,6 +152,53 @@ describe('decideSuggestions — accept / reject with attribution', () => {
     const out = await decideSuggestions(env, 'u1', ['s1'], 'accept');
     expect(out.accepted).toBe(0);
     expect(state.bookmark_tags).toHaveLength(0);
+  });
+
+  it('accepts a whole run (130 suggestions) without losing any', async () => {
+    // Regression: the writes used to all go into a single env.DB.batch() call.
+    // D1 caps a batch at 100 statements, so a full run of 130+ suggestions
+    // exceeded the cap and surfaced to the UI as "服务器内部错误". The inserts
+    // are now flushed in groups of 90 with the status flip last.
+    const N = 130;
+    const bookmarks: BookmarkRow[] = [];
+    const suggestions: SuggestionRow[] = [];
+    for (let i = 0; i < N; i += 1) {
+      const bid = `b${i}`;
+      bookmarks.push({
+        id: bid,
+        user_id: 'u1',
+        url: `https://site${i}.com`,
+        title: `Site ${i}`,
+        description: null,
+        deleted_at: null,
+        ai_summary: null,
+        created_at: '2024',
+      });
+      suggestions.push({
+        id: `s${i}`,
+        user_id: 'u1',
+        bookmark_id: bid,
+        job_id: 'j1',
+        tag_name: `标签${i}`,
+        tag_id: null,
+        confidence: 0.7 + (i % 30) * 0.01,
+        source: 'model',
+        reason: 'r',
+        status: 'pending',
+        decided_at: null,
+        created_at: '2024',
+      });
+    }
+
+    const { env, state } = makeEnv({ bookmarks, tag_suggestions: suggestions });
+    const ids = suggestions.map((s) => s.id);
+    const out = await decideSuggestions(env, 'u1', ids, 'accept');
+
+    expect(out.accepted).toBe(N);
+    expect(out.tagsCreated).toBe(N); // every proposal was a brand-new tag
+    expect(state.bookmark_tags).toHaveLength(N);
+    expect(state.bookmark_tags.every((bt) => bt.source === 'ai')).toBe(true);
+    expect(state.tag_suggestions.filter((s) => s.status === 'accepted')).toHaveLength(N);
   });
 });
 

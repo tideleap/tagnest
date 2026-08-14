@@ -538,15 +538,24 @@ export async function decideSuggestions(
     );
   }
 
-  const marks = foundIds.map(() => '?').join(',');
-  statements.push(
-    env.DB.prepare(
-      `UPDATE tag_suggestions SET status = 'accepted', decided_at = ?
-        WHERE user_id = ? AND id IN (${marks})`,
-    ).bind(ts, userId, ...foundIds),
-  );
+  // Flush the tag links in groups of 90 so a large bulk accept — a whole run
+  // can be 130+ writes — never trips D1's 100-statement batch cap.
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < statements.length; i += BATCH_LIMIT) {
+    await env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
+  }
 
-  await env.DB.batch(statements);
+  // Flip the decided suggestions to 'accepted' in one statement, after the
+  // inserts. Doing it last means a partial insert failure leaves the queue
+  // retryable (status stays 'pending') rather than half-applied.
+  const marks = foundIds.map(() => '?').join(',');
+  await env.DB.prepare(
+    `UPDATE tag_suggestions SET status = 'accepted', decided_at = ?
+      WHERE user_id = ? AND id IN (${marks})`,
+  )
+    .bind(ts, userId, ...foundIds)
+    .run();
+
   await recordFeedback(env, userId, feedback);
   return { accepted: foundIds.length, rejected: 0, tagsCreated: created };
 }
