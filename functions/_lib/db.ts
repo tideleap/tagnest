@@ -729,6 +729,14 @@ export interface BookmarkSnapshotRefs {
 /**
  * Loads every bookmark's snapshot references for a user (both live and trashed,
  * so cleanup can reconcile the whole history even for soft-deleted items).
+ *
+ * Excludes only the encrypted zero-knowledge vault (`is_private = 1`); it does
+ * NOT apply `PRIVATE_BOOKMARK_CLAUSE`, because that clause also hides
+ * category-private bookmarks (plaintext, merely hidden by a private tag). Those
+ * share the normal snapshot lifecycle and R2 bucket with ordinary bookmarks, so
+ * leaving them out of the scan would let dangling snapshot references on them
+ * accumulate unreconciled. Vault bookmarks are excluded because their blob
+ * semantics differ and they are reconciled through the vault path instead.
  */
 export async function loadAllBookmarkSnapshotRefs(
   env: Env,
@@ -736,7 +744,7 @@ export async function loadAllBookmarkSnapshotRefs(
 ): Promise<BookmarkSnapshotRefs[]> {
   const rows = await env.DB.prepare(
     `SELECT id, snapshot_key, snapshot_keys FROM bookmarks b
-      WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE}
+      WHERE b.user_id = ? AND b.is_private = 0
         AND (b.snapshot_key IS NOT NULL OR b.snapshot_keys IS NOT NULL)`,
   )
     .bind(userId)
@@ -1012,44 +1020,56 @@ export async function listPrivateTagsWithBookmarks(
     )
     .all<Row>();
 
-  const entries: Array<{ tag: Tag; bookmarks: PrivateTagBookmark[] }> = [];
+  // One query fetches every (private tag → bookmark) pair at once, replacing the
+  // previous loop that issued one query per private tag (an N+1 against the tag
+  // count). The pairs are then grouped in memory by tag, which is cheap next to
+  // a round-trip per tag. Tag ordering still follows the first query; bookmark
+  // ordering within a tag follows `b.title`, exactly as before.
+  const bmParams: unknown[] = [userId, userId];
+  let bmWhere = `t.user_id = ? AND t.is_private = 1
+       AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0`;
+  if (normalizedQ) {
+    bmWhere += ` AND (LOWER(b.title) LIKE ? OR LOWER(b.url) LIKE ? OR (b.note IS NOT NULL AND LOWER(b.note) LIKE ?))`;
+    bmParams.push(`%${normalizedQ}%`, `%${normalizedQ}%`, `%${normalizedQ}%`);
+  }
+
+  const bmPairs = await env.DB.prepare(
+    `SELECT DISTINCT bt.tag_id AS tag_id, b.id, b.url, b.title, b.favicon_url, b.note,
+            b.is_favorite, b.is_archived, b.created_at
+       FROM bookmarks b
+       JOIN bookmark_tags bt ON bt.bookmark_id = b.id
+       JOIN tags t ON t.id = bt.tag_id
+      WHERE ${bmWhere}
+      ORDER BY b.title COLLATE NOCASE`,
+  )
+    .bind(...bmParams)
+    .all<Row>();
+
+  const bookmarksByTag = new Map<string, PrivateTagBookmark[]>();
   const allIds: string[] = [];
+  for (const r of bmPairs.results) {
+    const tagId = r.tag_id as string;
+    const id = r.id as string;
+    const list = bookmarksByTag.get(tagId) ?? [];
+    list.push({
+      id,
+      url: r.url as string,
+      title: (r.title as string) ?? '',
+      faviconUrl: (r.favicon_url as string | null) ?? null,
+      note: (r.note as string | null) ?? null,
+      isFavorite: bool(r.is_favorite),
+      isArchived: bool(r.is_archived),
+      createdAt: r.created_at as string,
+      tags: [],
+    });
+    bookmarksByTag.set(tagId, list);
+    allIds.push(id);
+  }
+
+  const entries: Array<{ tag: Tag; bookmarks: PrivateTagBookmark[] }> = [];
   for (const tagRow of tagRows.results) {
     const tag = mapTag(tagRow);
-    const params: unknown[] = [tag.id, userId];
-    let where = `bt.tag_id = ? AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_private = 0`;
-    if (normalizedQ) {
-      where += ` AND (LOWER(b.title) LIKE ? OR LOWER(b.url) LIKE ? OR (b.note IS NOT NULL AND LOWER(b.note) LIKE ?))`;
-      params.push(`%${normalizedQ}%`, `%${normalizedQ}%`, `%${normalizedQ}%`);
-    }
-
-    const bmRows = await env.DB.prepare(
-      `SELECT DISTINCT b.id, b.url, b.title, b.favicon_url, b.note,
-              b.is_favorite, b.is_archived, b.created_at
-         FROM bookmarks b
-         JOIN bookmark_tags bt ON bt.bookmark_id = b.id
-        WHERE ${where}
-        ORDER BY b.title COLLATE NOCASE`,
-    )
-      .bind(...params)
-      .all<Row>();
-
-    const bookmarks: PrivateTagBookmark[] = bmRows.results.map((r) => {
-      const id = r.id as string;
-      allIds.push(id);
-      return {
-        id,
-        url: r.url as string,
-        title: (r.title as string) ?? '',
-        faviconUrl: (r.favicon_url as string | null) ?? null,
-        note: (r.note as string | null) ?? null,
-        isFavorite: bool(r.is_favorite),
-        isArchived: bool(r.is_archived),
-        createdAt: r.created_at as string,
-        tags: [],
-      };
-    });
-    entries.push({ tag, bookmarks });
+    entries.push({ tag, bookmarks: bookmarksByTag.get(tag.id) ?? [] });
   }
 
   if (allIds.length > 0) {
