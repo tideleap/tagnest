@@ -23,6 +23,15 @@ export interface Env {
    */
   INVITE_CODE?: string;
   /**
+   * Optional allowlist of cross-origin origins permitted to call the API
+   * (browser extensions, companion web apps, the CLI over fetch). Comma- or
+   * space-separated exact `https://...` origins. The request's `Origin` is
+   * echoed back only when it matches this list (or is same-origin); any other
+   * origin receives no CORS header and therefore cannot read the response.
+   * Empty/unset disables cross-origin access (same-origin only).
+   */
+  ALLOWED_ORIGINS?: string;
+  /**
    * Optional edge cache for public share pages. Absent in local dev and on
    * deployments that skip the binding; every read path degrades to D1.
    */

@@ -39,6 +39,56 @@ const KEY_DENIED_PREFIXES = ['/api/keys', '/api/auth/'];
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/** Methods and request headers the API exposes to cross-origin callers. */
+const CORS_ALLOW_METHODS = 'GET, POST, PATCH, PUT, DELETE, OPTIONS';
+const CORS_ALLOW_HEADERS = 'Authorization, X-API-Key, Content-Type, X-Request-Id';
+
+/**
+ * CORS headers for a request, or `{}` when none should be emitted.
+ *
+ * The API accepts credentials (session cookie / `X-API-Key`), so a bare `*`
+ * would be ignored by the browser for credentialed requests and would be unsafe
+ * even if honoured. Instead we echo the caller's exact `Origin`, but only when
+ * it is same-origin or appears on the configured `ALLOWED_ORIGINS` allowlist.
+ * Any other origin gets no CORS header and is therefore unable to read the
+ * response — a closed-by-default policy rather than an open relay.
+ */
+function corsHeaders(env: Env, request: Request): Record<string, string> {
+  const origin = request.headers.get('Origin');
+  if (!origin) return {};
+
+  let allow: string | null = null;
+  let reqHost = '';
+  try {
+    reqHost = new URL(request.url).host;
+  } catch {
+    reqHost = '';
+  }
+  if (reqHost) {
+    try {
+      if (new URL(origin).host === reqHost) allow = origin; // same-origin
+    } catch {
+      allow = null;
+    }
+  }
+  if (!allow) {
+    const allowed = (env.ALLOWED_ORIGINS ?? '')
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (allowed.includes(origin)) allow = origin;
+  }
+  if (!allow) return {};
+
+  return {
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Methods': CORS_ALLOW_METHODS,
+    'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
 /**
  * Hardening headers applied to every response the Functions layer touches.
  *
@@ -101,6 +151,7 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
           Allow: 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
           'Access-Control-Max-Age': '86400',
           'X-Request-Id': rid,
+          ...corsHeaders(env, request),
         },
       });
     }
@@ -145,6 +196,11 @@ export const onRequest: PagesFunction<Env, string, RequestData> = async (ctx) =>
     headers.set('Referrer-Policy', 'same-origin');
     headers.set('X-Request-Id', rid);
     for (const [k, v] of Object.entries(securityHeaders())) {
+      headers.set(k, v);
+    }
+    // Reflect a CORS allow-origin for same-origin / allowlisted cross-origin
+    // callers so browser extensions and companion apps can read the response.
+    for (const [k, v] of Object.entries(corsHeaders(env, request))) {
       headers.set(k, v);
     }
 

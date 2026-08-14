@@ -54,3 +54,10 @@ DISABLE_SIGNUP = "false"
 # allowlist of exact emails or domain wildcards, e.g. "alice@x.com, *@corp.dev".
 # Ignored when DISABLE_SIGNUP=true.
 ALLOWED_EMAILS = ""
+
+# Cross-origin callers allowed to hit the API (browser extensions, companion
+# apps, the CLI over fetch). Comma/space-separated exact origins, e.g.
+# "https://ext.example.com https://app.example.com". Empty = same-origin only;
+# the request Origin is echoed back only when listed here (credentials-aware
+# CORS — never "*").
+ALLOWED_ORIGINS = ""
