@@ -4,6 +4,7 @@ import { Download, ListChecks, Settings2, Sparkles, Wrench } from 'lucide-react'
 import type { AiJobTarget } from '@shared/types';
 import { Button, PageHeader, SegmentedControl } from '@/components/ui';
 import { RunPanel } from '@/components/organize/RunPanel';
+import { AiMetricsPanel } from '@/components/organize/AiMetricsPanel';
 import { EvaluationPanel } from '@/components/organize/EvaluationPanel';
 import { SuggestionReview } from '@/components/organize/SuggestionReview';
 import { TaxonomyPanel } from '@/components/organize/TaxonomyPanel';
@@ -89,7 +90,7 @@ export function OrganizePage() {
         </Button>
       </PageHeader>
 
-      <ContributionBar overview={overview} />
+      {overview && <AiMetricsPanel overview={overview} />}
 
       <SegmentedControl
         label="AI 整理视图"
@@ -149,48 +150,6 @@ export function OrganizePage() {
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * How much of the tagging the AI is actually doing.
- *
- * Before the `source` column existed this question had no answer — a
- * model-written tag and a hand-typed one were the same row. Showing the split
- * keeps the feature honest: if the bar stays empty, the model is not earning
- * its place in the pipeline, whatever the settings page claims.
- */
-function ContributionBar({
-  overview,
-}: {
-  overview: ReturnType<typeof useAiOverview>['data'];
-}) {
-  if (!overview) return null;
-
-  const total = overview.aiTagLinks + overview.userTagLinks;
-  if (total === 0) return null;
-
-  const aiPercent = Math.round((overview.aiTagLinks / total) * 100);
-
-  return (
-    <section className="flex flex-col gap-1.5 rounded-md border border-line bg-surface px-4 py-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-xs font-medium text-ink">AI 贡献度</span>
-        <span className="text-xs tabular-nums text-ink-faint">
-          {overview.aiTagLinks} / {total} 个标签关联由 AI 生成
-        </span>
-        <span className="ml-auto text-sm font-semibold tabular-nums text-brand-ink">
-          {aiPercent}%
-        </span>
-      </div>
-      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-sunken">
-        <div className="h-full bg-brand transition-[width]" style={{ width: `${aiPercent}%` }} />
-      </div>
-      <p className="text-2xs text-ink-faint">
-        全部 {overview.totalBookmarks} 条书签 · {overview.untaggedBookmarks} 条未打标签
-        {overview.untaggedBookmarks === 0 && '（当前没有待整理的书签）'}
-      </p>
-    </section>
   );
 }
 

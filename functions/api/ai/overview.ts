@@ -10,6 +10,8 @@ import {
   loadFeedbackMetrics,
   loadFeedbackTrend,
   toApiJob,
+  loadAiUsage,
+  loadAiContribution,
 } from '../../_lib/ai';
 import { PROMPT_VERSION } from '../../_lib/ai/prompt';
 import { PRIVATE_BOOKMARK_CLAUSE } from '../../_lib/db';
@@ -63,6 +65,14 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     loadFeedbackTrend(ctx.env, userId, 30),
   ]);
 
+  // Adoption + value-weighted contribution. Both are derivable from tables we
+  // already write; `counts.total` and `provenance.user_made` feed their
+  // denominators without a second full-library scan.
+  const [usage, contribution] = await Promise.all([
+    loadAiUsage(ctx.env, userId, Number(counts?.total ?? 0)),
+    loadAiContribution(ctx.env, userId, Number(provenance?.user_made ?? 0)),
+  ]);
+
   const overview: AiOverview = {
     modelReady: isModelReady(row),
     pendingSuggestions: pending,
@@ -74,6 +84,8 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     feedback,
     feedbackTrend: trend,
     promptVersion: PROMPT_VERSION,
+    usage,
+    contribution,
   };
 
   return json(overview);

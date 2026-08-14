@@ -525,6 +525,10 @@ export interface AiOverview {
   feedbackTrend: AiFeedbackTrendPoint[];
   /** Active prompt-template revision; bump to compare revisions (A/B). */
   promptVersion: string;
+  /** How often the AI organiser is actually used (frequency + coverage). */
+  usage: AiUsageMetrics;
+  /** Value-weighted AI contribution to the tag graph. */
+  contribution: AiContributionMetrics;
 }
 
 /** Headline suggestion-quality numbers shown on the workbench. */
@@ -550,6 +554,78 @@ export interface AiFeedbackTrendPoint {
   date: string;
   accepted: number;
   rejected: number;
+}
+
+/**
+ * How often the user actually drives bookmarks through the AI organiser.
+ *
+ * Headline is `adoptionRate`: distinct bookmarks that entered the organise
+ * flow in the last 30 days, divided by the user's current bookmark pool. The
+ * split dimensions (scope target, actual engine) explain *why* the rate is what
+ * it is — e.g. a low rate driven entirely by `ids` (manual single selects)
+ * means the "organise all untagged" entry point is underused, not that the user
+ * ignores AI.
+ */
+export interface AiUsageMetrics {
+  /** 0..1 — touched bookmarks in last 30d / total bookmarks. */
+  adoptionRate: number;
+  /** Distinct bookmarks that entered the organise flow in the window. */
+  touchedBookmarks: number;
+  /** Current non-trashed, non-private bookmark pool (the denominator). */
+  totalBookmarks: number;
+  /** Distinct bookmarks touched, partitioned by the scope they were run under. */
+  byScope: { target: 'untagged' | 'all' | 'ids'; count: number }[];
+  /** Suggestion rows produced, split by the engine that actually ran. */
+  byEngine: { engine: 'model' | 'fallback'; count: number }[];
+  /** Number of organise runs (non-cancelled) in the last 30 days. */
+  runsLast30Days: number;
+  /** Average bookmarks processed per run (size of a typical job). */
+  avgRunSize: number;
+  /** Outcome of every suggestion ever written, for the acceptance funnel. */
+  suggestionOutcome: {
+    accepted: number;
+    rejected: number;
+    pending: number;
+    /** Accepted at/above the user's auto-apply threshold. */
+    autoApplied: number;
+  };
+}
+
+/**
+ * A value-weighted view of how much the AI actually contributes to the tag
+ * graph, replacing the old flat `aiTagLinks / total` ratio.
+ *
+ * Each landed tag link is weighted by the kind of contribution it represents:
+ *
+ *   - direct   (model/taxonomy accepted as-is)   → 1.0
+ *   - assisted (user renamed the proposal)        → 0.6
+ *   - fallback (domain-heuristic accepted)        → 0.5
+ *
+ * Rejected proposals are excluded from the denominator entirely, so proposing
+ * more and being rejected more does not inflate the score. `userOnly` links are
+ * the baseline that fills out the denominator.
+ */
+export interface AiContributionMetrics {
+  /** 0..1 — weighted AI value / (weighted AI value + user-only value). */
+  weightedRate: number;
+  /** Distinct decision units, classified by contribution kind. */
+  directAi: number;
+  assistedAi: number;
+  fallbackAi: number;
+  /** `bookmark_tags.source` that is neither AI nor a decided proposal. */
+  userOnly: number;
+  /** Raw counts, surfaced so the UI can explain the weighted figure. */
+  raw: {
+    aiAccepted: number;
+    modified: number;
+    rejected: number;
+    heuristicAccepted: number;
+    userCreated: number;
+  };
+  /** Precision: accepted / (accepted + rejected) across all proposals. */
+  hitRate: number;
+  /** Share of resolved proposals the user kept (accepted == kept here). */
+  acceptanceRate: number;
 }
 
 /* ------------------------------------------------------------------ *
