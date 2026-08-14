@@ -342,14 +342,15 @@ export function useOrganizeRun() {
         autoGrouped: result.autoGrouped ?? s.autoGrouped,
       }));
 
-        // The queue grows as chunks land, so the review list stays live
-        // instead of only appearing once everything has finished.
-        void qc.invalidateQueries({ queryKey: keys.aiSuggestionsRoot });
-
         if (result.done) break;
       }
 
+      // Refresh once at the end rather than on every chunk: re-fetching the
+      // full suggestions list per chunk wastes server load and API quota during
+      // a long run, and the review queue only needs to be current after it
+      // settles. The progress bar already reflects live chunk counts.
       void qc.invalidateQueries({ queryKey: keys.aiOverview });
+      void qc.invalidateQueries({ queryKey: keys.aiSuggestionsRoot });
       if (autoApplied > 0) {
         void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
         void qc.invalidateQueries({ queryKey: keys.tags });
