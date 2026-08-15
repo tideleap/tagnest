@@ -1,14 +1,25 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ExternalLink, Link2, Search } from 'lucide-react';
+import { ExternalLink, Link2, Lock, Search } from 'lucide-react';
 import type { PublicBookmark, PublicShare, SharePalette, ShareTheme } from '@shared/types';
-import { Button, EmptyState, PageHeader, Spinner, TagChip } from '@/components/ui';
+import { Button, EmptyState, Input, PageHeader, Spinner, TagChip } from '@/components/ui';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
-import { api } from '@/lib/api';
+import { api, HttpError } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
 /** The palettes a share page can render with (subset of the app themes). */
 const VALID_PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 'starlight'];
+
+/** sessionStorage key holding a visitor's accepted password for a slug. */
+const passKey = (slug: string) => `tagnest.share-pass.${slug}`;
+
+function readStoredPassword(slug: string): string {
+  try {
+    return sessionStorage.getItem(passKey(slug)) ?? '';
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Read-only public share page.
@@ -18,15 +29,54 @@ const VALID_PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 's
  * is stored on the share and applied here, and the color palette is set on
  * <html data-theme> so the page matches the author's chosen look rather than
  * following the viewer's own OS preference.
+ *
+ * Password-protected shares: the endpoint answers 401 (needs a password) or
+ * 403 (wrong password) until the visitor presents the right one via the
+ * `X-Share-Password` header. An accepted password is kept in sessionStorage so
+ * a refresh within the session does not ask again.
  */
 export function SharePage() {
   const { slug = '' } = useParams();
 
+  // The password the request will carry. Seeded from sessionStorage so a
+  // returning visitor in the same session sails through without re-typing.
+  const [password, setPassword] = useState(() => readStoredPassword(slug));
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState<string>();
+
+  // Reset per-slug state when navigating between two share pages.
+  useEffect(() => {
+    setPassword(readStoredPassword(slug));
+    setPasswordInput('');
+    setPasswordError(undefined);
+  }, [slug]);
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery<PublicShare>({
-    queryKey: ['public-share', slug],
-    queryFn: () => api.get<PublicShare>(`/public/${slug}`),
+    // The password is part of the cache key: retrying with a new password is a
+    // genuinely different request, not a revalidation of the failed one.
+    queryKey: ['public-share', slug, password],
+    queryFn: () =>
+      api.get<PublicShare>(`/public/${slug}`, {
+        // A 401 here means "share needs a password", NOT "your TagNest session
+        // expired" — the global unauthorized handler must not fire.
+        skipAuthRedirect: true,
+        headers: password ? { 'X-Share-Password': password } : undefined,
+      }),
     retry: false,
   });
+
+  const httpError = isError ? (error as HttpError | null) : null;
+  const needsPassword = httpError?.code === 'share_password_required';
+  const wrongPassword = httpError?.code === 'share_password_invalid';
+  const gated = needsPassword || wrongPassword;
+
+  // The gate's 401 carries the share's title + palette so the password form
+  // can match the author's chosen look before any content is revealed.
+  const gateTitle = needsPassword ? String(httpError?.details?.title ?? '') : '';
+  const gatePaletteRaw = needsPassword ? String(httpError?.details?.palette ?? '') : '';
+  const gatePalette: SharePalette = VALID_PALETTES.includes(gatePaletteRaw as SharePalette)
+    ? (gatePaletteRaw as SharePalette)
+    : 'light';
 
   // Jump to top whenever the slug changes — a share page is a destination,
   // not a scroll position to preserve.
@@ -38,15 +88,86 @@ export function SharePage() {
   // Restored to the shell default on unmount / palette change so other routes
   // (e.g. a deep link back into the app) are not left tinted.
   useEffect(() => {
-    const palette =
-      data && VALID_PALETTES.includes(data.palette) ? data.palette : ('light' as SharePalette);
+    const palette = gated
+      ? gatePalette
+      : data && VALID_PALETTES.includes(data.palette)
+        ? data.palette
+        : ('light' as SharePalette);
     const host = document.documentElement;
     const prev = host.dataset.theme;
     host.dataset.theme = palette;
     return () => {
       if (prev) host.dataset.theme = prev;
     };
-  }, [data]);
+  }, [data, gated, gatePalette]);
+
+  const submitPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = passwordInput.trim();
+    if (!next) return;
+    setPasswordError(undefined);
+    setPassword(next); // queryKey change → refetch with the new header
+  };
+
+  // Persist an accepted password; drop a rejected one so the form starts clean.
+  useEffect(() => {
+    if (data && password) {
+      try {
+        sessionStorage.setItem(passKey(slug), password);
+      } catch {
+        /* private mode */
+      }
+    }
+    if (wrongPassword && password) {
+      try {
+        sessionStorage.removeItem(passKey(slug));
+      } catch {
+        /* private mode */
+      }
+    }
+  }, [data, wrongPassword, password, slug]);
+
+  if (gated) {
+    return (
+      <div className="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center px-6">
+        <div className="w-full rounded-lg border border-line bg-surface p-6 shadow-raised">
+          <div className="mb-4 flex flex-col items-center gap-2 text-center">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
+              <Lock size={20} aria-hidden />
+            </span>
+            <h1 className="text-lg font-semibold tracking-tight text-ink">
+              {gateTitle || '这个分享页需要访问密码'}
+            </h1>
+            <p className="text-sm text-ink-soft">输入作者设置的访问密码即可查看。</p>
+          </div>
+
+          <form onSubmit={submitPassword} className="flex flex-col gap-3">
+            {wrongPassword && (
+              <p
+                role="alert"
+                className="rounded-md border border-critical bg-critical-soft px-3 py-2 text-xs text-critical-ink"
+              >
+                访问密码不正确，请重试。
+              </p>
+            )}
+            <Input
+              label="访问密码"
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              error={passwordError}
+              autoComplete="off"
+              autoFocus
+              required
+            />
+            <Button type="submit" variant="primary" size="lg" fullWidth disabled={!passwordInput.trim()}>
+              查看分享
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

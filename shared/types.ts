@@ -757,6 +757,17 @@ export interface Share {
   createdAt: string;
   updatedAt: string;
   expiresAt: string | null;
+  /**
+   * True when visitors must supply a password. The hash itself never leaves
+   * the server; the public endpoint answers 401 until the correct password is
+   * presented via the `X-Share-Password` header.
+   */
+  hasPassword: boolean;
+  /**
+   * When set, the share renders this collection's bookmarks (in collection
+   * order) instead of running a tag query. Mutually exclusive with tagIds.
+   */
+  collectionId: string | null;
   /** Absolute path of the public page, e.g. `/s/reading-list`. */
   url: string;
 }
@@ -773,6 +784,14 @@ export interface ShareInput {
   isActive?: boolean;
   /** Days until the link stops resolving; omit or 0 for no expiry. */
   expiresInDays?: number;
+  /**
+   * Visitor password. A non-empty string sets/replaces it; `null` removes it;
+   * omitting leaves the stored password untouched (PATCH semantics mirror
+   * `expiresInDays`).
+   */
+  password?: string | null;
+  /** Share a whole collection instead of a tag query; `null` clears it. */
+  collectionId?: string | null;
 }
 
 /** Trimmed bookmark shape served to anonymous visitors. */

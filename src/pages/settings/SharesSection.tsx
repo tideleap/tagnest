@@ -4,11 +4,13 @@ import type { Share, ShareInput, SharePalette, ShareTheme } from '@shared/types'
 import {
   Badge,
   Button,
+  Checkbox,
   ConfirmDialog,
   EmptyState,
   IconButton,
   Input,
   Modal,
+  SegmentedControl,
   Select,
   Skeleton,
   Switch,
@@ -17,6 +19,7 @@ import {
   toast,
 } from '@/components/ui';
 import {
+  useCollections,
   useCreateShare,
   useDeleteShare,
   useShares,
@@ -78,6 +81,7 @@ const SHARE_THEME_LABEL: Record<ShareTheme, string> = {
 export function SharesSection() {
   const { data: shares, isLoading } = useShares();
   const { data: tags } = useTags();
+  const { data: collections } = useCollections();
   const create = useCreateShare();
   const update = useUpdateShare();
   const del = useDeleteShare();
@@ -89,6 +93,9 @@ export function SharesSection() {
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
+  /** Content source: a tag query or a whole collection. */
+  const [sourceMode, setSourceMode] = useState<'tags' | 'collection'>('tags');
+  const [collectionId, setCollectionId] = useState('');
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [matchAllTags, setMatchAllTags] = useState(false);
   const [includeNotes, setIncludeNotes] = useState(true);
@@ -97,12 +104,18 @@ export function SharesSection() {
   const [isActive, setIsActive] = useState(true);
   /** Raw select value: `EXPIRY_KEEP` or a day count as a string. */
   const [expiry, setExpiry] = useState('0');
+  /** Visitor password. `hasPassword` tracks whether the edited share already has one. */
+  const [password, setPassword] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const [removePassword, setRemovePassword] = useState(false);
 
   const openCreate = () => {
     setEditing(null);
     setTitle('');
     setSlug('');
     setDescription('');
+    setSourceMode('tags');
+    setCollectionId('');
     setTagIds([]);
     setMatchAllTags(false);
     setIncludeNotes(true);
@@ -110,6 +123,9 @@ export function SharesSection() {
     setPalette('light');
     setIsActive(true);
     setExpiry('0');
+    setPassword('');
+    setHasPassword(false);
+    setRemovePassword(false);
     setShowForm(true);
   };
 
@@ -118,6 +134,8 @@ export function SharesSection() {
     setTitle(s.title);
     setSlug(s.slug);
     setDescription(s.description ?? '');
+    setSourceMode(s.collectionId ? 'collection' : 'tags');
+    setCollectionId(s.collectionId ?? '');
     setTagIds(s.tagIds);
     setMatchAllTags(s.matchAllTags);
     setIncludeNotes(s.includeNotes);
@@ -127,6 +145,9 @@ export function SharesSection() {
     // Preserve whatever deadline is already stored unless the user picks a new
     // one; a share with no deadline simply starts on "never expires".
     setExpiry(s.expiresAt ? EXPIRY_KEEP : '0');
+    setPassword('');
+    setHasPassword(s.hasPassword);
+    setRemovePassword(false);
     setShowForm(true);
   };
 
@@ -138,18 +159,33 @@ export function SharesSection() {
   const submit = () => {
     const trimmed = title.trim();
     if (!trimmed) return;
+
+    // Password semantics mirror expiresInDays: omit = leave stored value alone.
+    // A typed password sets/replaces; the remove checkbox clears it; otherwise
+    // the field is omitted entirely so unrelated edits never strip it.
+    const passwordPatch =
+      password.length > 0
+        ? { password }
+        : removePassword && hasPassword
+          ? { password: null }
+          : {};
+
     const input: ShareInput = {
       title: trimmed,
       slug: slug.trim() || undefined,
       description: description.trim() || null,
-      tagIds,
-      matchAllTags,
+      // Collection mode wins: the backend clears tag_ids when a collection is
+      // chosen, and tag mode clears collection_id by passing null.
+      ...(sourceMode === 'collection' && collectionId
+        ? { collectionId, tagIds: [] }
+        : { collectionId: null, tagIds, matchAllTags }),
       includeNotes,
       theme,
       palette,
       isActive,
       // Omitted entirely on `keep`, so the server leaves `expires_at` untouched.
       ...(expiry === EXPIRY_KEEP ? {} : { expiresInDays: Number(expiry) }),
+      ...passwordPatch,
     };
     if (editing) {
       update.mutate(
@@ -174,7 +210,7 @@ export function SharesSection() {
     <>
       <Card
         title="公开分享"
-        description="把指定标签下的书签整理成一个只读页面，任何人都能通过链接访问。分享的是实时查询结果，不是快照。"
+        description="把指定标签下的书签或整个集合整理成一个只读页面，任何人都能通过链接访问。分享的是实时查询结果，不是快照；可选设置访问密码。"
       >
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
@@ -191,12 +227,17 @@ export function SharesSection() {
                     <Badge tone={s.isActive ? 'positive' : 'neutral'}>
                       {s.isActive ? '已启用' : '已停用'}
                     </Badge>
+                    {s.hasPassword && <Badge tone="caution">密码保护</Badge>}
                     <Badge>{SHARE_THEME_LABEL[s.theme]}</Badge>
                     <Badge tone="neutral">{SHARE_PALETTE_LABEL[s.palette]}</Badge>
-                    {s.tagIds.length > 0 && (
-                      <span className="text-2xs text-ink-faint">
-                        {s.tagIds.length} 个标签筛选
-                      </span>
+                    {s.collectionId ? (
+                      <span className="text-2xs text-ink-faint">集合分享</span>
+                    ) : (
+                      s.tagIds.length > 0 && (
+                        <span className="text-2xs text-ink-faint">
+                          {s.tagIds.length} 个标签筛选
+                        </span>
+                      )
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-faint">
@@ -281,43 +322,73 @@ export function SharesSection() {
             rows={2}
           />
 
-          {tags && tags.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium text-ink-soft">
-                包含标签（不选则分享全部书签）
-              </span>
-              <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto scrollbar-slim">
-                {tags.map((t) => {
-                  const active = tagIds.includes(t.id);
-                  return (
-                    <TagChip
-                      key={t.id}
-                      name={t.name}
-                      colorIndex={t.colorIndex}
-                      active={active}
-                      onClick={() => toggleTag(t.id)}
-                    />
-                  );
-                })}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-ink-soft">内容来源</span>
+            <SegmentedControl
+              label="内容来源"
+              value={sourceMode}
+              onChange={setSourceMode}
+              segments={[
+                { value: 'tags', label: '按标签筛选' },
+                { value: 'collection', label: '指定集合' },
+              ]}
+              size="sm"
+            />
+          </div>
+
+          {sourceMode === 'collection' ? (
+            <Select
+              label="选择集合"
+              value={collectionId}
+              onChange={(e) => setCollectionId(e.target.value)}
+              options={[
+                { value: '', label: '请选择集合…' },
+                ...(collections ?? []).map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              hint="分享该集合内的全部书签（按集合顺序），私密与已删除书签自动排除。"
+            />
+          ) : (
+            tags &&
+            tags.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium text-ink-soft">
+                  包含标签（不选则分享全部书签）
+                </span>
+                <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto scrollbar-slim">
+                  {tags.map((t) => {
+                    const active = tagIds.includes(t.id);
+                    return (
+                      <TagChip
+                        key={t.id}
+                        name={t.name}
+                        colorIndex={t.colorIndex}
+                        active={active}
+                        onClick={() => toggleTag(t.id)}
+                      />
+                    );
+                  })}
+                </div>
+                {tagIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTagIds([])}
+                    className="self-start text-2xs text-ink-faint underline-offset-2 hover:text-ink-soft hover:underline"
+                  >
+                    清除筛选
+                  </button>
+                )}
               </div>
-              {tagIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setTagIds([])}
-                  className="self-start text-2xs text-ink-faint underline-offset-2 hover:text-ink-soft hover:underline"
-                >
-                  清除筛选
-                </button>
-              )}
-            </div>
+            )
           )}
 
-          <Switch
-            checked={matchAllTags}
-            onChange={setMatchAllTags}
-            label="需同时满足所有标签"
-            hint="开启后，只有带全部所选标签的书签才会出现"
-          />
+          {sourceMode === 'tags' && (
+            <Switch
+              checked={matchAllTags}
+              onChange={setMatchAllTags}
+              label="需同时满足所有标签"
+              hint="开启后，只有带全部所选标签的书签才会出现"
+            />
+          )}
           <Switch
             checked={includeNotes}
             onChange={setIncludeNotes}
@@ -330,6 +401,30 @@ export function SharesSection() {
             label="立即启用"
             hint="关闭后链接将暂时返回 404"
           />
+
+          <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken/40 p-3">
+            <Input
+              label="访问密码"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={hasPassword ? '留空则保持当前密码' : '可留空，任何人可访问'}
+              autoComplete="new-password"
+              hint={
+                hasPassword && !password && !removePassword
+                  ? '当前已设置密码；留空保持不变，或输入新密码替换。'
+                  : '设置后，访客需输入密码才能查看分享页内容。'
+              }
+            />
+            {hasPassword && (
+              <Checkbox
+                checked={removePassword}
+                onChange={(e) => setRemovePassword(e.target.checked)}
+                label="移除密码（改为公开访问）"
+              />
+            )}
+          </div>
+
           <Select
             label="主题"
             value={theme}
