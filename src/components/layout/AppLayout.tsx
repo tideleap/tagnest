@@ -7,6 +7,7 @@ import { useAutoClear } from '@/hooks/useAutoClear';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileTabBar } from './MobileTabBar';
+import { OfflineBanner } from './OfflineBanner';
 import { AmbientGlow } from '@/components/decor/AmbientGlow';
 import { cx } from '@/lib/cx';
 
@@ -82,6 +83,7 @@ export function AppLayout() {
           collapsed ? 'md:pl-[4.25rem]' : 'md:pl-[4.25rem] lg:pl-[15.75rem]',
         )}
       >
+        <OfflineBanner />
         <TopBar />
 
         <main

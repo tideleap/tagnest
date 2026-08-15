@@ -11,8 +11,11 @@
 //
 // Versioning: bump CACHE_VERSION on any change to force a clean cache, and
 // skipWaiting + clientsClaim give a new SW control on the next load.
-
-const CACHE_VERSION = 'tagnest-shell-v3';
+//
+// v4: manifest.webmanifest gained share_target + indigo theme colours (B-3);
+// the precached copy must be refreshed so installed PWAs pick up the Web Share
+// Target registration.
+const CACHE_VERSION = 'tagnest-shell-v4';
 const PRECACHE = [
   '/',
   '/index.html',
