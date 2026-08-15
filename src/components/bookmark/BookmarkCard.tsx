@@ -215,13 +215,13 @@ function BookmarkCardBase({
 
   const rootRef = useRef<HTMLElement>(null);
   // Whether this card is currently on screen. Drives both the (cheap) status
-  // poll below and the lazy (re)capture, so a long off-screen list never floods
-  // the backend with requests.
+  // fetch below and the lazy (re)capture, so a long off-screen list never
+  // floods the backend with requests.
   const [inView, setInView] = useState(false);
 
-  // Real-time snapshot status: each card polls its own lightweight endpoint,
-  // but ONLY while it is actually on screen — off-screen cards show their
-  // cached image and stay quiet.
+  // Snapshot status: fetched once when the card scrolls into view (no more
+  // 30s per-card polling) — off-screen cards show their cached image and stay
+  // quiet. Capture mutations invalidate this key, so updates still land.
   const { data: snapStatus } = useBookmarkSnapshotStatus(b.id, !inTrash && inView);
 
   // Keep the latest status in a ref so the intersection observer (set up once)

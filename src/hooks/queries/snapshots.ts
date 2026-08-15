@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BookmarkSnapshotStatus, SnapshotMonitorItem, SnapshotMonitorStatus } from '@shared/types';
+import type { BookmarkSnapshotStatus } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -50,63 +50,23 @@ export function useBookmarkSnapshots(id: string | null, enabled = true) {
   });
 }
 
-export const SNAPSHOT_MONITOR_KEY = ['snapshot-monitor'] as const;
-
-/**
- * Real-time snapshot monitor: top N bookmarks that already have a snapshot,
- * ordered by visits + recency. Refreshes automatically every 30s so the first
- * screen always shows the latest visual state.
- */
-export function useSnapshotMonitor(enabled = true) {
-  return useQuery({
-    queryKey: SNAPSHOT_MONITOR_KEY,
-    queryFn: () => api.get<SnapshotMonitorStatus>('/snapshots/monitor'),
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-    enabled,
-  });
-}
-
 export const bookmarkSnapshotStatusKey = (id: string) => ['bookmark-snapshot-status', id] as const;
 
 /**
- * Polls the lightweight status for one bookmark's snapshot. Used inside each
- * card to show freshness and trigger automatic refreshes without pulling the
- * full monitor list.
+ * Fetches the lightweight snapshot status for one bookmark ONCE when the card
+ * scrolls into view. This used to poll every 30s per card — with N visible
+ * cards that meant N requests every 30 seconds, indefinitely. The status only
+ * feeds the stale dot, the lazy-capture decision and the live cover key, and
+ * all of those are event-driven: capture mutations invalidate this key (and
+ * the bookmark list), so the data refreshes exactly when something changes.
+ * A finite staleTime still re-checks on remounts after 5 minutes.
  */
 export function useBookmarkSnapshotStatus(id: string | null, enabled = true) {
   return useQuery({
     queryKey: bookmarkSnapshotStatusKey(id ?? ''),
     queryFn: () => api.get<BookmarkSnapshotStatus>(`/bookmarks/${id}/snapshot/status`),
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
     enabled: Boolean(id) && enabled,
-  });
-}
-
-interface RefreshMonitorResponse {
-  item: SnapshotMonitorItem;
-  refreshedAt: string;
-}
-
-/**
- * Refreshes one bookmark in the monitor strip. Without a `bookmarkId` the
- * backend refreshes the bookmark whose snapshot is oldest (round-robin), which
- * is how the automatic rotation is implemented.
- */
-export function useRefreshSnapshotMonitor() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (opts: { bookmarkId?: string } = {}) =>
-      api.post<RefreshMonitorResponse>('/snapshots/monitor', opts.bookmarkId ? { bookmarkId: opts.bookmarkId } : {}),
-    onSuccess: (res) => {
-      void qc.invalidateQueries({ queryKey: SNAPSHOT_MONITOR_KEY });
-      void qc.invalidateQueries({ queryKey: bookmarkSnapshotStatusKey(res.item.bookmarkId) });
-      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
-      void qc.invalidateQueries({ queryKey: keys.bookmark(res.item.bookmarkId) });
-      toast.success(`${res.item.title || '书签'} 快照已更新`);
-    },
-    onError: (e: Error) => toast.error('刷新快照失败', e.message),
+    staleTime: 5 * 60_000,
   });
 }
 

@@ -4,7 +4,7 @@ import { api, qs } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys, PAGE_SIZE } from '@/hooks/queries/keys';
 
-export function useBookmarks(query: BookmarkQuery) {
+export function useBookmarks(query: BookmarkQuery, enabled = true) {
   return useInfiniteQuery({
     queryKey: keys.bookmarks(query),
     initialPageParam: null as string | null,
@@ -23,6 +23,7 @@ export function useBookmarks(query: BookmarkQuery) {
       ),
     getNextPageParam: (last) => last.nextCursor,
     staleTime: 30_000,
+    enabled,
   });
 }
 

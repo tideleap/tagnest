@@ -72,9 +72,13 @@ export function CommandPalette() {
   const listRef = useRef<HTMLUListElement>(null);
 
   const { data: tags } = useTags();
-  // Only search once there is something to search for.
+  // Only search once there is something to search for. The query is fully
+  // disabled below the threshold — the old `limit: 0` trick still hit the
+  // backend because the server clamps limit to >= 1.
+  const searching = debounced.length >= 2;
   const { data: results } = useBookmarks(
-    debounced.length >= 2 ? { scope: 'all', q: debounced, limit: 6 } : { scope: 'all', limit: 0 },
+    { scope: 'all', q: searching ? debounced : undefined, limit: 6 },
+    searching,
   );
 
   const close = () => setCommandOpen(false);

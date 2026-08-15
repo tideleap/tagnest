@@ -370,13 +370,22 @@ export async function loadFeedbackTrend(
  *
  * Returns an empty profile (not null) when there is no history, so callers can
  * pass it straight into the engine without branching.
+ *
+ * Bounded to the most recent `FEEDBACK_PROFILE_LIMIT` rows: the profile feeds
+ * per-tag accept/reject statistics, and recent feedback is what should steer
+ * suggestions. Without a cap this query grew unboundedly with usage, loading
+ * every feedback row a user ever produced into memory on each AI run.
  */
+const FEEDBACK_PROFILE_LIMIT = 2000;
+
 export async function loadFeedbackProfile(env: Env, userId: string): Promise<FeedbackProfile> {
   const rows = await env.DB.prepare(
     `SELECT tag_name, action, domain, final_tag_id, context
-       FROM ai_feedback WHERE user_id = ?`,
+       FROM ai_feedback WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?`,
   )
-    .bind(userId)
+    .bind(userId, FEEDBACK_PROFILE_LIMIT)
     .all<Record<string, unknown>>();
 
   return buildFeedbackProfile(
