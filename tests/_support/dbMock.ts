@@ -63,6 +63,7 @@ export class MockDb {
   ai_settings: MockRow[] = [];
   private_vault: MockRow[] = [];
   shares: MockRow[] = [];
+  tag_merge_log: MockRow[] = [];
   /** Number of rows affected by the most recent mutation statement. */
   lastChanges = 0;
 
@@ -609,6 +610,29 @@ export class MockDb {
       this.bookmark_tags = this.bookmark_tags.filter((bt) => bt.bookmark_id !== bookmarkId);
       return [];
     }
+    // --- bookmark_tags: merge repoint (INSERT OR IGNORE ... SELECT) --
+    // Must precede the plain two-param INSERT OR IGNORE handler below.
+    if (
+      u.startsWith('INSERT OR IGNORE INTO BOOKMARK_TAGS') &&
+      u.includes('SELECT BT.BOOKMARK_ID')
+    ) {
+      const targetId = params[0] as string;
+      const userId = params[1] as string;
+      const sourceIds = params.slice(2) as string[];
+      for (const bt of [...this.bookmark_tags]) {
+        if (!sourceIds.includes(bt.tag_id)) continue;
+        const tag = this.tags.find((t) => t.id === bt.tag_id);
+        if (!tag || tag.user_id !== userId) continue;
+        if (
+          !this.bookmark_tags.find(
+            (x) => x.bookmark_id === bt.bookmark_id && x.tag_id === targetId,
+          )
+        ) {
+          this.bookmark_tags.push({ bookmark_id: bt.bookmark_id, tag_id: targetId });
+        }
+      }
+      return [];
+    }
     if (u.startsWith('INSERT OR IGNORE INTO BOOKMARK_TAGS')) {
       const [bookmark_id, tag_id] = params as string[];
       if (
@@ -651,6 +675,53 @@ export class MockDb {
         this.tags.push(parseInsertRow(m[1], m[2], params));
         return [];
       }
+    }
+
+    // --- tags: governance (merge ownership check, bulk ops) ----------
+    if (u.startsWith('SELECT ID, NAME FROM TAGS WHERE USER_ID = ? AND ID IN')) {
+      const userId = params[0] as string;
+      const ids = params.slice(1) as string[];
+      return this.tags
+        .filter((t) => t.user_id === userId && ids.includes(t.id))
+        .map((t) => ({ id: t.id, name: t.name }));
+    }
+    if (u.startsWith('DELETE FROM TAGS WHERE USER_ID = ? AND ID IN')) {
+      const userId = params[0] as string;
+      const ids = params.slice(1) as string[];
+      const before = this.tags.length;
+      this.tags = this.tags.filter((t) => !(t.user_id === userId && ids.includes(t.id)));
+      this.lastChanges = before - this.tags.length;
+      return [];
+    }
+    if (u.startsWith('DELETE FROM TAGS WHERE ID = ? AND USER_ID = ?')) {
+      const [id, userId] = params as string[];
+      const before = this.tags.length;
+      this.tags = this.tags.filter((t) => !(t.id === id && t.user_id === userId));
+      this.lastChanges = before - this.tags.length;
+      return [];
+    }
+
+    // --- tag_merge_log (merge audit trail) ---------------------------
+    if (u.startsWith('INSERT INTO TAG_MERGE_LOG')) {
+      const [id, user_id, target_tag_id, target_tag_name, source_tag_names, merged_count, created_at] =
+        params as [string, string, string, string, string, number, string];
+      this.tag_merge_log.push({
+        id,
+        user_id,
+        target_tag_id,
+        target_tag_name,
+        source_tag_names,
+        merged_count,
+        created_at,
+      });
+      return [];
+    }
+    if (u.startsWith('SELECT ID, TARGET_TAG_ID, TARGET_TAG_NAME, SOURCE_TAG_NAMES')) {
+      const userId = params[0] as string;
+      return this.tag_merge_log
+        .filter((r) => r.user_id === userId)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .slice(0, 50);
     }
 
     // --- tags: category-private listing (listPrivateTagsWithBookmarks) -

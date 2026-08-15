@@ -46,10 +46,19 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     .slice(0, MAX_UNUSED)
     .map((entry) => ({ id: entry.id, name: entry.name }));
 
+  // Used exactly once: governance candidates. Unlike `unused` they each carry
+  // a live bookmark, so the UI offers merge/review rather than bulk delete.
+  const lowUsage = vocab.entries
+    .filter((entry) => entry.count === 1)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MAX_UNUSED)
+    .map((entry) => ({ id: entry.id, name: entry.name, count: entry.count }));
+
   const audit: AiTaxonomyAudit = {
     totalTags: vocab.entries.length,
     clusters,
     unused,
+    lowUsage,
   };
 
   return json(audit);
