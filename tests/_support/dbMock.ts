@@ -63,6 +63,16 @@ export class MockDb {
   /** Number of rows affected by the most recent mutation statement. */
   lastChanges = 0;
 
+  /** Mirrors PRIVATE_BOOKMARK_CLAUSE's NOT EXISTS half: does the bookmark carry
+   *  a tag the given user marked private? */
+  hasPrivateTag(bookmarkId: string, userId: string): boolean {
+    return this.bookmark_tags.some((bt) => {
+      if (bt.bookmark_id !== bookmarkId) return false;
+      const t = this.tags.find((x) => x.id === bt.tag_id);
+      return Boolean(t && t.user_id === userId && t.is_private === 1);
+    });
+  }
+
   prepare(sql: string): Statement {
     // Arrow-function methods capture `this` (the MockDb instance) lexically, so
     // we never alias `this` to a local variable (which trips no-this-alias) and
@@ -367,10 +377,19 @@ export class MockDb {
         return String(b.created_at).localeCompare(String(a.created_at));
       });
     }
-    if (u.startsWith('SELECT ID FROM BOOKMARKS WHERE ID = ? AND USER_ID = ? AND DELETED_AT IS NULL')) {
+    if (u.startsWith('SELECT ID FROM BOOKMARKS B WHERE B.ID = ? AND B.USER_ID = ? AND B.DELETED_AT IS NULL')) {
+      // Collection membership validation: PRIVATE_BOOKMARK_CLAUSE applies, so
+      // vaulted or category-private bookmarks must read as "not found".
       const [id, userId] = params as string[];
       return this.bookmarks
-        .filter((b) => b.id === id && b.user_id === userId && b.deleted_at == null)
+        .filter(
+          (b) =>
+            b.id === id &&
+            b.user_id === userId &&
+            b.deleted_at == null &&
+            b.is_private !== 1 &&
+            !this.hasPrivateTag(b.id, userId),
+        )
         .slice(0, 1)
         .map((b) => ({ id: b.id }));
     }
@@ -444,32 +463,45 @@ export class MockDb {
     // --- bookmarks: members of a private tag (listPrivateTagsWithBookmarks)
     if (
       u.startsWith(
-        'SELECT DISTINCT B.ID, B.URL, B.TITLE, B.FAVICON_URL, B.NOTE, B.IS_FAVORITE, B.IS_ARCHIVED, B.CREATED_AT FROM BOOKMARKS B JOIN BOOKMARK_TAGS',
+        'SELECT DISTINCT BT.TAG_ID AS TAG_ID, B.ID, B.URL, B.TITLE, B.FAVICON_URL, B.NOTE, B.IS_FAVORITE, B.IS_ARCHIVED, B.CREATED_AT',
       )
     ) {
-      const tagId = params[0] as string;
-      const userId = params[1] as string;
-      const members = this.bookmark_tags
-        .filter((bt) => bt.tag_id === tagId)
-        .map((bt) => this.bookmarks.find((b) => b.id === bt.bookmark_id))
-        .filter(
-          (b): b is MockRow =>
-            Boolean(b) &&
-            b!.user_id === userId &&
-            b!.deleted_at == null &&
-            b!.is_private !== 1,
-        )
-        .sort((a, b) => String(a.title).localeCompare(String(b.title), 'zh-CN'));
-      return members.map((b) => ({
-        id: b.id,
-        url: b.url,
-        title: b.title,
-        favicon_url: b.favicon_url ?? null,
-        note: b.note ?? null,
-        is_favorite: b.is_favorite === 1 ? 1 : 0,
-        is_archived: b.is_archived === 1 ? 1 : 0,
-        created_at: b.created_at,
-      }));
+      const tUserId = params[0] as string;
+      const bUserId = params[1] as string;
+      const qLike =
+        params.length > 2 ? String(params[2]).replace(/%/g, '').toLowerCase() : null;
+      const matchesQ = (b: MockRow) =>
+        !qLike ||
+        String(b.title ?? '').toLowerCase().includes(qLike) ||
+        String(b.url ?? '').toLowerCase().includes(qLike) ||
+        (b.note != null && String(b.note).toLowerCase().includes(qLike));
+      const pairs: MockRow[] = [];
+      for (const bt of this.bookmark_tags) {
+        const t = this.tags.find((x) => x.id === bt.tag_id);
+        if (!t || t.user_id !== tUserId || t.is_private !== 1) continue;
+        const b = this.bookmarks.find((x) => x.id === bt.bookmark_id);
+        if (
+          b &&
+          b.user_id === bUserId &&
+          b.deleted_at == null &&
+          b.is_private !== 1 &&
+          matchesQ(b)
+        ) {
+          pairs.push({
+            tag_id: bt.tag_id,
+            id: b.id,
+            url: b.url,
+            title: b.title,
+            favicon_url: b.favicon_url ?? null,
+            note: b.note ?? null,
+            is_favorite: b.is_favorite === 1 ? 1 : 0,
+            is_archived: b.is_archived === 1 ? 1 : 0,
+            created_at: b.created_at,
+          });
+        }
+      }
+      pairs.sort((a, b) => String(a.title).localeCompare(String(b.title), 'zh-CN'));
+      return pairs;
     }
 
     // --- tags: setTagPrivate recursive-cascade UPDATE -----------------
