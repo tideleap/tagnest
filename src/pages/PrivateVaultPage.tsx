@@ -335,7 +335,6 @@ function UnlockedPanel({
   isError,
   errorMessage,
   onRetry,
-  onAdd,
   onEdit,
   onUnset,
   onRequestDelete,
@@ -346,7 +345,6 @@ function UnlockedPanel({
   isError: boolean;
   errorMessage: string;
   onRetry: () => void;
-  onAdd: () => void;
   onEdit: (id: string) => void;
   onUnset: (id: string) => void;
   onRequestDelete: (id: string) => void;
@@ -376,23 +374,10 @@ function UnlockedPanel({
   }
 
   if (items.length === 0) {
-    return (
-      <EmptyState
-        icon={<ShieldCheck size={22} />}
-        title="私密保险库是空的"
-        description={
-          <>
-            把不便公开的书签移到这里，它们会从所有列表和搜索中消失，只有你能解锁查看。
-            被「类别私密」标签隐藏的书签则在下方专区管理。
-          </>
-        }
-        action={
-          <Button variant="primary" onClick={onAdd} iconLeft={<Plus size={15} />}>
-            添加私密书签
-          </Button>
-        }
-      />
-    );
+    // No big empty hero here: the page already carries the category-private
+    // section below, and the header keeps the 添加 entry point. A silent
+    // list reads cleaner than a wall of copy.
+    return null;
   }
 
   return (
@@ -806,7 +791,6 @@ export function PrivateVaultPage() {
             isError={isError}
             errorMessage={listError instanceof Error ? listError.message : ''}
             onRetry={() => void refetch()}
-            onAdd={() => setEditor({ mode: 'create', initial: blankData() })}
             onEdit={(id) => {
               const d = decrypted[id];
               if (d) setEditor({ mode: 'edit', id, initial: d });
