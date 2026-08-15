@@ -18,6 +18,8 @@ export type { MenuItem, MenuProps } from './Menu';
 export {
   Avatar,
   Badge,
+  ColorPicker,
+  DialogFooter,
   EmptyState,
   Kbd,
   QueryErrorState,

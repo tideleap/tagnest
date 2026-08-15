@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cx } from '@/lib/cx';
 import { TAG_COLOR_COUNT } from '@shared/types';
+import { Button } from './Button';
 
 /* ------------------------------------------------------------------ *
  * Badge
@@ -76,6 +77,81 @@ export function tagColorVars(colorIndex: number) {
     '--tag-fg': `oklch(0.44 0.12 ${hue})`,
     '--tag-dot': `oklch(0.63 0.15 ${hue})`,
   } as React.CSSProperties;
+}
+
+/* ------------------------------------------------------------------ *
+ * ColorPicker â€” shared tag/colour swatch selector (D1)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The fixed-hue swatch row used by the tag / collection / tab-group form
+ * dialogs. Previously copy-pasted verbatim across three dialogs; extracted so
+ * a palette or interaction change lands in one place.
+ */
+export function ColorPicker({
+  value,
+  onChange,
+  label = 'é¢œè‰²',
+}: {
+  value: number;
+  onChange: (index: number) => void;
+  label?: string;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium text-ink-soft">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: TAG_COLOR_COUNT }).map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onChange(i)}
+            aria-label={`é¢œè‰² ${i + 1}`}
+            aria-pressed={value === i}
+            style={tagColorVars(i)}
+            className={cx(
+              'h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform',
+              value === i ? 'scale-110 border-ink' : 'border-transparent hover:scale-105',
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * DialogFooter â€” shared cancel/confirm button pair (D1)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The cancel + primary-confirm button pair every form dialog renders in its
+ * Modal footer. Extracted from three verbatim copies so the button order,
+ * labels and loading wiring stay consistent.
+ */
+export function DialogFooter({
+  onCancel,
+  onSubmit,
+  loading,
+  submitLabel,
+  cancelLabel = 'È¡æ¶ˆ',
+}: {
+  onCancel: () => void;
+  onSubmit: () => void;
+  loading?: boolean;
+  submitLabel: string;
+  cancelLabel?: string;
+}) {
+  return (
+    <>
+      <Button variant="ghost" onClick={onCancel}>
+        {cancelLabel}
+      </Button>
+      <Button variant="primary" onClick={onSubmit} loading={loading}>
+        {submitLabel}
+      </Button>
+    </>
+  );
 }
 
 export interface TagChipProps {
@@ -192,7 +268,7 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 export function Spinner({ size = 16, label }: { size?: number; label?: string }) {
   return (
-    <span role="status" aria-label={label ?? 'åŠ è½½ä¸?'} className="inline-flex">
+    <span role="status" aria-label={label ?? 'åŠ è½½ä¸­'} className="inline-flex">
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="anim-spin">
         <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.2" />
         <path
@@ -247,12 +323,12 @@ export function EmptyState({ icon, title, description, action, compact }: EmptyS
 }
 
 /* ------------------------------------------------------------------ *
- * QueryErrorState ¡ª the honest counterpart of EmptyState
+ * QueryErrorState â€” the honest counterpart of EmptyState
  * ------------------------------------------------------------------ */
 
 /**
  * Rendered when a list query FAILS. Deliberately distinct from EmptyState:
- * a failed load must never read as "there is no data" ¡ª that confusion hides
+ * a failed load must never read as "there is no data" â€” that confusion hides
  * outages and makes users trust nothing. Offers a retry.
  */
 export function QueryErrorState({
@@ -281,9 +357,9 @@ export function QueryErrorState({
           </svg>
         </span>
       </span>
-      <h3 className="text-lg font-semibold text-ink">¼ÓÔØÊ§°Ü</h3>
+      <h3 className="text-lg font-semibold text-ink">åŠ è½½å¤±è´¥</h3>
       <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-        {message || 'ÍøÂç»ò·şÎñÆ÷Òì³££¬ÄÚÈİÃ»ÓĞ¼ÓÔØ³öÀ´¡£'}
+        {message || 'ç½‘ç»œæˆ–æœåŠ¡å™¨å¼‚å¸¸ï¼Œå†…å®¹æ²¡æœ‰åŠ è½½å‡ºæ¥ã€‚'}
       </p>
       {onRetry && (
         <button
@@ -297,7 +373,7 @@ export function QueryErrorState({
             <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
             <path d="M8 16H3v5" />
           </svg>
-          ÖØÊÔ
+          é‡è¯•
         </button>
       )}
     </div>

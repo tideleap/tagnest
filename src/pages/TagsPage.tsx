@@ -12,10 +12,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Tag } from '@shared/types';
-import { TAG_COLOR_COUNT } from '@shared/types';
 import {
   Button,
+  ColorPicker,
   ConfirmDialog,
+  DialogFooter,
   EmptyState,
   IconButton,
   Input,
@@ -403,18 +404,12 @@ function TagFormDialog({
       title={tag ? '编辑标签' : '新建标签'}
       size="sm"
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            variant="primary"
-            onClick={submit}
-            loading={createTag.isPending || updateTag.isPending}
-          >
-            {tag ? '保存' : '创建'}
-          </Button>
-        </>
+        <DialogFooter
+          onCancel={onClose}
+          onSubmit={submit}
+          loading={createTag.isPending || updateTag.isPending}
+          submitLabel={tag ? '保存' : '创建'}
+        />
       }
     >
       <div className="flex flex-col gap-4">
@@ -436,27 +431,7 @@ function TagFormDialog({
           placeholder="例如：设计参考"
         />
 
-        <div>
-          <p className="mb-2 text-xs font-medium text-ink-soft">颜色</p>
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: TAG_COLOR_COUNT }).map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setColorIndex(i)}
-                aria-label={`颜色 ${i + 1}`}
-                aria-pressed={colorIndex === i}
-                style={tagColorVars(i)}
-                className={cx(
-                  'h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform',
-                  colorIndex === i
-                    ? 'scale-110 border-ink'
-                    : 'border-transparent hover:scale-105',
-                )}
-              />
-            ))}
-          </div>
-        </div>
+        <ColorPicker value={colorIndex} onChange={setColorIndex} />
 
         <div className="rounded-md bg-sunken px-3 py-2.5">
           <p className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-ink-faint">预览</p>

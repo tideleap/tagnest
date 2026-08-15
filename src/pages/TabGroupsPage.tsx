@@ -10,10 +10,11 @@ import {
   X,
 } from 'lucide-react';
 import type { Bookmark, TabGroup, TabItem } from '@shared/types';
-import { TAG_COLOR_COUNT } from '@shared/types';
 import {
   Button,
+  ColorPicker,
   ConfirmDialog,
+  DialogFooter,
   EmptyState,
   IconButton,
   Input,
@@ -362,18 +363,12 @@ function GroupFormDialog({
       title={group ? '编辑分组' : '新建分组'}
       size="sm"
       footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            variant="primary"
-            onClick={submit}
-            loading={create.isPending || update.isPending}
-          >
-            {group ? '保存' : '创建'}
-          </Button>
-        </>
+        <DialogFooter
+          onCancel={onClose}
+          onSubmit={submit}
+          loading={create.isPending || update.isPending}
+          submitLabel={group ? '保存' : '创建'}
+        />
       }
     >
       <div className="flex flex-col gap-4">
@@ -394,25 +389,7 @@ function GroupFormDialog({
           }}
           placeholder="例如：设计参考"
         />
-        <div>
-          <p className="mb-2 text-xs font-medium text-ink-soft">颜色</p>
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: TAG_COLOR_COUNT }).map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setColorIndex(i)}
-                aria-label={`颜色 ${i + 1}`}
-                aria-pressed={colorIndex === i}
-                style={tagColorVars(i)}
-                className={cx(
-                  'h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform',
-                  colorIndex === i ? 'scale-110 border-ink' : 'border-transparent hover:scale-105',
-                )}
-              />
-            ))}
-          </div>
-        </div>
+        <ColorPicker value={colorIndex} onChange={setColorIndex} />
       </div>
     </Modal>
   );
