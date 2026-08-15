@@ -618,3 +618,100 @@ export async function countPending(env: Env, userId: string): Promise<number> {
     .first<{ n: number }>();
   return Number(row?.n ?? 0);
 }
+
+/* ------------------------------------------------------------------ *
+ * Undo
+ * ------------------------------------------------------------------ */
+
+export interface UndoOutcome {
+  /** AI-written bookmark↔tag links removed. */
+  removedLinks: number;
+  /** Accepted suggestions returned to the review queue. */
+  restoredSuggestions: number;
+  /** Accepted suggestions dropped because a newer pending proposal replaced them. */
+  droppedSuggestions: number;
+}
+
+/**
+ * Undoes everything one run wrote into the library (plan T2 "可撤销").
+ *
+ * This is only possible because of migration 0006's provenance columns:
+ * accepted suggestions keep their `job_id`, and the tag links they produced
+ * carry `source = 'ai'`. Undo is three set-based statements — no per-row
+ * loops, so a 2,000-bookmark run undoes in a handful of round trips:
+ *
+ *  1. Delete the `source = 'ai'` links whose (bookmark, tag name) pair traces
+ *     back to an ACCEPTED suggestion of this job. The match goes by tag NAME
+ *     (not the suggestion's `tag_id`) because a tag proposed as new has
+ *     `tag_id = NULL` until accept resolves it.
+ *  2. Flip the job's accepted suggestions back to `pending` so the user can
+ *     decide again — unless a newer run already re-proposed the same
+ *     (bookmark, tag), in which case
+ *  3. …those stale accepted rows are dropped: the fresh pending proposal
+ *     already represents them, and reviving them would violate the
+ *     one-pending-per-(bookmark, tag) unique index.
+ *
+ * Known limitation: a suggestion accepted under a RENAMED spelling stores the
+ * old name, so undo will not find the link the rename produced. That path is
+ * single-suggestion-only and rare; the link remains manually removable.
+ *
+ * User-applied tags are never touched — `source = 'ai'` is the whole basis of
+ * the delete, which is exactly why the column exists.
+ */
+export async function undoJob(
+  env: Env,
+  userId: string,
+  jobId: string,
+): Promise<UndoOutcome> {
+  const delLinks = await env.DB.prepare(
+    `DELETE FROM bookmark_tags
+      WHERE source = 'ai'
+        AND EXISTS (
+          SELECT 1 FROM tag_suggestions s
+           WHERE s.user_id = ? AND s.job_id = ? AND s.status = 'accepted'
+             AND s.bookmark_id = bookmark_tags.bookmark_id
+             AND EXISTS (
+               SELECT 1 FROM tags t
+                WHERE t.id = bookmark_tags.tag_id
+                  AND t.user_id = ?
+                  AND t.name = s.tag_name COLLATE NOCASE
+             )
+        )`,
+  )
+    .bind(userId, jobId, userId)
+    .run();
+
+  const restore = await env.DB.prepare(
+    `UPDATE tag_suggestions SET status = 'pending', decided_at = NULL
+      WHERE user_id = ? AND job_id = ? AND status = 'accepted'
+        AND NOT EXISTS (
+          SELECT 1 FROM tag_suggestions s2
+           WHERE s2.bookmark_id = tag_suggestions.bookmark_id
+             AND s2.tag_name = tag_suggestions.tag_name COLLATE NOCASE
+             AND s2.status = 'pending'
+             AND s2.id <> tag_suggestions.id
+        )`,
+  )
+    .bind(userId, jobId)
+    .run();
+
+  const drop = await env.DB.prepare(
+    `DELETE FROM tag_suggestions
+      WHERE user_id = ? AND job_id = ? AND status = 'accepted'
+        AND EXISTS (
+          SELECT 1 FROM tag_suggestions s2
+           WHERE s2.bookmark_id = tag_suggestions.bookmark_id
+             AND s2.tag_name = tag_suggestions.tag_name COLLATE NOCASE
+             AND s2.status = 'pending'
+             AND s2.id <> tag_suggestions.id
+        )`,
+  )
+    .bind(userId, jobId)
+    .run();
+
+  return {
+    removedLinks: Number((delLinks.meta as { changes?: number } | undefined)?.changes ?? 0),
+    restoredSuggestions: Number((restore.meta as { changes?: number } | undefined)?.changes ?? 0),
+    droppedSuggestions: Number((drop.meta as { changes?: number } | undefined)?.changes ?? 0),
+  };
+}

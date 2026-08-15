@@ -23,8 +23,12 @@ export const DEFAULT_ENDPOINTS: Record<Exclude<AiProvider, 'none' | 'custom'>, s
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 };
 
-/** Batch responses are long; too small a ceiling truncates them into nothing. */
-const MAX_OUTPUT_TOKENS = 2048;
+/**
+ * Batch responses are long; too small a ceiling truncates them into nothing.
+ * Exported so the cost estimator (estimate.ts) can cap its per-batch output
+ * forecast at exactly what the provider request will allow.
+ */
+export const MAX_OUTPUT_TOKENS = 2048;
 
 /**
  * Model request deadline.

@@ -484,6 +484,29 @@ export interface AutoGroupResult {
   tags: Tag[];
 }
 
+/**
+ * Cost forecast for a batch run, computed before any model call (A1/T2).
+ *
+ * Token numbers are a character-based heuristic, not a tokenizer — the UI
+ * must present them as estimates. `capped` tells the client that the scope
+ * hit the per-run ceiling and more bookmarks exist than one run covers.
+ */
+export interface AiJobEstimate {
+  target: AiJobTarget;
+  /** Bookmarks the run would process. */
+  bookmarks: number;
+  /** Model calls (BATCH_SIZE bookmarks each). */
+  batches: number;
+  /** Client-driven run iterations (RUN_CHUNK bookmarks each). */
+  chunks: number;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  /** False when no model is configured — the run would use the fallback only. */
+  modelReady: boolean;
+  /** True when the scope was clipped to the per-run maximum. */
+  capped: boolean;
+}
+
 /** Result of one chunk of a run, so the UI can show live progress. */
 export interface AiJobRunResult {
   job: AiJob;

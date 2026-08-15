@@ -30,7 +30,9 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
-  const body = await readJson<{ target?: unknown; bookmarkIds?: unknown }>(ctx.request);
+  const body = await readJson<{ target?: unknown; bookmarkIds?: unknown; limit?: unknown }>(
+    ctx.request,
+  );
 
   const target = String(body.target ?? 'untagged');
   if (target !== 'untagged' && target !== 'all' && target !== 'ids') {
@@ -45,7 +47,19 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     throw badRequest('请选择要整理的书签');
   }
 
-  const ids = await resolveScope(ctx.env, userId, target, explicitIds);
+  // Trial run (plan T2): `limit` clips the snapshot to the first N bookmarks,
+  // so the user can sample a big library ("先试 20 条") before committing the
+  // whole thing. The rest of the pipeline is untouched — a trial is a normal
+  // job with a smaller scope, which is exactly what makes it resumable,
+  // cancellable and undoable like any other run.
+  const rawLimit = Number(body.limit);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(Math.trunc(rawLimit), MAX_JOB_ITEMS)
+      : null;
+
+  let ids = await resolveScope(ctx.env, userId, target, explicitIds);
+  if (limit !== null) ids = ids.slice(0, limit);
 
   // An empty scope is a dead end, not something a retry fixes — say which case
   // it is so the UI can explain rather than show a generic failure.
