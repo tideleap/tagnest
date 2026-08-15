@@ -329,6 +329,46 @@ export interface Stats {
   addedLast7Days: number;
 }
 
+/* ------------------------------------------------------------------ *
+ * O1 — Library health
+ * ------------------------------------------------------------------ */
+
+export interface HealthDuplicateBookmark {
+  id: string;
+  title: string;
+  url: string;
+  createdAt: string;
+}
+
+export interface HealthDuplicateGroup {
+  urlKey: string;
+  count: number;
+  bookmarks: HealthDuplicateBookmark[];
+}
+
+export interface HealthOrphanTag {
+  id: string;
+  name: string;
+}
+
+/** Structural report from GET /api/bookmarks/health (instant, pure SQL). */
+export interface HealthReport {
+  liveTotal: number;
+  duplicateGroups: HealthDuplicateGroup[];
+  duplicateExtra: number;
+  orphanTags: HealthOrphanTag[];
+  score: number;
+}
+
+export type ProbeStatus = 'ok' | 'dead' | 'auth' | 'suspicious' | 'blocked';
+
+export interface ProbeResult {
+  id: string;
+  url: string;
+  status: ProbeStatus;
+  httpStatus: number | null;
+}
+
 export type AiProvider = 'none' | 'openai' | 'anthropic' | 'gemini' | 'custom';
 
 /**

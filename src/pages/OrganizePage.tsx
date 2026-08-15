@@ -9,6 +9,7 @@ import { EvaluationPanel } from '@/components/organize/EvaluationPanel';
 import { SuggestionReview } from '@/components/organize/SuggestionReview';
 import { TaxonomyPanel } from '@/components/organize/TaxonomyPanel';
 import { AutoGroupPanel } from '@/components/organize/AutoGroupPanel';
+import { HealthPanel } from '@/components/organize/HealthPanel';
 import {
   useAiOverview,
   useAiSuggestions,
@@ -144,6 +145,7 @@ export function OrganizePage() {
 
       {tab === 'audit' && (
         <div className="flex flex-col gap-3">
+          <HealthPanel />
           <AutoGroupPanel />
           <TaxonomyPanel audit={audit} loading={auditLoading} />
           <TagExportBar />

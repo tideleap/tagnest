@@ -100,3 +100,5 @@ export {
   useAddToCollection,
   useRemoveFromCollection,
 } from './queries/collections';
+
+export { useHealthReport, useProbeBookmarks } from './queries/health';
