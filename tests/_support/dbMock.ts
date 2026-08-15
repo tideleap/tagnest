@@ -984,6 +984,28 @@ export class MockDb {
       }
     }
 
+    // --- bookmarks: snapshot state read (loadSnapshotState) ----------
+    if (u.startsWith('SELECT SNAPSHOT_KEY, SNAPSHOT_KEYS FROM BOOKMARKS WHERE ID = ? AND USER_ID = ?')) {
+      const [id, userId] = params as string[];
+      const row = this.bookmarks.find((b) => b.id === id && b.user_id === userId);
+      if (!row) return [];
+      return [{ snapshot_key: row.snapshot_key ?? null, snapshot_keys: row.snapshot_keys ?? null }];
+    }
+    // --- bookmarks: snapshot pointer update (updateBookmarkSnapshots) -
+    if (u.startsWith('UPDATE BOOKMARKS SET SNAPSHOT_KEY = ?, SNAPSHOT_KEYS = ?, UPDATED_AT = ?')) {
+      const [snapshotKey, snapshotKeys, ts, id, userId] = params as string[];
+      const row = this.bookmarks.find((b) => b.id === id && b.user_id === userId);
+      if (row) {
+        row.snapshot_key = snapshotKey;
+        row.snapshot_keys = snapshotKeys;
+        row.updated_at = ts;
+        this.lastChanges = 1;
+      } else {
+        this.lastChanges = 0;
+      }
+      return [];
+    }
+
     // --- private_vault -----------------------------------------------
     if (u.startsWith('SELECT SALT, VERIFIER FROM PRIVATE_VAULT WHERE USER_ID = ?')) {
       const userId = params[0] as string;
