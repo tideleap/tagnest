@@ -51,12 +51,20 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const id = newId();
   const ts = nowIso();
 
-  await ctx.env.DB.prepare(
-    `INSERT INTO collections (id, user_id, name, color_index, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+  // The pre-check above is the fast path; the unique index on
+  // (user_id, name COLLATE NOCASE) added in migration 0017 is the backstop.
+  // `INSERT OR IGNORE` + `RETURNING id` means the loser of two concurrent
+  // creates for the same name gets no row back, and we surface a 409 exactly
+  // like the pre-check instead of a raw constraint error.
+  const inserted = await ctx.env.DB.prepare(
+    `INSERT OR IGNORE INTO collections (id, user_id, name, color_index, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     RETURNING id`,
   )
     .bind(id, userId, name, colorIndex, ts, ts)
-    .run();
+    .first<{ id: string }>();
+
+  if (!inserted) throw conflict('集合已存在', { name: '集合已存在' });
 
   return json(
     mapCollection({ id, name, color_index: colorIndex, created_at: ts, updated_at: ts, count: 0 }),

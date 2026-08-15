@@ -56,12 +56,20 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // check only guards against grafting onto a corrupt subtree.)
   const parentId = await validateTagParent(ctx.env, userId, id, body.parentId ?? null);
 
-  await ctx.env.DB.prepare(
-    `INSERT INTO tags (id, user_id, name, color_index, parent_id, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?)`,
+  // The pre-check above is the fast path; the unique index on
+  // (user_id, name COLLATE NOCASE) from migration 0001 is the backstop.
+  // `INSERT OR IGNORE` + `RETURNING id` means the loser of two concurrent
+  // creates for the same name gets no row back, and we surface a 409 exactly
+  // like the pre-check instead of a raw constraint error.
+  const inserted = await ctx.env.DB.prepare(
+    `INSERT OR IGNORE INTO tags (id, user_id, name, color_index, parent_id, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?)
+     RETURNING id`,
   )
     .bind(id, userId, name, colorIndex, parentId, ts)
-    .run();
+    .first<{ id: string }>();
+
+  if (!inserted) throw conflict('标签已存在', { name: '标签已存在' });
 
   return json(
     mapTag({

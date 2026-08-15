@@ -123,6 +123,26 @@ describe('POST /api/collections', () => {
       ),
     ).rejects.toMatchObject({ status: 409 });
   });
+
+  it('race backstop: INSERT OR IGNORE yields no row for a duplicate name', async () => {
+    // The pre-check above catches the common case; this exercises the unique
+    // index backstop (migration 0017). Two concurrent creates for the same name
+    // cannot both insert — the loser gets no row back, which the handler turns
+    // into a 409 instead of a raw constraint error.
+    const env = makeEnv();
+    const db = env.DB as MockDb;
+    seedCollection(db, { name: '阅读清单' });
+    const row = await db
+      .prepare(
+        `INSERT OR IGNORE INTO collections (id, user_id, name, color_index, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         RETURNING id`,
+      )
+      .bind('c-new', USER, '阅读清单', 3, 't', 't')
+      .first();
+    expect(row).toBeNull();
+    expect(db.collections).toHaveLength(1); // no duplicate written
+  });
 });
 
 describe('GET /api/collections/:id', () => {

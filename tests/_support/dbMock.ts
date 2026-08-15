@@ -295,6 +295,17 @@ export class MockDb {
         .slice(0, 1)
         .map((c) => ({ id: c.id }));
     }
+    if (u.startsWith('INSERT OR IGNORE INTO COLLECTIONS')) {
+      const [id, user_id, name, color_index, created_at, updated_at] = params as string[];
+      // Mirrors the unique index on (user_id, name COLLATE NOCASE): a concurrent
+      // duplicate gets no row back, so the handler surfaces a 409.
+      const dup = this.collections.find(
+        (c) => c.user_id === user_id && String(c.name).toLowerCase() === String(name).toLowerCase(),
+      );
+      if (dup) return [];
+      this.collections.push({ id, user_id, name, color_index: Number(color_index), created_at, updated_at });
+      return [{ id }];
+    }
     if (u.startsWith('INSERT INTO COLLECTIONS')) {
       const [id, user_id, name, color_index, created_at, updated_at] = params as string[];
       this.collections.push({ id, user_id, name, color_index: Number(color_index), created_at, updated_at });
@@ -419,6 +430,22 @@ export class MockDb {
       return this.tags
         .filter((t) => t.user_id === userId && names.includes(String(t.name).toLowerCase()))
         .map((t) => ({ id: t.id, name: t.name }));
+    }
+    if (u.startsWith('INSERT OR IGNORE INTO TAGS')) {
+      const m = u.match(/INSERT OR IGNORE INTO TAGS \(([^)]+)\) VALUES \(([^)]*)\)/);
+      if (m) {
+        const row = parseInsertRow(m[1], m[2], params);
+        // Mirrors the unique index on (user_id, name COLLATE NOCASE): a
+        // concurrent duplicate gets no row back, so the handler surfaces a 409.
+        const dup = this.tags.find(
+          (t) =>
+            t.user_id === row.user_id &&
+            String(t.name).toLowerCase() === String(row.name).toLowerCase(),
+        );
+        if (dup) return [];
+        this.tags.push(row);
+        return [{ id: row.id }];
+      }
     }
     if (u.startsWith('INSERT INTO TAGS')) {
       const m = u.match(/INSERT INTO TAGS \(([^)]+)\) VALUES \(([^)]*)\)/);
