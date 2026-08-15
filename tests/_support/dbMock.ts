@@ -509,6 +509,23 @@ export class MockDb {
         }));
     }
 
+    // --- stats trend (A3 report page): per-day additions --------------
+    if (u.startsWith('SELECT SUBSTR(CREATED_AT, 1, 10) AS D, COUNT(*) AS C')) {
+      const userId = params[0] as string;
+      const since = params[1] as string;
+      const buckets = new Map<string, number>();
+      for (const b of this.bookmarks) {
+        if (b.user_id !== userId) continue;
+        if (b.deleted_at != null) continue;
+        if (String(b.created_at) < since) continue;
+        if (b.is_private === 1) continue;
+        if (this.hasPrivateTag(b.id, userId)) continue;
+        const d = String(b.created_at).slice(0, 10);
+        buckets.set(d, (buckets.get(d) ?? 0) + 1);
+      }
+      return [...buckets.entries()].map(([d, c]) => ({ d, c }));
+    }
+
     // --- ai: loadVocabulary (tags + usage counts) --------------------
     if (
       u.startsWith(

@@ -329,6 +329,18 @@ export interface Stats {
   addedLast7Days: number;
 }
 
+/** One day's additions for the report page's collection-trend chart. */
+export interface TrendPoint {
+  /** Calendar day, `YYYY-MM-DD`. */
+  date: string;
+  /** Bookmarks added that day (live, non-private). */
+  count: number;
+}
+
+export interface StatsTrend {
+  days: TrendPoint[];
+}
+
 /* ------------------------------------------------------------------ *
  * O1 — Library health
  * ------------------------------------------------------------------ */
