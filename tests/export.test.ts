@@ -60,12 +60,17 @@ function makeDb() {
   ];
   let page = 0;
   return {
-    prepare(_sql: string) {
+    prepare(sql: string) {
       return {
         bind(..._args: unknown[]) {
           return this;
         },
         async all() {
+          // Y1: renderJsonStream now loads collections before streaming the
+          // bookmarks. Answer those queries with an empty set so the bookmark
+          // pagination counter below stays aligned with the real pages.
+          if (/FROM collections/.test(sql)) return { results: [] };
+          if (/collection_bookmarks/.test(sql)) return { results: [] };
           const results = page === 0 ? page0 : page1;
           page += 1;
           return { results };
@@ -145,5 +150,61 @@ describe('export JSON streaming', () => {
     expect(b0.tags).toBeUndefined();
     expect(b0.description).toBeUndefined();
     expect(b0.url).toBe('https://a.example');
+  });
+});
+
+describe('export JSON collections (Y1)', () => {
+  function makeDbWithCollections() {
+    const base = makeDb();
+    const collections = [
+      { id: 'c1', name: '阅读清单', color_index: 2, created_at: '2024-01-01T00:00:00.000Z' },
+    ];
+    const members = [
+      { cid: 'c1', url: 'https://a.example' },
+      { cid: 'c1', url: 'https://b.example' },
+    ];
+    return {
+      prepare(sql: string) {
+        return {
+          bind(..._args: unknown[]) {
+            return this;
+          },
+          async all() {
+            if (/FROM collections/.test(sql)) return { results: collections };
+            if (/collection_bookmarks/.test(sql)) return { results: members };
+            // Delegate bookmark pagination to the base mock.
+            return base.prepare(sql).bind().all();
+          },
+        };
+      },
+    };
+  }
+
+  it('appends collections with ordered member URLs to the envelope', async () => {
+    const env = { DB: makeDbWithCollections() } as unknown as Env;
+    const opts: ExportRenderOpts = { includeTags: true, includeMetadata: true, includeVisits: true, pretty: false };
+    const stream = await renderJsonStream(
+      { env, userId: 'u-user', includeTrash: true },
+      opts,
+      '2024-01-05T00:00:00.000Z',
+    );
+    const parsed = JSON.parse(await collectStream(stream));
+    expect(parsed.bookmarks).toHaveLength(101);
+    expect(parsed.collections).toHaveLength(1);
+    expect(parsed.collections[0].name).toBe('阅读清单');
+    expect(parsed.collections[0].colorIndex).toBe(2);
+    expect(parsed.collections[0].urls).toEqual(['https://a.example', 'https://b.example']);
+  });
+
+  it('emits an empty collections array when the user has none', async () => {
+    const env = { DB: makeDb() } as unknown as Env;
+    const opts: ExportRenderOpts = { includeTags: true, includeMetadata: true, includeVisits: true, pretty: false };
+    const stream = await renderJsonStream(
+      { env, userId: 'u-user', includeTrash: true },
+      opts,
+      '2024-01-05T00:00:00.000Z',
+    );
+    const parsed = JSON.parse(await collectStream(stream));
+    expect(parsed.collections).toEqual([]);
   });
 });

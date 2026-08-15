@@ -1,7 +1,7 @@
 import type { Env, RequestData } from '../_lib/env';
 import { requireUserId } from '../_lib/auth';
 import { badRequest } from '../_lib/http';
-import { PRIVATE_BOOKMARK_CLAUSE } from '../_lib/db';
+import { PRIVATE_BOOKMARK_CLAUSE, D1_IN_CHUNK } from '../_lib/db';
 
 type Format = 'json' | 'html' | 'csv';
 
@@ -133,6 +133,60 @@ export async function* pageRows(ctx: ExportCtx): AsyncGenerator<ExportRow[]> {
 }
 
 /* ------------------------------------------------------------------ *
+ * Collections (Y1: a full export must carry the reading lists too)
+ * ------------------------------------------------------------------ */
+
+export interface ExportCollection {
+  name: string;
+  colorIndex: number;
+  createdAt: string;
+  /** Member bookmark URLs, in the user's chosen order. */
+  urls: string[];
+}
+
+/**
+ * Loads the user's collections with their live, non-private members. Members
+ * are referenced by URL — the stable identity in the export format — so the
+ * file stays meaningful even if internal ids change on re-import.
+ */
+export async function loadCollections(ctx: ExportCtx): Promise<ExportCollection[]> {
+  const { env, userId } = ctx;
+  const cols = await env.DB.prepare(
+    `SELECT id, name, color_index, created_at FROM collections
+      WHERE user_id = ? ORDER BY created_at ASC, id ASC LIMIT 500`,
+  )
+    .bind(userId)
+    .all<{ id: string; name: string; color_index: number; created_at: string }>();
+  const list = cols.results;
+  if (list.length === 0) return [];
+
+  const byId = new Map<string, ExportCollection>();
+  for (const c of list) {
+    byId.set(c.id, { name: c.name, colorIndex: c.color_index, createdAt: c.created_at, urls: [] });
+  }
+
+  const ids = list.map((c) => c.id);
+  for (let i = 0; i < ids.length; i += D1_IN_CHUNK) {
+    const chunk = ids.slice(i, i + D1_IN_CHUNK);
+    const ph = chunk.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT cb.collection_id AS cid, b.url
+         FROM collection_bookmarks cb
+         JOIN bookmarks b ON b.id = cb.bookmark_id
+        WHERE cb.collection_id IN (${ph})
+          AND b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        ORDER BY cb.position ASC, cb.created_at ASC`,
+    )
+      .bind(...chunk, userId)
+      .all<{ cid: string; url: string }>();
+    for (const r of rows.results) {
+      byId.get(r.cid)?.urls.push(r.url);
+    }
+  }
+  return [...byId.values()];
+}
+
+/* ------------------------------------------------------------------ *
  * Streaming renderers
  * ------------------------------------------------------------------ */
 
@@ -145,6 +199,11 @@ const encoder = new TextEncoder();
  *
  * `pretty` is honoured by indenting each bookmark object two spaces and putting
  * rows on their own lines — still correct, streamable JSON, just human-friendlier.
+ *
+ * Y1: the envelope also carries `collections` (name + ordered member URLs) so
+ * a full export round-trips the reading lists, not just the loose bookmarks.
+ * Collections are small and bounded (≤500), so they are loaded up front and
+ * appended after the bookmark array closes.
  */
 export async function renderJsonStream(
   ctx: ExportCtx,
@@ -152,6 +211,8 @@ export async function renderJsonStream(
   exportedAt: string,
 ): Promise<ReadableStream<Uint8Array>> {
   const pretty = opts.pretty;
+  const collections = await loadCollections(ctx);
+  const collectionsJson = JSON.stringify(collections);
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       let first = true;
@@ -172,7 +233,9 @@ export async function renderJsonStream(
           }
         }
       } finally {
-        controller.enqueue(encoder.encode(pretty ? `\n]}` : `]}`));
+        controller.enqueue(
+          encoder.encode(pretty ? `\n],"collections":${collectionsJson}}` : `],"collections":${collectionsJson}}`),
+        );
         controller.close();
       }
     },
