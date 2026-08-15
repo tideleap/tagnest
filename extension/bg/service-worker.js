@@ -1,12 +1,17 @@
 // TagNest extension background service worker (MV3 module).
 import { captureWindow } from './capture-window.js';
-import { ensureBookmark } from './api.js';
+import { ensureBookmark, appendNote } from './api.js';
 import { loadConfig, isConfigured } from './config.js';
 
-// Keyboard shortcut: Ctrl+Shift+T -> capture current window.
-chrome.commands.onCommand.addListener((command) => {
+// Keyboard shortcuts: Ctrl+Shift+S saves the active tab (selected text becomes
+// the note), Ctrl+Shift+T captures the whole window.
+chrome.commands.onCommand.addListener((command, tab) => {
   if (command === 'capture-window') {
     void runCaptureAndUpdateBadge(chrome.windows.WINDOW_ID_CURRENT);
+    return;
+  }
+  if (command === 'save-page') {
+    void saveActiveTab(tab);
   }
 });
 
@@ -25,42 +30,92 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === 'save-page') {
     (async () => {
-      try {
-        const cfg = await loadConfig();
-        if (!isConfigured(cfg)) {
-          sendResponse({ ok: false, notConfigured: true, message: '请先在设置中填写 TagNest 服务器与 API 密钥' });
-          return;
-        }
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 20_000);
-        try {
-          const { id, existed } = await ensureBookmark(cfg, { url: msg.url, title: msg.title }, ac.signal);
-          sendResponse({ ok: true, id, existed, saved: existed ? 0 : 1 });
-        } finally {
-          clearTimeout(timer);
-        }
-      } catch (err) {
-        sendResponse({ ok: false, message: err?.message || '收藏失败' });
-      }
+      sendResponse(await savePage(msg.url, msg.title, msg.note));
     })();
     return true; // async response
   }
 });
+
+/**
+ * Save one page. When the URL already exists (409) and a note was supplied,
+ * the note is appended to the existing bookmark instead of being dropped.
+ * Returns a popup-friendly result object.
+ */
+async function savePage(url, title, note) {
+  try {
+    const cfg = await loadConfig();
+    if (!isConfigured(cfg)) {
+      return { ok: false, notConfigured: true, message: '请先在设置中填写 TagNest 服务器与 API 密钥' };
+    }
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 20_000);
+    try {
+      const cleanNote = typeof note === 'string' ? note.trim() : '';
+      const { id, existed } = await ensureBookmark(cfg, { url, title, note: cleanNote || null }, ac.signal);
+      let noteAppended = false;
+      if (existed && cleanNote) {
+        // The URL was already bookmarked — keep the new note by appending it.
+        noteAppended = await appendNote(cfg, id, cleanNote, ac.signal);
+      }
+      return { ok: true, id, existed, noteAppended, saved: existed ? 0 : 1 };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    return { ok: false, message: err?.message || '收藏失败' };
+  }
+}
+
+/** Command entry: grab the active tab's selection (if any), then save it. */
+async function saveActiveTab(fallbackTab) {
+  let tab = fallbackTab;
+  if (!tab?.url) {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  }
+  if (!tab?.url || !/^https?:/.test(tab.url)) {
+    await flashBadge('');
+    return;
+  }
+  const selection = await readSelection(tab.id);
+  const result = await savePage(tab.url, tab.title || '', selection);
+  await flashBadge(result.ok ? `+${result.saved || (result.noteAppended ? '✓' : result.existed ? 0 : 1)}` : '');
+}
+
+/**
+ * Read the current text selection from a tab. Uses chrome.scripting under the
+ * activeTab grant (the command gesture counts), so no broad host permissions
+ * are needed. Any failure (restricted page, frame issues) yields ''.
+ */
+async function readSelection(tabId) {
+  try {
+    const frames = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => window.getSelection()?.toString() ?? '',
+    });
+    return String(frames?.[0]?.result ?? '').trim();
+  } catch {
+    return '';
+  }
+}
 
 async function runCaptureAndUpdateBadge(windowId) {
   const result = await captureWindow(windowId);
   await updateBadge(result);
 }
 
+/** Flash the toolbar badge text briefly, then clear it. */
+async function flashBadge(text) {
+  void chrome.action.setBadgeBackgroundColor({ color: '#b98a2f' });
+  await chrome.action.setBadgeText({ text });
+  if (text) setTimeout(() => chrome.action.setBadgeText({ text: '' }), 4000);
+}
+
 async function updateBadge(result) {
   // Surface the outcome on the toolbar badge — no extra permissions needed.
-  void chrome.action.setBadgeBackgroundColor({ color: '#b98a2f' });
   if (result.failed === 0 && (result.saved > 0 || result.existed > 0)) {
-    await chrome.action.setBadgeText({ text: `+${result.saved || result.existed}` });
-    // Badges persist; clear it with a slight delay so it reads as a flash.
-    setTimeout(() => chrome.action.setBadgeText({ text: '' }), 4000);
+    await flashBadge(`+${result.saved || result.existed}`);
   } else {
-    await chrome.action.setBadgeText({ text: '' });
+    await flashBadge('');
     if (result.openOptions) {
       chrome.runtime.openOptionsPage();
     }

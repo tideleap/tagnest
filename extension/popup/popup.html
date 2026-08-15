@@ -30,10 +30,21 @@
         </button>
       </div>
 
+      <label class="note-field" for="noteInput">
+        <span class="note-label">笔记（可选）</span>
+        <textarea
+          id="noteInput"
+          class="note-input"
+          rows="2"
+          maxlength="20000"
+          placeholder="随收藏记一笔想法，会存进书签笔记"
+        ></textarea>
+      </label>
+
       <div class="result" id="result" hidden></div>
 
       <footer class="footer">
-        <span class="hint" id="shortcutHint">Ctrl+Shift+T 收纳窗口</span>
+        <span class="hint" id="shortcutHint">Ctrl+Shift+S 收藏当前页 · Ctrl+Shift+T 收纳窗口</span>
         <a class="link" id="openOptions" role="button" tabindex="0">设置</a>
       </footer>
     </div>

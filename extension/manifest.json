@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "一键收藏当前页或整个窗口到你的 TagNest 书签库，并自动归档到标签页组。",
   "default_locale": null,
-  "permissions": ["activeTab", "tabs", "storage"],
+  "permissions": ["activeTab", "tabs", "storage", "scripting"],
   "background": {
     "service_worker": "bg/service-worker.js",
     "type": "module"
@@ -21,6 +21,12 @@
   },
   "options_page": "options/options.html",
   "commands": {
+    "save-page": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S"
+      },
+      "description": "收藏当前页到 TagNest（选中文字存为笔记）"
+    },
     "capture-window": {
       "suggested_key": {
         "default": "Ctrl+Shift+T"

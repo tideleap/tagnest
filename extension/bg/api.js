@@ -61,13 +61,13 @@ function defaultHttpMessage(status) {
  * and echoes the existing id — we treat that as a successful idempotent save.
  * Returns { id, existed }.
  */
-export async function ensureBookmark({ baseUrl, apiKey }, { url, title }, signal) {
+export async function ensureBookmark({ baseUrl, apiKey }, { url, title, note }, signal) {
   try {
     const created = await apiFetch('/api/bookmarks', {
       baseUrl,
       apiKey,
       method: 'POST',
-      body: { url, title: title ?? null, note: null },
+      body: { url, title: title ?? null, note: note ?? null },
       signal,
     });
     if (created && created.id) return { id: created.id, existed: false };
@@ -78,6 +78,33 @@ export async function ensureBookmark({ baseUrl, apiKey }, { url, title }, signal
     }
     throw err;
   }
+}
+
+/** Fetch one bookmark (used to read the current note before appending). */
+export async function getBookmark({ baseUrl, apiKey }, id, signal) {
+  return apiFetch(`/api/bookmarks/${encodeURIComponent(id)}`, { baseUrl, apiKey, method: 'GET', signal });
+}
+
+/** Update fields on an existing bookmark (PATCH). */
+export async function patchBookmark({ baseUrl, apiKey }, id, body, signal) {
+  return apiFetch(`/api/bookmarks/${encodeURIComponent(id)}`, { baseUrl, apiKey, method: 'PATCH', body, signal });
+}
+
+const NOTE_MAX = 20000; // mirrors the backend column cap
+
+/**
+ * Append `note` to an existing bookmark's note (newline-separated). Read-modify-
+ * write is acceptable here: single-user extension traffic makes lost concurrent
+ * appends a theoretical concern only. Returns true when something was written.
+ */
+export async function appendNote(cfg, id, note, signal) {
+  const text = String(note ?? '').trim();
+  if (!text) return false;
+  const current = await getBookmark(cfg, id, signal);
+  const existing = typeof current?.note === 'string' ? current.note.trim() : '';
+  const merged = existing ? `${existing}\n${text}` : text;
+  await patchBookmark(cfg, id, { note: merged.slice(0, NOTE_MAX) }, signal);
+  return true;
 }
 
 /** Create a tab group; returns group record with `id`. */

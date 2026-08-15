@@ -9,6 +9,7 @@ const els = {
   statusText: $('statusText'),
   savePage: $('savePage'),
   captureWindow: $('captureWindow'),
+  noteInput: $('noteInput'),
   result: $('result'),
   openOptions: $('openOptions'),
   shortcutHint: $('shortcutHint'),
@@ -61,8 +62,9 @@ els.savePage.addEventListener('click', async () => {
       showResult('warn', '当前标签页无法收藏', '仅支持 http/https 页面');
       return;
     }
+    const note = els.noteInput.value.trim();
     const resp = await new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: 'save-page', url: tab.url, title: tab.title || '' }, resolve);
+      chrome.runtime.sendMessage({ type: 'save-page', url: tab.url, title: tab.title || '', note }, resolve);
     });
     if (!resp) {
       showResult('err', '扩展后台未响应', '请重新打开扩展面板');
@@ -76,8 +78,12 @@ els.savePage.addEventListener('click', async () => {
       }
       return;
     }
-    const kind = resp.created === false ? '已存在' : '已收藏';
-    showResult('ok', `${kind}：${resp.existed ? '已在书签库中' : '已加入书签库'}`);
+    els.noteInput.value = '';
+    if (resp.existed) {
+      showResult('ok', '已在书签库中', resp.noteAppended ? '新笔记已追加到该书签' : null);
+    } else {
+      showResult('ok', '已收藏进收件箱', note ? '笔记已一并保存' : '整理打标前会待在收件箱');
+    }
   } catch (err) {
     showResult('err', '收藏失败', err?.message || '未知错误');
   } finally {
