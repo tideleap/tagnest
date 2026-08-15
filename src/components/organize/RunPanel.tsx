@@ -1,8 +1,8 @@
-import { AlertTriangle, CircleStop, Cpu, FolderTree, Play, Sparkles } from 'lucide-react';
+import { AlertTriangle, CircleStop, Cpu, FlaskConical, FolderTree, Play, Sparkles } from 'lucide-react';
 import type { AiEngineKind, AiJobTarget, AiOverview, AutoGroupResult } from '@shared/types';
 import { Badge, Button, SegmentedControl } from '@/components/ui';
 import { cx } from '@/lib/cx';
-import type { RunState } from '@/hooks/queries/organize';
+import { useAiEstimate, type RunState } from '@/hooks/queries/organize';
 
 /**
  * Scope selection, the run button, and live progress.
@@ -17,17 +17,26 @@ import type { RunState } from '@/hooks/queries/organize';
  * run silently continues on local rules — which is the right behaviour, but a
  * silent downgrade would look like a working model producing bad tags. The
  * badge names whichever engine actually produced the output.
+ *
+ * **The cost forecast is shown before the button works** (plan A1): pressing
+ * "开始整理" authorises potentially hundreds of model calls, so the panel
+ * states the scope size, call count and rough token consumption first. The
+ * forecast is pure server-side arithmetic — no model is called to produce it.
  */
 
 interface Props {
   overview: AiOverview | undefined;
   run: RunState & {
-    start: (target: AiJobTarget, ids?: string[]) => Promise<unknown>;
+    start: (target: AiJobTarget, ids?: string[], limit?: number) => Promise<unknown>;
     stop: () => void;
   };
   target: AiJobTarget;
   onTargetChange: (target: AiJobTarget) => void;
 }
+
+/** How many bookmarks the trial run samples. One run chunk — small enough to
+ *  judge quality, big enough to be representative. */
+const TRIAL_SIZE = 20;
 
 const ENGINE_LABEL: Record<AiEngineKind, string> = {
   model: '模型',
@@ -39,6 +48,11 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
   const untagged = overview?.untaggedBookmarks ?? 0;
   const total = overview?.totalBookmarks ?? 0;
   const scopeSize = target === 'untagged' ? untagged : total;
+
+  // The forecast only makes sense while idle; a running job already has real
+  // counters, and fetching mid-run would just churn the cache.
+  const { data: estimateData } = useAiEstimate(target, !run.running && !run.job);
+  const estimate = estimateData?.estimate;
 
   const job = run.job;
   const percent = job && job.total > 0 ? Math.round((job.processed / job.total) * 100) : 0;
@@ -61,15 +75,30 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
             停止
           </Button>
         ) : (
-          <Button
-            size="sm"
-            variant="primary"
-            iconLeft={<Play size={15} />}
-            disabled={noEngine || scopeSize === 0}
-            onClick={() => void run.start(target)}
-          >
-            开始整理
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Trial run (plan T2): sample a big scope before committing it.
+                Only offered when there is more than one chunk to sample. */}
+            {scopeSize > TRIAL_SIZE && (
+              <Button
+                size="sm"
+                variant="secondary"
+                iconLeft={<FlaskConical size={15} />}
+                disabled={noEngine}
+                onClick={() => void run.start(target, undefined, TRIAL_SIZE)}
+              >
+                先试 {TRIAL_SIZE} 条
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="primary"
+              iconLeft={<Play size={15} />}
+              disabled={noEngine || scopeSize === 0}
+              onClick={() => void run.start(target)}
+            >
+              开始整理
+            </Button>
+          </div>
         )}
       </div>
 
@@ -90,6 +119,39 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
             : `重新分析全部 ${total} 条书签，已有标签不会被覆盖，只会补充建议。`}
         </p>
       </div>
+
+      {/* Pre-run cost forecast (plan A1). Rendered only while idle — once a
+          job exists, real counters below replace the estimate. */}
+      {!job && estimate && estimate.bookmarks > 0 && (
+        <div className="flex flex-col gap-1 rounded-md bg-sunken px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs tabular-nums text-ink-soft">
+            <span>
+              将分析 <strong className="font-semibold text-ink">{estimate.bookmarks}</strong> 条书签
+            </span>
+            {estimate.modelReady ? (
+              <>
+                <span>
+                  约 <strong className="font-semibold text-ink">{estimate.batches}</strong> 次模型调用
+                </span>
+                <span>
+                  输入约 {estimate.estimatedInputTokens.toLocaleString()} tokens · 输出约{' '}
+                  {estimate.estimatedOutputTokens.toLocaleString()} tokens
+                </span>
+              </>
+            ) : (
+              <span>未配置模型，将仅使用域名兜底标签（不消耗 tokens）</span>
+            )}
+          </div>
+          <p className="text-2xs text-ink-faint">
+            token 数为估算值，实际以模型计费为准；建议先「先试 {TRIAL_SIZE} 条」确认质量再全量运行。
+          </p>
+          {estimate.capped && (
+            <p className="text-2xs text-caution-ink">
+              单次整理上限 2000 条，超出部分请在本次完成后再次运行。
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Progress. Rendered from server counters, so it reflects work done
           rather than an animation, and survives a reload mid-run. */}

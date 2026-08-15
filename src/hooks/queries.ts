@@ -53,6 +53,7 @@ export {
 
 export {
   useAiOverview,
+  useAiEstimate,
   useAiSuggestions,
   useAiTaxonomyAudit,
   useDecideSuggestions,
@@ -71,6 +72,7 @@ export {
   useAiJobs,
   useAiJob,
   useCancelJob,
+  useUndoJob,
 } from './queries/aiJobs';
 
 export {

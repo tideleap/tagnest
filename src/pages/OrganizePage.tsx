@@ -61,8 +61,8 @@ export function OrganizePage() {
 
   const pending = overview?.pendingSuggestions ?? 0;
 
-  const startRun = async (nextTarget: AiJobTarget) => {
-    const job = await run.start(nextTarget);
+  const startRun = async (nextTarget: AiJobTarget, ids?: string[], limit?: number) => {
+    const job = await run.start(nextTarget, ids, limit);
     if (job) {
       setReviewJobId(job.id);
       setTab('review');

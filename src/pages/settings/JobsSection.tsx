@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Sparkles, XCircle } from 'lucide-react';
+import { ChevronDown, RotateCcw, Sparkles, XCircle } from 'lucide-react';
 import type { AiJob, AiJobStatus, AiJobTarget } from '@shared/types';
-import { Button, Skeleton } from '@/components/ui';
+import { Button, ConfirmDialog, Skeleton } from '@/components/ui';
 import { relativeTime } from '@/lib/url';
 import { Card } from './Card';
-import { useAiJobs, useAiJob, useCancelJob } from '@/hooks/queries';
+import { useAiJobs, useAiJob, useCancelJob, useUndoJob } from '@/hooks/queries';
 
 /**
  * AI batch-run history.
@@ -158,10 +158,19 @@ export function JobsSection() {
 function JobDetail({ id, onReview }: { id: string; onReview: () => void }) {
   const { data, isLoading } = useAiJob(id);
   const job = data?.job;
+  const undo = useUndoJob();
+  const [confirmUndo, setConfirmUndo] = useState(false);
 
   if (isLoading || !job) {
     return <Skeleton className="mx-3 mb-3 h-12 w-full" />;
   }
+
+  // Undo is offered for settled runs that actually wrote something. A run
+  // with zero accepted suggestions has nothing to roll back, so the button
+  // would be a no-op — hide it rather than invite a confusing click.
+  const canUndo =
+    (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled') &&
+    job.suggested > 0;
 
   return (
     <div className="mx-3 mb-3 flex flex-col gap-2 rounded-md bg-sunken px-3 py-2.5 text-xs text-ink-soft">
@@ -177,11 +186,39 @@ function JobDetail({ id, onReview }: { id: string; onReview: () => void }) {
         </span>
       </div>
       {job.error && <p className="text-caution-ink">错误：{job.error}</p>}
-      {job.status === 'done' && (
-        <Button size="sm" variant="ghost" className="self-start" onClick={onReview}>
-          查看建议
-        </Button>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {job.status === 'done' && (
+          <Button size="sm" variant="ghost" className="self-start" onClick={onReview}>
+            查看建议
+          </Button>
+        )}
+        {canUndo && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="self-start text-caution-ink"
+            iconLeft={<RotateCcw size={14} />}
+            loading={undo.isPending}
+            onClick={() => setConfirmUndo(true)}
+          >
+            撤销本次整理
+          </Button>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={confirmUndo}
+        onClose={() => setConfirmUndo(false)}
+        onConfirm={() => {
+          undo.mutate(id);
+          setConfirmUndo(false);
+        }}
+        title="撤销本次整理"
+        message="将移除本次整理已接受的 AI 标签，并把对应建议放回待确认队列。你手动添加的标签不受影响。确定继续吗？"
+        confirmLabel="撤销"
+        tone="danger"
+        loading={undo.isPending}
+      />
     </div>
   );
 }

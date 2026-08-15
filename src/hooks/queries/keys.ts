@@ -29,6 +29,11 @@ export const keys = {
    *  run does not disturb the suggestion queue or the overview counters. */
   aiJobs: ['ai-jobs'] as const,
   aiJob: (id: string) => ['ai-job', id] as const,
+  /** A1 — pre-run cost forecast, keyed by scope so switching ranges refetches. */
+  aiEstimate: (target: string, ids?: string[]) =>
+    ['ai-estimate', target, ids?.join(',') ?? ''] as const,
+  /** Root key so a finished run can invalidate every scope's forecast at once. */
+  aiEstimateRoot: ['ai-estimate'] as const,
   apiKeys: ['api-keys'] as const,
   /** Storage management: R2 usage, export preview, snapshot cleanup. */
   storageUsage: ['storage-usage'] as const,

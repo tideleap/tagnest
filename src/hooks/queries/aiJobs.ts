@@ -52,3 +52,37 @@ export function useCancelJob() {
     onError: (e: Error) => toast.error('操作失败', e.message),
   });
 }
+
+/**
+ * Undoes one settled run's accepted work (plan T2 "可撤销").
+ *
+ * Removes the AI-written tag links and puts the accepted suggestions back in
+ * the review queue. Everything the run touched is cache-invalidated, because
+ * undo changes the library itself (tag links), the queue (restored proposals)
+ * and the counters (AI contribution).
+ */
+export function useUndoJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<{
+        job: AiJob;
+        removedLinks: number;
+        restoredSuggestions: number;
+        droppedSuggestions: number;
+      }>(`/ai/jobs/${id}/undo`),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: keys.aiJobs });
+      void qc.invalidateQueries({ queryKey: keys.aiOverview });
+      void qc.invalidateQueries({ queryKey: keys.aiSuggestionsRoot });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.tags });
+      void qc.invalidateQueries({ queryKey: keys.stats });
+      void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+      toast.success(
+        `已撤销：移除 ${result.removedLinks} 个 AI 标签，${result.restoredSuggestions} 条建议回到待确认`,
+      );
+    },
+    onError: (e: Error) => toast.error('撤销失败', e.message),
+  });
+}

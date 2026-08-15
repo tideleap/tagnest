@@ -4,6 +4,7 @@ import type {
   AiAliasSuggestionsResponse,
   AiEngineKind,
   AiJob,
+  AiJobEstimate,
   AiJobRunResult,
   AiJobTarget,
   AiOverview,
@@ -12,7 +13,7 @@ import type {
   AiTopicCount,
   AutoGroupResult,
 } from '@shared/types';
-import { api } from '@/lib/api';
+import { api, qs } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
 
@@ -31,6 +32,24 @@ export function useAiOverview() {
   return useQuery({
     queryKey: keys.aiOverview,
     queryFn: () => api.get<AiOverview>('/ai/overview'),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * A1 — pre-run cost forecast.
+ *
+ * The endpoint is pure computation (scope size + one measured sample prompt,
+ * no model call), so it is cheap to refetch whenever the scope changes. The
+ * query is disabled while a run is in flight: the forecast only makes sense
+ * before pressing start.
+ */
+export function useAiEstimate(target: AiJobTarget, enabled = true) {
+  return useQuery({
+    queryKey: keys.aiEstimate(target),
+    queryFn: () =>
+      api.get<{ estimate: AiJobEstimate }>(`/ai/jobs/estimate${qs({ target })}`),
+    enabled,
     staleTime: 30_000,
   });
 }
@@ -287,13 +306,17 @@ export function useOrganizeRun() {
   }, [cancelled]);
 
   const start = useCallback(
-    async (target: AiJobTarget, bookmarkIds?: string[]) => {
+    async (target: AiJobTarget, bookmarkIds?: string[], limit?: number) => {
       cancelled.current = false;
       setState({ ...IDLE, running: true });
 
       let job: AiJob;
       try {
-        const created = await api.post<{ job: AiJob }>('/ai/jobs', { target, bookmarkIds });
+        const created = await api.post<{ job: AiJob }>('/ai/jobs', {
+          target,
+          bookmarkIds,
+          limit,
+        });
         job = created.job;
       } catch (e) {
         const message = e instanceof Error ? e.message : '无法创建整理任务';
@@ -351,6 +374,9 @@ export function useOrganizeRun() {
       // settles. The progress bar already reflects live chunk counts.
       void qc.invalidateQueries({ queryKey: keys.aiOverview });
       void qc.invalidateQueries({ queryKey: keys.aiSuggestionsRoot });
+      // The forecast is stale once a run has consumed part of the scope
+      // (untagged shrinks as suggestions are accepted).
+      void qc.invalidateQueries({ queryKey: keys.aiEstimateRoot });
       if (autoApplied > 0) {
         void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
         void qc.invalidateQueries({ queryKey: keys.tags });
