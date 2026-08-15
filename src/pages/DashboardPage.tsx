@@ -15,6 +15,7 @@ import { useStats } from '@/hooks/queries';
 import { Button, Skeleton } from '@/components/ui';
 import { CartoonMascot } from '@/components/decor/CartoonMascot';
 import { DecorBlob, DottedBg, Reveal, Scribble } from '@/components/decor';
+import { OnboardingCard } from '@/components/decor/OnboardingCard';
 
 /**
  * B8 — 概览页 (/dashboard) — 卡通涂鸦版
@@ -271,6 +272,10 @@ export function DashboardPage() {
         loading={loading}
         failed={failed}
       />
+
+      {/* First-run wizard: only while the library is genuinely empty. It
+          disappears by itself once the first bookmark lands. */}
+      {!loading && !failed && s?.bookmarks === 0 && <OnboardingCard />}
 
       {failed && (
         <div
