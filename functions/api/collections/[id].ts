@@ -3,6 +3,7 @@ import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, notFound, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
 import { getCollectionRow, mapCollection, mapCollectionBookmark } from '../../_lib/collections';
+import { PRIVATE_BOOKMARK_CLAUSE } from '../../_lib/db';
 import { TAG_COLOR_COUNT } from '../../../shared/types';
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
@@ -12,11 +13,14 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const c = await getCollectionRow(ctx.env, userId, id);
   if (!c) throw notFound('集合不存在');
 
-  // Only non-trashed bookmarks the user owns show up in the detail view.
+  // Only non-trashed, non-private bookmarks the user owns show up in the
+  // detail view. PRIVATE_BOOKMARK_CLAUSE keeps both vaulted and
+  // category-private bookmarks out of this aggregate surface.
   const bookmarks = await ctx.env.DB.prepare(
     `SELECT b.id, b.url, b.title, b.favicon_url
        FROM collection_bookmarks cb
        JOIN bookmarks b ON b.id = cb.bookmark_id AND b.deleted_at IS NULL AND b.user_id = ?
+            AND ${PRIVATE_BOOKMARK_CLAUSE}
       WHERE cb.collection_id = ?
       ORDER BY cb.position, b.created_at DESC`,
   )

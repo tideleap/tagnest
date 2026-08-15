@@ -3,6 +3,7 @@ import { requireUserId } from '../../../_lib/auth';
 import { badRequest, json, notFound, readJson } from '../../../_lib/http';
 import { nowIso } from '../../../_lib/ids';
 import { getCollectionRow } from '../../../_lib/collections';
+import { PRIVATE_BOOKMARK_CLAUSE } from '../../../_lib/db';
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -15,9 +16,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const bookmarkId = String(body.bookmarkId ?? '');
   if (!bookmarkId) throw badRequest('缺少 bookmarkId');
 
-  // Membership is only meaningful for bookmarks the user owns and hasn't trashed.
+  // Membership is only meaningful for bookmarks the user owns, hasn't trashed,
+  // and that are not private (vaulted or category-private) — a collection is a
+  // shareable aggregate surface, so private content must never enter it.
   const bm = await ctx.env.DB.prepare(
-    `SELECT id FROM bookmarks WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1`,
+    `SELECT id FROM bookmarks b
+      WHERE b.id = ? AND b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+      LIMIT 1`,
   )
     .bind(bookmarkId, userId)
     .first<{ id: string }>();

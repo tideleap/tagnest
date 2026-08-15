@@ -3,6 +3,7 @@ import { normalizeKey, SYNONYMS } from './taxonomy';
 import { callProvider } from './providers';
 import { loadVocabulary, parseAliases } from './config';
 import type { Env } from '../env';
+import { PRIVATE_BOOKMARK_CLAUSE } from '../db';
 
 /**
  * Semantic aggregation + automatic alias expansion.
@@ -180,10 +181,13 @@ export async function loadTopicClusters(
   const jobClause = jobId ? 'AND s.job_id = ?' : '';
   const params = jobId ? [userId, jobId] : [userId];
 
+  // Mirrors listPendingSuggestions: private bookmarks never enter the review
+  // queue, so they must not enter the topic clustering that groups it either.
   const rows = await env.DB.prepare(
     `SELECT s.topic AS topic, s.tag_name AS tag_name, s.bookmark_id AS bookmark_id
        FROM tag_suggestions s
        JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL
+            AND ${PRIVATE_BOOKMARK_CLAUSE}
       WHERE s.user_id = ? AND s.status = 'pending' ${jobClause}`,
   )
     .bind(...params)

@@ -1,6 +1,7 @@
 import type { Env } from './env';
 import { badRequest } from './http';
 import { newId, nowIso } from './ids';
+import { PRIVATE_BOOKMARK_CLAUSE } from './db';
 
 /* ------------------------------------------------------------------ *
  * Row mappers
@@ -156,11 +157,14 @@ export async function getGroupWithItems(
     .first<Row>();
   if (!group) return null;
 
+  // Private bookmarks (vaulted or category-private) must not surface in this
+  // aggregate view — same policy as collections and the main library listing.
   const itemRows = await env.DB.prepare(
     `SELECT ti.id, ti.group_id, ti.bookmark_id, ti.position, ti.created_at,
             b.url, b.title, b.favicon_url
        FROM tab_items ti
-       JOIN bookmarks b ON b.id = ti.bookmark_id
+       JOIN bookmarks b ON b.id = ti.bookmark_id AND b.deleted_at IS NULL
+            AND ${PRIVATE_BOOKMARK_CLAUSE}
       WHERE ti.group_id = ? AND ti.user_id = ?
       ORDER BY ti.position DESC, ti.created_at ASC`,
   )
@@ -242,10 +246,12 @@ export async function addItem(
   // Both ownership checks in one shot: the group must belong to the user and
   // the bookmark must too. Skipping either would let a caller attach someone
   // else's bookmark to their own group, or to a group they don't own.
+  // Private bookmarks are also excluded — a tab group is a shareable surface.
   const ok = await env.DB.prepare(
     `SELECT 1 FROM tab_groups g
       JOIN bookmarks b ON b.id = ?
      WHERE g.id = ? AND g.user_id = ? AND b.user_id = ? AND b.deleted_at IS NULL
+       AND ${PRIVATE_BOOKMARK_CLAUSE}
      LIMIT 1`,
   )
     .bind(bookmarkId, groupId, userId, userId)
