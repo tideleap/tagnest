@@ -75,6 +75,37 @@ export class MockDb {
     });
   }
 
+  /**
+   * Rows visible to the public bookmark list for a scope, mirroring
+   * scopeClause() + PRIVATE_BOOKMARK_CLAUSE in functions/_lib/db.ts. Scope is
+   * detected from the normalized SQL text: the inbox marker uses alias
+   * `BT WHERE`, which PRIVATE_BOOKMARK_CLAUSE's `BT_PV JOIN` never matches, so
+   * detection is unambiguous. 'all' keeps the historical behaviour (every
+   * live, non-private row) so existing tests relying on it are untouched.
+   */
+  visibleBookmarksForScope(userId: string, u: string): MockRow[] {
+    const isInbox = u.includes('NOT EXISTS (SELECT 1 FROM BOOKMARK_TAGS BT WHERE');
+    const isTrash = u.includes('B.DELETED_AT IS NOT NULL');
+    const isFavorites = u.includes('B.IS_FAVORITE = 1');
+    const isArchive = u.includes('B.IS_ARCHIVED = 1');
+    return this.bookmarks.filter((b) => {
+      if (b.user_id !== userId) return false;
+      if (b.is_private === 1) return false;
+      if (this.hasPrivateTag(b.id, userId)) return false;
+      if (isTrash) return b.deleted_at != null;
+      if (b.deleted_at != null) return false;
+      if (isFavorites) return b.is_favorite === 1;
+      if (isArchive) return b.is_archived === 1;
+      if (isInbox) {
+        return (
+          b.is_archived !== 1 &&
+          !this.bookmark_tags.some((bt) => bt.bookmark_id === b.id)
+        );
+      }
+      return true; // 'all'
+    });
+  }
+
   prepare(sql: string): Statement {
     // Arrow-function methods capture `this` (the MockDb instance) lexically, so
     // we never alias `this` to a local variable (which trips no-this-alias) and
@@ -752,15 +783,12 @@ export class MockDb {
       )
     ) {
       const userId = params[0] as string;
-      return this.bookmarks
-        .filter(
-          (b) =>
-            b.user_id === userId &&
-            b.is_private !== 1 &&
-            b.deleted_at == null &&
-            !this.hasPrivateTag(b.id, userId),
-        )
-        .map((b) => ({ ...b }));
+      return this.visibleBookmarksForScope(userId, u).map((b) => ({ ...b }));
+    }
+    // --- bookmarks: public list total (runList COUNT) ----------------
+    if (u.startsWith('SELECT COUNT(*) AS C FROM BOOKMARKS B WHERE')) {
+      const userId = params[0] as string;
+      return [{ c: this.visibleBookmarksForScope(userId, u).length }];
     }
 
     // --- bookmarks: snapshot monitor list (listBookmarksWithSnapshots) -

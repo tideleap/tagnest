@@ -54,7 +54,7 @@ const SCOPE_META: Record<
     title: '收件箱',
     icon: Inbox,
     empty: '收件箱是空的',
-    hint: '还没打标签的书签会先落在这里，整理完就会消失。',
+    hint: '从浏览器扩展收藏的页面会先落在这里；打上标签（或接受 AI 建议）即完成归档。',
   },
   all: {
     title: '全部书签',
