@@ -33,6 +33,7 @@ export {
 
 export {
   useStats,
+  useStatsTrend,
   useImportPreview,
   useImportCommit,
 } from './queries/stats';

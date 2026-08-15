@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
+  BarChart3,
   CalendarClock,
   ChevronDown,
   ChevronRight,
@@ -85,6 +86,7 @@ const SECONDARY: NavItem[] = [
   { to: '/tab-groups', label: '标签页组', icon: FolderOpen },
   { to: '/collections', label: '集合', icon: Folder },
   { to: '/timeline', label: '时间线', icon: CalendarClock },
+  { to: '/report', label: '报告', icon: BarChart3 },
   { to: '/import', label: '导入导出', icon: Download },
   // Deliberately has no count: the number of private bookmarks is itself
   // information the vault is supposed to withhold from a shoulder-surfer.

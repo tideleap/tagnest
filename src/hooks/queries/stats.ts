@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ImportCommit, ImportPreview, ImportResult, Stats } from '@shared/types';
+import type { ImportCommit, ImportPreview, ImportResult, Stats, StatsTrend } from '@shared/types';
 import { api, requestNdjson, type ImportProgress } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -11,6 +11,15 @@ export function useStats() {
     queryKey: keys.stats,
     queryFn: () => api.get<Stats>('/stats'),
     staleTime: 60_000,
+  });
+}
+
+/** A3 — per-day additions for the report page's trend chart. */
+export function useStatsTrend(days = 180) {
+  return useQuery({
+    queryKey: [...keys.statsTrend, days] as const,
+    queryFn: () => api.get<StatsTrend>(`/stats/trend?days=${days}`),
+    staleTime: 5 * 60_000,
   });
 }
 

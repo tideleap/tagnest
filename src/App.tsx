@@ -56,6 +56,9 @@ const PrivateVaultPage = lazy(() =>
 const TimelinePage = lazy(() =>
   import('@/pages/TimelinePage').then((m) => ({ default: m.TimelinePage })),
 );
+const ReportPage = lazy(() =>
+  import('@/pages/ReportPage').then((m) => ({ default: m.ReportPage })),
+);
 const ShareTargetPage = lazy(() =>
   import('@/pages/ShareTargetPage').then((m) => ({ default: m.ShareTargetPage })),
 );
@@ -142,6 +145,7 @@ export function App() {
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionDetail />} />
             <Route path="/timeline" element={<TimelinePage />} />
+            <Route path="/report" element={<ReportPage />} />
             <Route path="/private" element={<PrivateVaultPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/settings/:section" element={<SettingsPage />} />

@@ -17,6 +17,8 @@ export const keys = {
   /** T1 — merge audit trail shown in the governance panel. */
   tagMergeLog: ['tag-merge-log'] as const,
   stats: ['stats'] as const,
+  /** A3 — per-day additions for the report page trend chart. */
+  statsTrend: ['stats-trend'] as const,
   aiSettings: ['ai-settings'] as const,
   /** User-level application settings (snapshot retention, …). */
   userSettings: ['user-settings'] as const,
