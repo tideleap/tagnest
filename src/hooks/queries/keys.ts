@@ -39,6 +39,9 @@ export const keys = {
   collection: (id: string) => ['collection', id] as const,
   /** Authorized listing of private tags + the bookmarks each hides. */
   privateTags: ['private-tags'] as const,
+  /** Single category-private bookmark loaded for the vault editor. */
+  privateTagBookmark: (id: string | null) => ['private-tag-bookmark', id] as const,
+  privateTagBookmarkRoot: ['private-tag-bookmark'] as const,
 };
 
 export const PAGE_SIZE = 40;

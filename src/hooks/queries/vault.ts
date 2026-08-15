@@ -150,7 +150,7 @@ export function useUnsetBookmarkPrivate() {
 /** Loads a single bookmark that is hidden by a private tag. */
 export function usePrivateTagBookmark(id: string | null) {
   return useQuery({
-    queryKey: ['private-tag-bookmark', id],
+    queryKey: keys.privateTagBookmark(id),
     queryFn: () => api.get<Bookmark>(`/private/category-bookmarks/${id}`),
     enabled: Boolean(id),
     staleTime: 30_000,
@@ -167,7 +167,7 @@ export function useUpdatePrivateTagBookmark() {
       void qc.invalidateQueries({ queryKey: keys.privateTags });
       void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
       void qc.invalidateQueries({ queryKey: keys.stats });
-      void qc.invalidateQueries({ queryKey: ['private-tag-bookmark'] });
+      void qc.invalidateQueries({ queryKey: keys.privateTagBookmarkRoot });
       toast.success('已保存');
     },
     onError: (e: Error) => toast.error('保存失败', e.message),

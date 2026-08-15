@@ -3,6 +3,7 @@ import type { PrivateTagsResponse, Tag, TagInput } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
+import { useVault } from '@/stores/vault';
 
 export function useTags() {
   return useQuery({
@@ -70,12 +71,18 @@ export function useMergeTags() {
  * Authorized listing of every private tag and the plaintext bookmarks it
  * currently hides. Surfaces what PRIVATE_BOOKMARK_CLAUSE hides so the owner
  * can review and un-private a category from the /private page.
+ *
+ * Defense in depth: the vault page only mounts the section while unlocked,
+ * but the hook itself refuses to fetch unless the vault is unlocked, so no
+ * future caller can leak the plaintext listing into a locked UI.
  */
 export function usePrivateTags(q?: string) {
+  const unlocked = useVault((s) => s.status === 'unlocked');
   return useQuery({
     queryKey: [...keys.privateTags, q?.trim().toLowerCase() ?? ''],
     queryFn: () =>
       api.get<PrivateTagsResponse>(`/private/tags${q ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
+    enabled: unlocked,
     staleTime: 30_000,
   });
 }

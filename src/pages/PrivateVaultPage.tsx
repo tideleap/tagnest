@@ -349,7 +349,10 @@ export function PrivateVaultPage() {
           />
         )}
 
-        <CategoryPrivateSection />
+        {/* Category-private rows are server-side PLAINTEXT (hidden from other
+            users, not encrypted). They must never render — nor be fetched —
+            while the vault is locked; the unlock gate above is the only door. */}
+        {status === 'unlocked' && <CategoryPrivateSection />}
       </div>
 
       {editor && <PrivateBookmarkEditor state={editor} onClose={() => setEditor(null)} />}
@@ -642,11 +645,15 @@ function UnlockedPanel({
  * Category-private section of the private space.
  *
  * Unlike the encrypted vault above, category-private tags are NOT encrypted —
- * they are simply hidden from every other user via PRIVATE_BOOKMARK_CLAUSE. The
- * owner always sees them here, grouped by the private tag, with the plaintext
+ * they are simply hidden from every other user via PRIVATE_BOOKMARK_CLAUSE.
+ * The owner sees them here, grouped by the private tag, with the plaintext
  * bookmarks each one hides and a one-click "取消私密" to restore visibility.
- * Rendered regardless of vault lock state because hiding is account-scoped, not
- * passphrase-scoped.
+ *
+ * Mounted ONLY while the vault is unlocked: although hiding is account-scoped
+ * on the server, this page is the owner's safe room, and showing plaintext
+ * sensitive rows behind a still-locked passphrase panel defeats the lock.
+ * `usePrivateTags` additionally refuses to fetch unless unlocked, so even a
+ * stray mount cannot pull the listing.
  */
 function CategoryPrivateSection() {
   const [rawQ, setRawQ] = useState('');

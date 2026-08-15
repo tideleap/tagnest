@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Bookmark } from '@shared/types';
 import { api } from '@/lib/api';
+import { queryClient } from '@/lib/queryClient';
+import { keys } from '@/hooks/queries/keys';
 import {
   deriveKey,
   makeVerifier,
@@ -149,6 +151,13 @@ export const useVault = create<VaultState>((set, get) => ({
 
   lock: () => {
     vaultKey = null;
+    // Purge every cache that can hold vault plaintext (decrypted zero-
+    // knowledge rows live in component state and die with unmount, but the
+    // category-private listing is server plaintext cached by React Query).
+    // Without this, locking and revisiting the page would re-render sensitive
+    // rows straight from cache before any gate could stop it.
+    queryClient.removeQueries({ queryKey: keys.privateTags });
+    queryClient.removeQueries({ queryKey: keys.privateTagBookmarkRoot });
     set({ status: 'locked', error: null });
   },
 
