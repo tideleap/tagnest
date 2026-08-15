@@ -246,6 +246,16 @@ export interface SnapshotMonitorStatus {
   refreshedAt: string;
 }
 
+/**
+ * Explicit three-way snapshot freshness. Derivable from hasSnapshot/isStale
+ * but exposed as an enum so the UI never re-derives (and diverges from) the
+ * backend's definition:
+ *   - none    — never captured
+ *   - expired — captured, but older than the freshness threshold
+ *   - fresh   — captured and within the threshold
+ */
+export type SnapshotState = 'none' | 'expired' | 'fresh';
+
 /** Lightweight status for a single bookmark's latest snapshot. */
 export interface BookmarkSnapshotStatus {
   bookmarkId: string;
@@ -262,6 +272,8 @@ export interface BookmarkSnapshotStatus {
    * `hasSnapshot: false, isStale: false`.
    */
   isStale: boolean;
+  /** Three-way freshness enum; the UI should prefer this over re-deriving. */
+  state: SnapshotState;
 }
 
 export interface TagInput {

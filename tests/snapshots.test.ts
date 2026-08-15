@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { encodeSnapshotKey, decodeSnapshotKey } from '../shared/snapshotUrl';
 import {
+  buildSnapshotStatus,
   captureWithBrowserRun,
   classifySnapshotError,
+  deleteSnapshots,
   fetchSnapshotFromApi,
   getSnapshot,
   planRetention,
   putSnapshot,
+  R2_DELETE_BATCH,
   resolveSnapshotProvider,
   snapshotObjectKey,
   snapshotServePath,
@@ -377,6 +380,56 @@ describe('storeSnapshotWithRetention', () => {
   });
 });
 
+describe('deleteSnapshots — R2 batch cap', () => {
+  it('splits more than 1000 keys into multiple delete calls', async () => {
+    const calls: string[][] = [];
+    const bucket = {
+      async delete(keys: string | string[]) {
+        calls.push(Array.isArray(keys) ? keys : [keys]);
+      },
+    };
+    const env = { SNAPSHOT_BUCKET: bucket } as unknown as Parameters<typeof deleteSnapshots>[0];
+
+    const keys = Array.from({ length: R2_DELETE_BATCH + 5 }, (_, i) => `snapshots/u1/b${i}.webp`);
+    await deleteSnapshots(env, keys);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toHaveLength(R2_DELETE_BATCH);
+    expect(calls[1]).toHaveLength(5);
+    // Every key is covered exactly once, in order.
+    expect(calls.flat()).toEqual(keys);
+  });
+
+  it('issues a single call for a small batch and none for an empty list', async () => {
+    const calls: string[][] = [];
+    const bucket = {
+      async delete(keys: string | string[]) {
+        calls.push(Array.isArray(keys) ? keys : [keys]);
+      },
+    };
+    const env = { SNAPSHOT_BUCKET: bucket } as unknown as Parameters<typeof deleteSnapshots>[0];
+
+    await deleteSnapshots(env, ['a', 'b']);
+    expect(calls).toEqual([['a', 'b']]);
+
+    await deleteSnapshots(env, []);
+    expect(calls).toHaveLength(1); // unchanged
+  });
+
+  it('accepts a single string key', async () => {
+    const calls: string[][] = [];
+    const bucket = {
+      async delete(keys: string | string[]) {
+        calls.push(Array.isArray(keys) ? keys : [keys]);
+      },
+    };
+    const env = { SNAPSHOT_BUCKET: bucket } as unknown as Parameters<typeof deleteSnapshots>[0];
+
+    await deleteSnapshots(env, 'solo');
+    expect(calls).toEqual([['solo']]);
+  });
+});
+
 describe('classifySnapshotError', () => {
   it('maps each failure mode to a friendly message', () => {
     expect(classifySnapshotError(new Error('SNAPSHOT_API_URL 未配置')).kind).toBe(
@@ -392,5 +445,43 @@ describe('classifySnapshotError', () => {
       kind: 'provider_error',
       message: '截图服务响应超时，请稍后重试',
     });
+  });
+});
+
+describe('buildSnapshotStatus', () => {
+  const freshKey = `snapshots/u1/b1-${Date.now()}.webp`;
+  const staleKey = `snapshots/u1/b1-${Date.now() - 10 * 60 * 1000}.webp`; // 10 min old
+
+  it('reports none for a missing key', () => {
+    const s = buildSnapshotStatus(null);
+    expect(s.state).toBe('none');
+    expect(s.hasSnapshot).toBe(false);
+    expect(s.isStale).toBe(false);
+    expect(s.snapshotUrl).toBeNull();
+    expect(s.capturedAt).toBeNull();
+  });
+
+  it('reports fresh for a recent capture', () => {
+    const s = buildSnapshotStatus(freshKey);
+    expect(s.state).toBe('fresh');
+    expect(s.hasSnapshot).toBe(true);
+    expect(s.isStale).toBe(false);
+    expect(s.snapshotUrl).toContain('/api/snapshots/');
+    expect(s.capturedAt).not.toBeNull();
+  });
+
+  it('reports expired for a capture older than the threshold', () => {
+    const s = buildSnapshotStatus(staleKey);
+    expect(s.state).toBe('expired');
+    expect(s.hasSnapshot).toBe(true);
+    expect(s.isStale).toBe(true);
+  });
+
+  it('keeps state consistent with hasSnapshot/isStale', () => {
+    for (const key of [null, freshKey, staleKey]) {
+      const s = buildSnapshotStatus(key);
+      const derived = !s.hasSnapshot ? 'none' : s.isStale ? 'expired' : 'fresh';
+      expect(s.state).toBe(derived);
+    }
   });
 });

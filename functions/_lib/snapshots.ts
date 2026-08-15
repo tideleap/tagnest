@@ -1,5 +1,6 @@
 import type { Env } from './env';
 import { encodeSnapshotKey } from '../../shared/snapshotUrl';
+import type { SnapshotState } from '../../shared/types';
 
 /**
  * Website snapshots ("website preview image").
@@ -111,6 +112,8 @@ export interface SnapshotStatus {
    * UI can tell "needs a first capture" apart from "needs a refresh".
    */
   isStale: boolean;
+  /** Three-way freshness enum the UI should prefer over re-deriving. */
+  state: SnapshotState;
 }
 
 /**
@@ -119,16 +122,20 @@ export interface SnapshotStatus {
  * `hasSnapshot` separates "never captured" from "captured but old": the key
  * being missing yields `hasSnapshot: false, isStale: false`, which lets the
  * frontend treat a first capture (backfill) differently from a refresh.
+ * `state` exposes the same distinction as an explicit enum so the card badge
+ * can render three visibly different states instead of one ambiguous dot.
  */
 export function buildSnapshotStatus(snapshotKey: string | null): SnapshotStatus {
   const ts = snapshotKey ? snapshotTimestamp(snapshotKey) : 0;
   const has = ts > 0;
+  const stale = has ? Date.now() - ts > SNAPSHOT_STALE_THRESHOLD_MS : false;
   return {
     snapshotKey,
     snapshotUrl: snapshotKey ? snapshotServePath(snapshotKey) : null,
     capturedAt: ts ? new Date(ts).toISOString() : null,
     hasSnapshot: has,
-    isStale: has ? Date.now() - ts > SNAPSHOT_STALE_THRESHOLD_MS : false,
+    isStale: stale,
+    state: !has ? 'none' : stale ? 'expired' : 'fresh',
   };
 }
 
@@ -288,13 +295,25 @@ export async function putSnapshot(
   return key;
 }
 
-/** Deletes one or more stored snapshot objects by key. Best-effort helper. */
+/** R2's `delete` accepts at most 1000 keys per call. */
+export const R2_DELETE_BATCH = 1000;
+
+/**
+ * Deletes one or more stored snapshot objects by key. Best-effort helper.
+ *
+ * Keys are deleted in batches of `R2_DELETE_BATCH`: emptying the trash of a
+ * large library can reference well over a thousand snapshot objects, and a
+ * single `delete` call beyond R2's 1000-key cap would reject the whole batch.
+ */
 export async function deleteSnapshots(
   env: Pick<Env, 'SNAPSHOT_BUCKET'>,
   keys: string | string[],
 ): Promise<void> {
   if (!env.SNAPSHOT_BUCKET || keys.length === 0) return;
-  await env.SNAPSHOT_BUCKET.delete(keys);
+  const list = Array.isArray(keys) ? keys : [keys];
+  for (let i = 0; i < list.length; i += R2_DELETE_BATCH) {
+    await env.SNAPSHOT_BUCKET.delete(list.slice(i, i + R2_DELETE_BATCH));
+  }
 }
 
 /**

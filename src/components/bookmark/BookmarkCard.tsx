@@ -16,7 +16,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react';
-import type { Bookmark } from '@shared/types';
+import type { Bookmark, SnapshotState } from '@shared/types';
 import { snapshotServePath } from '@shared/snapshotUrl';
 import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
@@ -169,6 +169,25 @@ function CompactHost({ bookmark }: { bookmark: Bookmark }) {
       <FaviconBadge bookmark={bookmark} size={16} className="rounded" />
       <span className="max-w-32 truncate">{displayHost(bookmark.url)}</span>
     </span>
+  );
+}
+
+/**
+ * Three-way snapshot freshness dot (B4). Renders nothing for `none` — the
+ * favicon fallback already signals "no snapshot yet" — green for a fresh
+ * capture, amber for an expired one. Callers position/size it via className.
+ */
+function SnapshotStateDot({ state, className }: { state: SnapshotState; className?: string }) {
+  if (state === 'none') return null;
+  return (
+    <span
+      className={cx(
+        'absolute rounded-full',
+        state === 'fresh' ? 'bg-positive' : 'bg-caution',
+        className,
+      )}
+      aria-hidden
+    />
   );
 }
 
@@ -452,8 +471,8 @@ function BookmarkCardBase({
                 className="h-full w-full object-cover"
                 fallback={<FaviconBadge bookmark={b} size={22} />}
               />
-              {snapStatus?.isStale && (
-                <span className="absolute right-0.5 top-0.5 h-1 w-1 rounded-full bg-caution" aria-hidden />
+              {snapStatus && (
+                <SnapshotStateDot state={snapStatus.state} className="right-0.5 top-0.5 h-1 w-1" />
               )}
             </div>
           ) : (
@@ -526,6 +545,12 @@ function BookmarkCardBase({
                 >
                   <Camera size={13} className={refreshSnapshot.isPending ? 'animate-spin' : ''} aria-hidden />
                 </button>
+
+                {/* Freshness dot — bottom-right so it never collides with the
+                    top-right refresh button or the top-left checkbox. */}
+                {liveSnapshotKey && snapStatus && (
+                  <SnapshotStateDot state={snapStatus.state} className="right-2 bottom-2 z-10 h-2 w-2 ring-2 ring-black/20" />
+                )}
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-2.5">
@@ -591,8 +616,8 @@ function BookmarkCardBase({
                       className="h-full w-full object-cover"
                       fallback={<FaviconBadge bookmark={b} size={40} />}
                     />
-                    {snapStatus?.isStale && (
-                      <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-caution" aria-hidden />
+                    {snapStatus && (
+                      <SnapshotStateDot state={snapStatus.state} className="right-0.5 top-0.5 h-1.5 w-1.5" />
                     )}
                   </div>
                 ) : (
