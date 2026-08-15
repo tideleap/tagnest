@@ -33,6 +33,9 @@ function dequeue(): void {
   while (active < SNAPSHOT_MAX_CONCURRENT && queue.length > 0) {
     const id = queue.shift()!;
     const run = runners.get(id);
+    // Consume the runner as soon as it starts so the map never accumulates
+    // stale entries, and a later release() cannot wipe tasks still waiting.
+    runners.delete(id);
     if (!run) continue;
     active += 1;
     run();
@@ -50,11 +53,12 @@ export function scheduleSnapshotRefresh(id: string, run: () => void, now: number
   if (last !== undefined && now - last < SNAPSHOT_REFRESH_INTERVAL_MS) return;
   lastAttempt.set(id, now);
 
-  runners.set(id, run);
   if (active < SNAPSHOT_MAX_CONCURRENT) {
     active += 1;
     run();
   } else {
+    // Park the runner until a slot frees; dequeue() consumes it then.
+    runners.set(id, run);
     queue.push(id);
   }
 }
@@ -65,6 +69,5 @@ export function scheduleSnapshotRefresh(id: string, run: () => void, now: number
  */
 export function releaseSnapshotRefresh(): void {
   active = Math.max(0, active - 1);
-  runners.clear();
   dequeue();
 }

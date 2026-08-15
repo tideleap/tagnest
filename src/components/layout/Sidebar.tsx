@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -274,12 +274,16 @@ function TagTree({
   onToggle: (id: string) => void;
 }) {
   const tree = useMemo(() => buildTagTree(tags), [tags]);
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
-    // Expand the first few top-level categories by default.
-    const init = new Set<string>();
-    tree.slice(0, 5).forEach((t) => init.add(t.id));
-    return init;
-  });
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // The tags query resolves after the first render, so a useState initializer
+  // would seed the expansion from an empty tree and never run again. Seed it
+  // exactly once, the first time the tree actually has content.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || tree.length === 0) return;
+    seeded.current = true;
+    setExpanded(new Set(tree.slice(0, 5).map((t) => t.id)));
+  }, [tree]);
 
   if (tree.length === 0) {
     return (

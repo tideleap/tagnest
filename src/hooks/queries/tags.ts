@@ -18,6 +18,7 @@ export function useCreateTag() {
     mutationFn: (input: TagInput) => api.post<Tag>('/tags', input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.tags });
+      void qc.invalidateQueries({ queryKey: keys.stats });
       toast.success('标签已创建');
     },
     onError: (e: Error) => toast.error('创建失败', e.message),
@@ -44,6 +45,7 @@ export function useDeleteTag() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.tags });
       void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.stats });
       toast.success('标签已删除');
     },
     onError: (e: Error) => toast.error('删除失败', e.message),

@@ -110,6 +110,9 @@ export function useSetBookmarkPrivate() {
       void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
       void qc.invalidateQueries({ queryKey: keys.stats });
       void qc.invalidateQueries({ queryKey: keys.tags });
+      // The vault list is the surface that actually shows this bookmark next;
+      // without invalidating it a cached vault view stays stale after a move-in.
+      void qc.invalidateQueries({ queryKey: vaultKeys.list });
       toast.success('已移入私密保险库');
     },
     onError: (e: Error) => toast.error('操作失败', e.message),
