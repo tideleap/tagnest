@@ -29,7 +29,7 @@ describe('computeContribution (value-weighted model)', () => {
     expect(m.raw.aiAccepted).toBe(100);
     expect(m.raw.modified).toBe(20);
     expect(m.raw.rejected).toBe(30);
-    expect(m.raw.heuristicAccepted).toBe(10);
+    expect(m.raw.fallbackAccepted).toBe(10);
     expect(m.raw.userCreated).toBe(100);
 
     // weighted = 70 + 12 + 5 = 87; denom = 100 + 100 = 187 → 46.52%.

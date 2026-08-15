@@ -48,14 +48,14 @@ describe('scoreTagCandidate — confidence floor + signal boosts', () => {
     reason: '',
   });
 
-  it('keeps a strong heuristic candidate, boosted by lexical evidence', () => {
+  it('keeps a strong fallback candidate, boosted by lexical evidence', () => {
     const scored = scoreTagCandidate(base('fallback', 0.5), input, 1, null);
     expect(scored).not.toBeNull();
     // 0.5 + LEXICAL_BONUS (page mentions Python) => 0.62
     expect(scored!.confidence).toBeCloseTo(0.5 + LEXICAL_BONUS);
   });
 
-  it('drops a weak heuristic candidate that lands below the floor', () => {
+  it('drops a weak fallback candidate that lands below the floor', () => {
     // No lexical evidence and a low base confidence -> 0.3 < 0.4 floor.
     const weak = scoreTagCandidate(base('fallback', 0.3), { url: 'u', title: 'x', description: '' }, 1, null);
     expect(weak).toBeNull();

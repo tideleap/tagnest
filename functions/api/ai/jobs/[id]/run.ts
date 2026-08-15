@@ -39,10 +39,10 @@ import {
  * ## Failure policy
  *
  * A model failure is not a job failure. `suggestForBookmarks` degrades to the
- * local heuristics and reports why; the chunk still produces proposals and the
- * run continues. Only a *fatal* condition (bad key, unknown model — things a
- * retry cannot fix) stops the run, because otherwise every remaining chunk
- * would burn a round trip to fail the same way.
+ * domain-derived fallback and reports why; the chunk still produces proposals
+ * and the run continues. Only a *fatal* condition (bad key, unknown model —
+ * things a retry cannot fix) stops the run, because otherwise every remaining
+ * chunk would burn a round trip to fail the same way.
  */
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);

@@ -53,7 +53,7 @@ export interface CategoryRule {
  * Category rules. Order matters: the first rule whose key hits wins, so put
  * specific buckets before the generic category fallback (the default category
  * rule uses `category: '<rule.category>'` with no keys — it always matches).
- * Each top-level family mirrors the heuristic vocabulary so AI suggestions and
+ * Each top-level family mirrors the tagging vocabulary so AI suggestions and
  * manual tags land on a consistent taxonomy.
  */
 const CATEGORY_RULES: CategoryRule[] = [

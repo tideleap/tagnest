@@ -57,14 +57,15 @@ export function tagFrequencyFactor(count: number): number {
  * decides whether an accepted-but-uncertain suggestion skips the human step.
  */
 export const MIN_MODEL_CONFIDENCE = 0.35;
-export const MIN_HEURISTIC_CONFIDENCE = 0.4;
+/** Domain-derived fallback proposals must clear a slightly higher bar. */
+export const MIN_FALLBACK_CONFIDENCE = 0.4;
 
 /**
  * Lexical agreement bonus.
  *
  * When a candidate tag's name (or its key) appears in the bookmark's own
  * title/description, that is first-party evidence the model is not hallucinating
- * a topic. We add a fixed bonus rather than multiplying so a weak heuristic hit
+ * a topic. We add a fixed bonus rather than multiplying so a weak candidate
  * can still be lifted past the floor when the page itself mentions the word.
  */
 export const LEXICAL_BONUS = 0.12;
@@ -196,7 +197,7 @@ export function scoreTagCandidate(
 
   const capped = Math.min(1, Math.max(0, confidence));
   const floor =
-    candidate.source === 'fallback' ? MIN_HEURISTIC_CONFIDENCE : MIN_MODEL_CONFIDENCE;
+    candidate.source === 'fallback' ? MIN_FALLBACK_CONFIDENCE : MIN_MODEL_CONFIDENCE;
 
   if (capped < floor) return null;
 

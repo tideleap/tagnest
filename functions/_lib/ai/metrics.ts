@@ -34,7 +34,7 @@ export interface ContributionRaw {
   direct: number;
   /** User renamed the proposal before accepting. */
   modified: number;
-  /** Accepted but came from the domain-heuristic fallback engine. */
+  /** Accepted but came from the domain-derived fallback engine. */
   fallback: number;
   /** Explicitly rejected proposals (excluded from the denominator). */
   rejected: number;
@@ -73,7 +73,7 @@ export function computeContribution(raw: ContributionRaw): AiContributionMetrics
       aiAccepted,
       modified: raw.modified,
       rejected: raw.rejected,
-      heuristicAccepted: raw.fallback,
+      fallbackAccepted: raw.fallback,
       userCreated: raw.userOnly,
     },
     hitRate: decided > 0 ? aiAccepted / decided : 0,
@@ -212,8 +212,8 @@ export async function loadAiUsage(
  * `ai_feedback`: a rename records an `action = 'modified'` row (keyed by the
  * original bookmark + tag name), so a suggestion the user edited is detected via
  * an `EXISTS` and counted as assisted rather than direct. `source = 'fallback'`
- * marks the domain-heuristic proposals. Rejected rows are counted for the hit
- * rate but excluded from the contribution denominator.
+ * marks the domain-derived fallback proposals. Rejected rows are counted for
+ * the hit rate but excluded from the contribution denominator.
  *
  * `userTagLinks` (the existing provenance split) fills in the user-only base.
  */

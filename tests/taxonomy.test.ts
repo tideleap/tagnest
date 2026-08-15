@@ -104,10 +104,10 @@ describe('resolveTagName', () => {
 describe('resolveCandidates', () => {
   const v = vocab([{ id: 't1', name: '前端' }, { id: 't2', name: '后端' }]);
 
-  it('de-duplicates model and heuristic output that resolve to the same tag', () => {
+  it('de-duplicates spelling variants that resolve to the same tag', () => {
     const out = resolveCandidates(
       [
-        { name: '前端', confidence: 0.8, source: 'fallback', reason: '域名 github.com' },
+        { name: '前端', confidence: 0.8, source: 'model', reason: '模型建议' },
         { name: 'frontend', confidence: 0.7, source: 'model', reason: '模型建议' },
       ],
       v,
@@ -119,18 +119,18 @@ describe('resolveCandidates', () => {
     expect(out[0].tagId).toBe('t1');
   });
 
-  it('adds a consensus bonus and a reason when two independent engines agree', () => {
+  it('keeps the stronger confidence when the same tag is proposed twice', () => {
     const out = resolveCandidates(
       [
-        { name: '前端', confidence: 0.8, source: 'fallback' },
+        { name: '前端', confidence: 0.8, source: 'model' },
         { name: 'frontend', confidence: 0.7, source: 'model' },
       ],
       v,
       4,
     );
-    // base = 0.8 * 1.15 = 0.92, +0.1 consensus bonus (capped at 1).
-    expect(out[0].confidence).toBeCloseTo(1, 5);
-    expect(out[0].reason).toContain('多引擎一致');
+    // base = 0.8 * 1.15 = 0.92; the weaker duplicate does not add a bonus.
+    expect(out[0].confidence).toBeCloseTo(0.92, 5);
+    expect(out[0].reason).not.toContain('多引擎一致');
   });
 
   it('ranks by confidence and honours the per-bookmark ceiling', () => {

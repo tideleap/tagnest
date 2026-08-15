@@ -631,7 +631,7 @@ export interface AiContributionMetrics {
     aiAccepted: number;
     modified: number;
     rejected: number;
-    heuristicAccepted: number;
+    fallbackAccepted: number;
     userCreated: number;
   };
   /** Precision: accepted / (accepted + rejected) across all proposals. */

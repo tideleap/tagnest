@@ -140,7 +140,7 @@ export interface SuggestionTopicRow {
  *
  * Pure: the caller hands in already-fetched rows so this is trivially
  * testable. `tag_suggestions.topic` is what the model wrote in Phase 1; absent
- * a model it falls back to the top tag name, so even heuristic-only runs
+ * a model it falls back to the top tag name, so even fallback-only runs
  * produce a usable distribution.
  */
 export function clusterSuggestionsByTopic(rows: SuggestionTopicRow[]): TopicCluster[] {

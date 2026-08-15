@@ -274,17 +274,17 @@ export function resolveTagName(raw: string, vocab: Vocabulary): ResolveResult | 
 /**
  * Normalises, scores, de-duplicates and truncates a batch of raw candidates.
  *
- * Two candidates that resolve to the same tag (the model said "前端", the
- * heuristic said "frontend") are merged rather than both kept, and agreement
- * between two independent engines raises confidence — that consensus signal is
- * the main reason for running both engines instead of just one.
+ * The model is the sole tag generator, so all candidates in a batch share one
+ * source; spelling variants that resolve to the same tag (the model proposed
+ * both "前端" and "frontend") are merged into a single proposal keeping the
+ * stronger confidence rather than double-counting the same idea.
  */
 export function resolveCandidates(
   raw: Array<{ name: string; confidence: number; source: TagCandidate['source']; reason?: string }>,
   vocab: Vocabulary,
   maxTags: number,
 ): TagCandidate[] {
-  const merged = new Map<string, TagCandidate & { engines: Set<string> }>();
+  const merged = new Map<string, TagCandidate>();
 
   for (const item of raw) {
     const resolved = resolveTagName(item.name, vocab);
@@ -301,24 +301,17 @@ export function resolveCandidates(
         confidence,
         source: item.source,
         reason: item.reason ? `${item.reason} · ${resolved.reason}` : resolved.reason,
-        engines: new Set([item.source]),
       });
       continue;
     }
 
-    held.engines.add(item.source);
-    // Independent agreement is evidence; take the stronger claim and add a
-    // consensus bonus rather than averaging the two down.
-    held.confidence = Math.min(1, Math.max(held.confidence, confidence) + (held.engines.size > 1 ? 0.1 : 0));
-    if (held.engines.size > 1 && !held.reason.includes('多引擎')) {
-      held.reason = `${held.reason} · 多引擎一致`;
-    }
+    // Same tag reached twice: keep the stronger claim.
+    held.confidence = Math.max(held.confidence, confidence);
   }
 
   return [...merged.values()]
     .sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name))
-    .slice(0, Math.max(1, maxTags))
-    .map(({ engines: _engines, ...candidate }) => candidate);
+    .slice(0, Math.max(1, maxTags));
 }
 
 export interface DuplicateCluster {

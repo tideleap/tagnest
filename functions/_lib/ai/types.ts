@@ -3,7 +3,7 @@ import type { AiProvider } from '../../../shared/types';
 /**
  * Shared vocabulary for the AI tagging pipeline.
  *
- * Kept in its own module so the pure algorithm files (taxonomy, heuristics,
+ * Kept in its own module so the pure algorithm files (taxonomy, scoring,
  * prompt) can be imported by tests without dragging in a database type or a
  * Cloudflare binding.
  */
@@ -24,8 +24,8 @@ export interface AiConfig {
 /**
  * Config for a run where no provider is reachable.
  *
- * The heuristic engine still needs limits and a threshold, so "no model" is
- * represented as a real config rather than a null that every caller has to
+ * The domain-derived fallback still needs limits and a threshold, so "no model"
+ * is represented as a real config rather than a null that every caller has to
  * special-case. This is what makes the feature work with no API key.
  */
 export interface LocalConfig {
