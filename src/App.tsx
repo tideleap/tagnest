@@ -56,6 +56,9 @@ const PrivateVaultPage = lazy(() =>
 const TimelinePage = lazy(() =>
   import('@/pages/TimelinePage').then((m) => ({ default: m.TimelinePage })),
 );
+const ShareTargetPage = lazy(() =>
+  import('@/pages/ShareTargetPage').then((m) => ({ default: m.ShareTargetPage })),
+);
 
 function RouteFallback() {
   return (
@@ -108,6 +111,17 @@ export function App() {
           <Route path="/signup" element={<AuthPage mode="signup" />} />
           {/* Public, unauthenticated share pages. */}
           <Route path="/s/:slug" element={<SharePage />} />
+
+          {/* Web Share Target landing (mobile "Share → TagNest"). Auth-gated
+              but rendered outside the app shell: it is a single-purpose form. */}
+          <Route
+            path="/share-target"
+            element={
+              <RequireAuth>
+                <ShareTargetPage />
+              </RequireAuth>
+            }
+          />
 
           <Route
             element={

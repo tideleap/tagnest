@@ -7,10 +7,19 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#fbf8f2",
-  "theme_color": "#D98324",
+  "background_color": "#F8FAFC",
+  "theme_color": "#4F46E5",
   "lang": "zh-CN",
   "categories": ["productivity", "utilities"],
+  "share_target": {
+    "action": "/share-target",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "/pwa-icon-192.png",
