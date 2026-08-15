@@ -401,29 +401,104 @@ function scopeClause(scope: BookmarkScope): ScopeClause {
   }
 }
 
+export interface ParsedSearch {
+  /** Bare words and quoted phrases that must each appear in the text fields. */
+  tokens: string[];
+  /** `tag:name` filters — exact, case-insensitive tag-name match. */
+  tags: string[];
+  /** `domain:host` filters — the host itself or any subdomain of it. */
+  domains: string[];
+}
+
+/**
+ * Splits a search string into required text tokens plus `tag:` / `domain:`
+ * filters.
+ *
+ * Double quotes group a phrase; everything else splits on whitespace. Unquoted
+ * multi-word input therefore means AND — `react hooks` finds bookmarks that
+ * mention both words — while `"react hooks"` keeps the exact phrase. Chinese
+ * input has no spaces, so it stays a single token and behaves exactly as the
+ * old whole-string search did.
+ */
+export function parseSearchQuery(raw: string): ParsedSearch {
+  const tokens: string[] = [];
+  const tags: string[] = [];
+  const domains: string[] = [];
+
+  const re = /"([^"]*)"|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    const piece = (m[1] ?? m[2] ?? '').trim();
+    if (!piece) continue;
+    const lower = piece.toLowerCase();
+    if (lower.startsWith('tag:') && piece.length > 4) {
+      const name = piece.slice(4).trim();
+      if (name) tags.push(name);
+    } else if (lower.startsWith('domain:') && piece.length > 7) {
+      const host = piece.slice(7).trim().toLowerCase().replace(/^www\./, '');
+      if (host) domains.push(host);
+    } else {
+      tokens.push(piece);
+    }
+  }
+  return { tokens, tags, domains };
+}
+
 /**
  * Search strategy.
  *
- * Trigram FTS needs at least three characters, so shorter queries — very
- * common in Chinese, where two characters is a whole word — fall back to LIKE.
- * The caller also retries with LIKE if MATCH throws, which keeps the endpoint
- * working on any SQLite build without the trigram tokenizer.
+ * Trigram FTS needs at least three characters per token, so shorter tokens —
+ * very common in Chinese, where two characters is a whole word — fall back to
+ * LIKE. The caller also retries with LIKE if MATCH throws, which keeps the
+ * endpoint working on any SQLite build without the trigram tokenizer.
+ *
+ * Every token must match (AND). In FTS mode each token becomes a quoted
+ * trigram phrase and FTS5's implicit AND joins them; in LIKE mode each token
+ * becomes its own four-field LIKE group ANDed together.
  */
-function searchClause(q: string, useFts: boolean): ScopeClause {
+function textSearchClause(tokens: string[], useFts: boolean): ScopeClause {
+  if (tokens.length === 0) return { sql: '1 = 1', params: [] };
   if (useFts) {
+    const match = tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(' ');
     return {
       sql: `b.rowid IN (SELECT rowid FROM bookmarks_fts WHERE bookmarks_fts MATCH ?)`,
-      // Quoting makes the whole string one trigram phrase, so punctuation in
-      // the query cannot be read as FTS5 operator syntax.
-      params: [`"${q.replace(/"/g, '""')}"`],
+      params: [match],
     };
   }
-  const like = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+  const parts: string[] = [];
+  const params: unknown[] = [];
+  for (const t of tokens) {
+    const like = `%${t.replace(/[\\%_]/g, (mm) => `\\${mm}`)}%`;
+    parts.push(
+      `(b.title LIKE ? ESCAPE '\\' OR b.url LIKE ? ESCAPE '\\'
+        OR COALESCE(b.description,'') LIKE ? ESCAPE '\\'
+        OR COALESCE(b.note,'') LIKE ? ESCAPE '\\')`,
+    );
+    params.push(like, like, like, like);
+  }
+  return { sql: `(${parts.join(' AND ')})`, params };
+}
+
+/** Matches `url_key` for the host itself or any subdomain of it. */
+function domainClause(domain: string): ScopeClause {
+  const esc = (s: string) => s.replace(/[\\%_]/g, (mm) => `\\${mm}`);
+  const d = esc(domain);
   return {
-    sql: `(b.title LIKE ?1 ESCAPE '\\' OR b.url LIKE ?1 ESCAPE '\\'
-           OR COALESCE(b.description,'') LIKE ?1 ESCAPE '\\'
-           OR COALESCE(b.note,'') LIKE ?1 ESCAPE '\\')`,
-    params: [like],
+    sql: `(b.url_key = ? OR b.url_key LIKE ? ESCAPE '\\'
+           OR b.url_key LIKE ? ESCAPE '\\' OR b.url_key LIKE ? ESCAPE '\\')`,
+    // url_key is host (lowercased, www-stripped) + path + query, so an exact
+    // host, a host-with-path, or any *.host variant covers the domain.
+    params: [domain, `${d}/%`, `%.${d}/%`, `%.${d}`],
+  };
+}
+
+/** Exact, case-insensitive tag-name match via the bookmark↔tag join. */
+function tagNameClause(name: string): ScopeClause {
+  return {
+    sql: `EXISTS (SELECT 1 FROM bookmark_tags bt JOIN tags t ON t.id = bt.tag_id
+                   WHERE bt.bookmark_id = b.id AND t.user_id = b.user_id
+                     AND t.name = ? COLLATE NOCASE)`,
+    params: [name],
   };
 }
 
@@ -453,20 +528,19 @@ export function buildWhere(p: ListParams, useFts: boolean): ScopeClause {
   }
 
   if (p.q) {
-    // The LIKE branch uses ?1, which would clash with positional binding in a
-    // larger statement, so it is rendered with its own parameter list inline.
-    const search = searchClause(p.q, useFts);
-    if (useFts) {
-      parts.push(search.sql);
-      params.push(...search.params);
-    } else {
-      const like = search.params[0];
-      parts.push(
-        `(b.title LIKE ? ESCAPE '\\' OR b.url LIKE ? ESCAPE '\\'
-          OR COALESCE(b.description,'') LIKE ? ESCAPE '\\'
-          OR COALESCE(b.note,'') LIKE ? ESCAPE '\\')`,
-      );
-      params.push(like, like, like, like);
+    const parsed = parseSearchQuery(p.q);
+    const text = textSearchClause(parsed.tokens, useFts);
+    parts.push(text.sql);
+    params.push(...text.params);
+    for (const name of parsed.tags) {
+      const clause = tagNameClause(name);
+      parts.push(clause.sql);
+      params.push(...clause.params);
+    }
+    for (const domain of parsed.domains) {
+      const clause = domainClause(domain);
+      parts.push(clause.sql);
+      params.push(...clause.params);
     }
   }
 
@@ -510,7 +584,15 @@ async function runList(env: Env, p: ListParams, useFts: boolean) {
 }
 
 export async function listBookmarks(env: Env, p: ListParams) {
-  const useFts = Boolean(p.q && [...p.q].length >= 3);
+  // FTS is only worth it when every text token reaches the trigram minimum;
+  // one short token (a two-character Chinese word) would force a LIKE retry
+  // anyway, so decide up front and skip the doomed MATCH round-trip.
+  const parsed = p.q ? parseSearchQuery(p.q) : null;
+  const useFts = Boolean(
+    parsed &&
+      parsed.tokens.length > 0 &&
+      parsed.tokens.every((t) => [...t].length >= 3),
+  );
 
   let result: Awaited<ReturnType<typeof runList>>;
   try {

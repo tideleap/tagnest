@@ -78,7 +78,7 @@ export function TopBar() {
               setDraft('');
             }
           }}
-          placeholder="搜索书签…"
+          placeholder={'搜索书签…（多词=AND，「短语」，tag:，domain:）'}
           aria-label="搜索书签"
           iconLeft={<Search size={15} />}
           slotRight={

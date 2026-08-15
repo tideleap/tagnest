@@ -9,6 +9,8 @@ import {
   D1_MAX_PARAMS,
   parseSnapshotKeys,
   serializeSnapshotKeys,
+  parseSearchQuery,
+  buildWhere,
 } from '../functions/_lib/db';
 import type { BookmarkSort } from '../shared/types';
 import type { Env } from '../functions/_lib/env';
@@ -133,3 +135,102 @@ describe('snapshot_keys serialization', () => {
   });
 });
 
+
+describe('parseSearchQuery (S1 搜索语法)', () => {
+  it('splits unquoted words into AND tokens', () => {
+    expect(parseSearchQuery('react hooks')).toEqual({
+      tokens: ['react', 'hooks'],
+      tags: [],
+      domains: [],
+    });
+  });
+
+  it('keeps a quoted phrase as one token', () => {
+    expect(parseSearchQuery('"react hooks" tutorial')).toEqual({
+      tokens: ['react hooks', 'tutorial'],
+      tags: [],
+      domains: [],
+    });
+  });
+
+  it('extracts tag: and domain: filters case-insensitively', () => {
+    expect(parseSearchQuery('TAG:前端 Domain:Example.com 笔记')).toEqual({
+      tokens: ['笔记'],
+      tags: ['前端'],
+      domains: ['example.com'],
+    });
+  });
+
+  it('strips a leading www. from domain filters', () => {
+    expect(parseSearchQuery('domain:www.rust-lang.org')).toEqual({
+      tokens: [],
+      tags: [],
+      domains: ['rust-lang.org'],
+    });
+  });
+
+  it('treats bare "tag:" / "domain:" as ordinary text', () => {
+    expect(parseSearchQuery('tag: domain:')).toEqual({
+      tokens: ['tag:', 'domain:'],
+      tags: [],
+      domains: [],
+    });
+  });
+
+  it('keeps spaceless Chinese input as a single token (old behaviour)', () => {
+    expect(parseSearchQuery('前端性能')).toEqual({
+      tokens: ['前端性能'],
+      tags: [],
+      domains: [],
+    });
+  });
+
+  it('returns empty lists for an empty query', () => {
+    expect(parseSearchQuery('')).toEqual({ tokens: [], tags: [], domains: [] });
+  });
+});
+
+describe('buildWhere with search syntax', () => {
+  const base = {
+    userId: 'u1',
+    scope: 'all' as const,
+    tagIds: [],
+    matchAllTags: false,
+    sort: 'created_desc' as BookmarkSort,
+    cursor: null,
+    limit: 10,
+  };
+
+  it('ANDs multiple text tokens in LIKE mode', () => {
+    const { sql, params } = buildWhere({ ...base, q: 'react hooks' }, false);
+    // Two independent LIKE groups, each with four field bindings.
+    expect(sql.match(/LIKE \? ESCAPE/g)?.length).toBe(8);
+    expect(sql).toContain(' AND ');
+    expect(params).toContain('%react%');
+    expect(params).toContain('%hooks%');
+  });
+
+  it('joins multiple tokens into one FTS MATCH in FTS mode', () => {
+    const { sql, params } = buildWhere({ ...base, q: 'react hooks' }, true);
+    expect(sql).toContain('bookmarks_fts MATCH ?');
+    expect(params).toContain('"react" "hooks"');
+  });
+
+  it('adds a tag-name EXISTS clause for tag: filters', () => {
+    const { sql, params } = buildWhere({ ...base, q: 'tag:前端' }, false);
+    expect(sql).toContain('t.name = ? COLLATE NOCASE');
+    expect(params).toContain('前端');
+  });
+
+  it('adds url_key clauses for domain: filters', () => {
+    const { sql, params } = buildWhere({ ...base, q: 'domain:example.com' }, false);
+    expect(sql).toContain('b.url_key = ?');
+    expect(params).toContain('example.com');
+    expect(params).toContain('example.com/%');
+  });
+
+  it('escapes LIKE wildcards inside tokens', () => {
+    const { params } = buildWhere({ ...base, q: 'a_b%c' }, false);
+    expect(params).toContain('%a\\_b\\%c%');
+  });
+});
