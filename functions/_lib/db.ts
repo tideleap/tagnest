@@ -176,19 +176,23 @@ export async function attachTags(
   const result = new Map<string, Tag[]>();
   if (bookmarkIds.length === 0) return result;
 
-  const placeholders = bookmarkIds.map(() => '?').join(',');
+  // Chunk the bookmark ids exactly like the count query below: callers such as
+  // the private-tags listing can pass well over 100 ids, which would overflow
+  // D1's 100 bound-parameter cap in a single IN(...).
+  const links = await queryInChunks<Row, Row>(
+    env.DB,
+    bookmarkIds,
+    [],
+    (ph) =>
+      `SELECT bt.bookmark_id, t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.created_at
+         FROM bookmark_tags bt
+         JOIN tags t ON t.id = bt.tag_id
+        WHERE bt.bookmark_id IN (${ph})
+        ORDER BY t.sort_order, t.name COLLATE NOCASE`,
+    (r) => r,
+  );
 
-  const links = await env.DB.prepare(
-    `SELECT bt.bookmark_id, t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.created_at
-       FROM bookmark_tags bt
-       JOIN tags t ON t.id = bt.tag_id
-      WHERE bt.bookmark_id IN (${placeholders})
-      ORDER BY t.sort_order, t.name COLLATE NOCASE`,
-  )
-    .bind(...bookmarkIds)
-    .all<Row>();
-
-  const tagIds = [...new Set(links.results.map((r) => r.id as string))];
+  const tagIds = [...new Set(links.map((r) => r.id as string))];
   const counts = new Map<string, number>();
 
   if (tagIds.length > 0) {
@@ -210,7 +214,7 @@ export async function attachTags(
     for (const r of countRows) counts.set(r.tag_id as string, Number(r.c));
   }
 
-  for (const row of links.results) {
+  for (const row of links) {
     const id = row.bookmark_id as string;
     const list = result.get(id) ?? [];
     list.push(mapTag({ ...row, count: counts.get(row.id as string) ?? 0 }));
@@ -276,7 +280,12 @@ export async function ensureTags(
     );
   }
 
-  if (inserts.length > 0) await env.DB.batch(inserts);
+  // Flush in groups of 90 so an import that mints >100 new tags at once never
+  // trips D1's 100-statement batch cap.
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < inserts.length; i += BATCH_LIMIT) {
+    await env.DB.batch(inserts.slice(i, i + BATCH_LIMIT));
+  }
   return { ids, created: inserts.length };
 }
 

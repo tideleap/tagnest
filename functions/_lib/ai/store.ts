@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { ensureTags, PRIVATE_BOOKMARK_CLAUSE } from '../db';
+import { D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, queryInChunks } from '../db';
 import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
 import { recordFeedback, type FeedbackRecord } from './feedback';
@@ -412,6 +412,30 @@ export interface ApplyOutcome {
 }
 
 /**
+ * Flips decided suggestions to `status` in chunks of 97 ids, keeping each
+ * UPDATE within D1's 100 bound-parameter cap (3 fixed params + 97 ids).
+ */
+async function markDecided(
+  env: Env,
+  userId: string,
+  ids: string[],
+  status: 'accepted' | 'rejected',
+  ts: string,
+): Promise<void> {
+  const CHUNK = D1_MAX_PARAMS - 3;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const marks = slice.map(() => '?').join(',');
+    await env.DB.prepare(
+      `UPDATE tag_suggestions SET status = ?, decided_at = ?
+        WHERE user_id = ? AND id IN (${marks})`,
+    )
+      .bind(status, ts, userId, ...slice)
+      .run();
+  }
+}
+
+/**
  * Accepts or rejects suggestions.
  *
  * Accepted tags are written with `source = 'ai'` and their confidence, which is
@@ -427,25 +451,29 @@ export async function decideSuggestions(
 ): Promise<ApplyOutcome> {
   if (ids.length === 0) return { accepted: 0, rejected: 0, tagsCreated: 0 };
 
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = await env.DB.prepare(
-    `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source,
-            b.url AS bookmark_url, b.title AS bookmark_title
-       FROM tag_suggestions s
-       JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
-      WHERE s.user_id = ? AND s.status = 'pending' AND s.id IN (${placeholders})`,
-  )
-    .bind(userId, ...ids)
-    .all<Record<string, unknown>>();
+  // A bulk decision can carry up to MAX_DECISIONS (500) ids; binding them all
+  // into one IN(...) would blow D1's 100-param cap, so fetch in chunks.
+  const rows = await queryInChunks<Record<string, unknown>, Record<string, unknown>>(
+    env.DB,
+    ids,
+    [userId],
+    (ph) =>
+      `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source,
+              b.url AS bookmark_url, b.title AS bookmark_title
+         FROM tag_suggestions s
+         JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        WHERE s.user_id = ? AND s.status = 'pending' AND s.id IN (${ph})`,
+    (r) => r,
+  );
 
-  if (rows.results.length === 0) return { accepted: 0, rejected: 0, tagsCreated: 0 };
+  if (rows.length === 0) return { accepted: 0, rejected: 0, tagsCreated: 0 };
 
   const ts = nowIso();
-  const foundIds = rows.results.map((r) => String(r.id));
+  const foundIds = rows.map((r) => String(r.id));
 
   // The feedback event for every decided suggestion. Computed once and shared
   // by both branches so the accept/reject loop is recorded consistently.
-  const feedback: FeedbackRecord[] = rows.results.map((r) => {
+  const feedback: FeedbackRecord[] = rows.map((r) => {
     const url = String(r.bookmark_url ?? '');
     const domain = hostOf(url);
     const context = `${String(r.bookmark_title ?? '')} · ${domain ?? ''}`.trim();
@@ -461,13 +489,7 @@ export async function decideSuggestions(
   });
 
   if (action === 'reject') {
-    const marks = foundIds.map(() => '?').join(',');
-    await env.DB.prepare(
-      `UPDATE tag_suggestions SET status = 'rejected', decided_at = ?
-        WHERE user_id = ? AND id IN (${marks})`,
-    )
-      .bind(ts, userId, ...foundIds)
-      .run();
+    await markDecided(env, userId, foundIds, 'rejected', ts);
     await recordFeedback(env, userId, feedback);
     return { accepted: 0, rejected: foundIds.length, tagsCreated: 0 };
   }
@@ -482,7 +504,7 @@ export async function decideSuggestions(
 
   // Resolve every name in one pass so a batch accept is a couple of round
   // trips rather than one per tag.
-  const names = [...new Set(rows.results.map((r) => String(r.tag_name)))];
+  const names = [...new Set(rows.map((r) => String(r.tag_name)))];
   if (renameTo) names.push(renameTo);
   const { ids: tagIds, created } = await ensureTags(env, userId, names);
 
@@ -495,7 +517,7 @@ export async function decideSuggestions(
   // spelling is rejected and mapped to the new) plus an 'accepted' event for
   // the new name so it earns a boost too.
   if (renameTo) {
-    const target = rows.results[0];
+    const target = rows[0];
     const idx = feedback.findIndex(
       (f) => f.bookmarkId === String(target.bookmark_id) && f.tagName === String(target.tag_name),
     );
@@ -525,7 +547,7 @@ export async function decideSuggestions(
 
   const statements: D1PreparedStatement[] = [];
 
-  for (const row of rows.results) {
+  for (const row of rows) {
     const tagName = renameTo ? renameTo : String(row.tag_name);
     const tagId = byLower.get(tagName.toLowerCase()) ?? null;
     if (!tagId) continue;
@@ -545,16 +567,10 @@ export async function decideSuggestions(
     await env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
   }
 
-  // Flip the decided suggestions to 'accepted' in one statement, after the
-  // inserts. Doing it last means a partial insert failure leaves the queue
-  // retryable (status stays 'pending') rather than half-applied.
-  const marks = foundIds.map(() => '?').join(',');
-  await env.DB.prepare(
-    `UPDATE tag_suggestions SET status = 'accepted', decided_at = ?
-      WHERE user_id = ? AND id IN (${marks})`,
-  )
-    .bind(ts, userId, ...foundIds)
-    .run();
+  // Flip the decided suggestions to 'accepted' after the inserts (chunked the
+  // same way as the reject path). Doing it last means a partial insert failure
+  // leaves the queue retryable (status stays 'pending') rather than half-applied.
+  await markDecided(env, userId, foundIds, 'accepted', ts);
 
   await recordFeedback(env, userId, feedback);
   return { accepted: foundIds.length, rejected: 0, tagsCreated: created };

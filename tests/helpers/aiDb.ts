@@ -530,15 +530,15 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return;
     }
 
-    // decideSuggestions reject / accept mark
+    // decideSuggestions reject / accept mark (markDecided binds status first)
     if (sql.startsWith('UPDATE TAG_SUGGESTIONS SET STATUS =')) {
-      const status = rawSql.toUpperCase().includes("'REJECTED'") ? 'rejected' : 'accepted';
-      const userId = String(params[1]);
-      const ids = params.slice(2).map(String);
+      const status = String(params[0]) as SuggestionRow['status'];
+      const userId = String(params[2]);
+      const ids = params.slice(3).map(String);
       for (const s of state.tag_suggestions) {
         if (s.user_id === userId && ids.includes(s.id)) {
-          s.status = status as SuggestionRow['status'];
-          s.decided_at = String(params[0]);
+          s.status = status;
+          s.decided_at = String(params[1]);
         }
       }
       return;
