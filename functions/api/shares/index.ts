@@ -1,6 +1,6 @@
 import type { SharePalette, ShareTheme } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
-import { requireUserId } from '../../_lib/auth';
+import { hashPassword, requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, readJson } from '../../_lib/http';
 import { isoFromNow, newId, nowIso } from '../../_lib/ids';
 import { PALETTES, THEMES, assertValidSlug, mapShare, normalizeSlug, slugFromTitle } from '../../_lib/shares';
@@ -47,6 +47,27 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     ? [...new Set(body.tagIds.map(String).filter(Boolean))].slice(0, 20)
     : [];
 
+  // Collection mode and tag mode are mutually exclusive: a share renders one
+  // or the other, never both. Choosing a collection clears the tag filter.
+  let collectionId: string | null = null;
+  if (typeof body.collectionId === 'string' && body.collectionId.trim()) {
+    collectionId = body.collectionId.trim();
+    const owned = await ctx.env.DB.prepare(
+      `SELECT id FROM collections WHERE id = ? AND user_id = ? LIMIT 1`,
+    )
+      .bind(collectionId, userId)
+      .first<{ id: string }>();
+    if (!owned) throw badRequest('所选集合不存在');
+  }
+  const effectiveTagIds = collectionId ? [] : tagIds;
+
+  // Visitor password: stored as a PBKDF2 hash, same scheme as login passwords.
+  let passwordHash: string | null = null;
+  if (typeof body.password === 'string' && body.password.length > 0) {
+    if (body.password.length > 200) throw badRequest('访问密码过长', { password: '密码不能超过 200 个字符' });
+    passwordHash = await hashPassword(body.password, ctx.env);
+  }
+
   const theme = THEMES.includes(body.theme as ShareTheme)
     ? (body.theme as ShareTheme)
     : 'default';
@@ -70,8 +91,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   await ctx.env.DB.prepare(
     `INSERT INTO shares
        (id, user_id, slug, title, description, tag_ids, match_all_tags,
-        include_notes, theme, palette, is_active, view_count, created_at, updated_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
+        include_notes, theme, palette, is_active, view_count, created_at, updated_at,
+        expires_at, password_hash, collection_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -79,14 +101,16 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       slug,
       title,
       body.description ? String(body.description).slice(0, 500) : null,
-      JSON.stringify(tagIds),
-      body.matchAllTags ? 1 : 0,
+      JSON.stringify(effectiveTagIds),
+      collectionId ? 0 : body.matchAllTags ? 1 : 0,
       body.includeNotes ? 1 : 0,
       theme,
       palette,
       ts,
       ts,
       expiresAt,
+      passwordHash,
+      collectionId,
     )
     .run();
 

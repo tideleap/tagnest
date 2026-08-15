@@ -62,6 +62,7 @@ export class MockDb {
   tag_suggestions: MockRow[] = [];
   ai_settings: MockRow[] = [];
   private_vault: MockRow[] = [];
+  shares: MockRow[] = [];
   /** Number of rows affected by the most recent mutation statement. */
   lastChanges = 0;
 
@@ -1021,6 +1022,127 @@ export class MockDb {
       const [user_id, salt, verifier, created_at, updated_at] = params as string[];
       this.private_vault.push({ user_id, salt, verifier, created_at, updated_at });
       return [];
+    }
+
+    // --- shares (H1: password protection + collection shares) --------
+    if (u.startsWith('SELECT DISPLAY_NAME FROM USERS WHERE ID = ?')) {
+      const userId = params[0] as string;
+      const user = this.users.find((r) => r.id === userId);
+      return user ? [{ display_name: user.display_name ?? '' }] : [];
+    }
+    if (u.startsWith('SELECT ID FROM COLLECTIONS WHERE ID = ? AND USER_ID = ?')) {
+      const collId = params[0] as string;
+      const userId = params[1] as string;
+      const coll = this.collections.find((c) => c.id === collId && c.user_id === userId);
+      return coll ? [{ id: coll.id }] : [];
+    }
+    if (u.startsWith('SELECT * FROM SHARES WHERE SLUG = ?')) {
+      const slug = params[0] as string;
+      const row = this.shares.find((s) => s.slug === slug);
+      return row ? [row] : [];
+    }
+    if (u.startsWith('SELECT * FROM SHARES WHERE ID = ? AND USER_ID = ?')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      const row = this.shares.find((s) => s.id === id && s.user_id === userId);
+      return row ? [row] : [];
+    }
+    if (u.startsWith('SELECT * FROM SHARES WHERE USER_ID = ?')) {
+      const userId = params[0] as string;
+      return this.shares
+        .filter((s) => s.user_id === userId)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    }
+    if (u.startsWith('SELECT ID FROM SHARES WHERE SLUG = ?')) {
+      const slug = params[0] as string;
+      const row = this.shares.find((s) => s.slug === slug);
+      return row ? [{ id: row.id }] : [];
+    }
+    if (u.startsWith('SELECT COUNT(*) AS C FROM SHARES WHERE USER_ID = ?')) {
+      const userId = params[0] as string;
+      return [{ c: this.shares.filter((s) => s.user_id === userId).length }];
+    }
+    if (u.startsWith('INSERT INTO SHARES')) {
+      const row = parseInsertRow(
+        sql.slice(sql.indexOf('(') + 1, sql.indexOf(')')),
+        sql.slice(sql.indexOf('VALUES') + 6).replace(/^\s*\(/, '').replace(/\)\s*(RETURNING.*)?$/i, ''),
+        params,
+      );
+      this.shares.push(row);
+      return [{ id: row.id }];
+    }
+    if (u.startsWith('UPDATE SHARES SET VIEW_COUNT = VIEW_COUNT + 1 WHERE SLUG = ?')) {
+      const slug = params[0] as string;
+      const row = this.shares.find((s) => s.slug === slug);
+      if (row) row.view_count = Number(row.view_count ?? 0) + 1;
+      return [];
+    }
+    if (u.startsWith('UPDATE SHARES SET')) {
+      // Generic column-update: parse `SET col = ?, col = ? ... WHERE id = ? AND user_id = ?`.
+      const id = params[params.length - 2] as string;
+      const userId = params[params.length - 1] as string;
+      const row = this.shares.find((s) => s.id === id && s.user_id === userId);
+      if (!row) return [];
+      const setClause = sql.slice(sql.toUpperCase().indexOf('SET') + 3, sql.toUpperCase().indexOf('WHERE')).trim();
+      const cols = setClause.split(',').map((c) => c.trim().split('=')[0].trim().toLowerCase());
+      for (let i = 0; i < cols.length; i += 1) {
+        row[cols[i]] = params[i];
+      }
+      this.lastChanges = 1;
+      return [];
+    }
+    if (u.startsWith('DELETE FROM SHARES WHERE ID = ? AND USER_ID = ?')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      this.shares = this.shares.filter((s) => !(s.id === id && s.user_id === userId));
+      return [];
+    }
+    // renderShare collection-mode query
+    if (
+      u.startsWith(
+        'SELECT B.ID, B.URL, B.TITLE, B.DESCRIPTION, B.FAVICON_URL, B.NOTE, B.MANUAL_ORDER, B.CREATED_AT FROM COLLECTION_BOOKMARKS CB JOIN BOOKMARKS B',
+      )
+    ) {
+      const collId = params[0] as string;
+      const userId = params[1] as string;
+      const members = this.collection_bookmarks
+        .filter((cb) => cb.collection_id === collId)
+        .sort((a, b) => Number(a.position) - Number(b.position));
+      return members
+        .map((cb) => this.bookmarks.find((b) => b.id === cb.bookmark_id))
+        .filter((b): b is MockRow => Boolean(b))
+        .filter((b) => b.user_id === userId && b.deleted_at == null && b.is_archived !== 1 && b.is_private !== 1 && !this.hasPrivateTag(b.id, userId))
+        .map((b) => ({
+          id: b.id, url: b.url, title: b.title, description: b.description ?? null,
+          favicon_url: b.favicon_url ?? null, note: b.note ?? null,
+          manual_order: b.manual_order ?? 0, created_at: b.created_at,
+        }));
+    }
+    // renderShare tag-mode query (bookmarks b WHERE ...)
+    if (
+      u.startsWith(
+        'SELECT B.ID, B.URL, B.TITLE, B.DESCRIPTION, B.FAVICON_URL, B.NOTE, B.MANUAL_ORDER, B.CREATED_AT FROM BOOKMARKS B WHERE',
+      )
+    ) {
+      const userId = params[0] as string;
+      return this.bookmarks
+        .filter((b) => b.user_id === userId && b.deleted_at == null && b.is_archived !== 1 && b.is_private !== 1 && !this.hasPrivateTag(b.id, userId))
+        .map((b) => ({
+          id: b.id, url: b.url, title: b.title, description: b.description ?? null,
+          favicon_url: b.favicon_url ?? null, note: b.note ?? null,
+          manual_order: b.manual_order ?? 0, created_at: b.created_at,
+        }));
+    }
+    // renderShare tags-by-bookmark lookup
+    if (u.startsWith('SELECT BT.BOOKMARK_ID, T.NAME, T.COLOR_INDEX FROM BOOKMARK_TAGS BT JOIN TAGS T')) {
+      const ids = params as string[];
+      const rows: MockRow[] = [];
+      for (const bt of this.bookmark_tags) {
+        if (!ids.includes(bt.bookmark_id)) continue;
+        const tag = this.tags.find((t) => t.id === bt.tag_id);
+        if (tag) rows.push({ bookmark_id: bt.bookmark_id, name: tag.name, color_index: tag.color_index ?? 0 });
+      }
+      return rows;
     }
 
     return [];

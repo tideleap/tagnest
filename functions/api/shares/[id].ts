@@ -1,6 +1,6 @@
 import type { SharePalette, ShareTheme } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
-import { requireUserId } from '../../_lib/auth';
+import { hashPassword, requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../_lib/http';
 import { isoFromNow, nowIso } from '../../_lib/ids';
 import { PALETTES, THEMES, assertValidSlug, mapShare, normalizeSlug, purgeCache } from '../../_lib/shares';
@@ -100,6 +100,42 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
       }
       sets.push('expires_at = ?');
       params.push(days > 0 ? isoFromNow(days * 24 * 60 * 60 * 1000) : null);
+    }
+  }
+
+  // Content source: switching to a collection clears the tag filter (and vice
+  // versa, clearing back to tag mode keeps whatever tags were stored).
+  if ('collectionId' in body) {
+    if (body.collectionId === null || body.collectionId === '') {
+      sets.push('collection_id = ?');
+      params.push(null);
+    } else {
+      const collectionId = String(body.collectionId).trim();
+      const owned = await ctx.env.DB.prepare(
+        `SELECT id FROM collections WHERE id = ? AND user_id = ? LIMIT 1`,
+      )
+        .bind(collectionId, userId)
+        .first<{ id: string }>();
+      if (!owned) throw badRequest('所选集合不存在');
+      sets.push('collection_id = ?', 'tag_ids = ?', 'match_all_tags = ?');
+      params.push(collectionId, '[]', 0);
+    }
+  }
+
+  // Visitor password: non-empty string sets/replaces, `null` removes, and an
+  // omitted field leaves the stored hash untouched (same PATCH semantics as
+  // expiresInDays — saving an unrelated change must not strip the password).
+  if ('password' in body) {
+    if (body.password === null || body.password === '') {
+      sets.push('password_hash = ?');
+      params.push(null);
+    } else {
+      const password = String(body.password);
+      if (password.length > 200) {
+        throw badRequest('访问密码过长', { password: '密码不能超过 200 个字符' });
+      }
+      sets.push('password_hash = ?');
+      params.push(await hashPassword(password, ctx.env));
     }
   }
 

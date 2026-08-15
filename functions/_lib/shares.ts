@@ -104,6 +104,10 @@ export function mapShare(row: Record<string, unknown>): Share {
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     expiresAt: (row.expires_at as string | null) ?? null,
+    // Only the *presence* of a password is ever exposed; the hash stays
+    // server-side. `undefined` (pre-migration rows) reads as "no password".
+    hasPassword: Boolean(row.password_hash),
+    collectionId: (row.collection_id as string | null) ?? null,
     url: `/s/${slug}`,
   };
 }
@@ -117,48 +121,78 @@ export function mapShare(row: Record<string, unknown>): Share {
  *
  * Trashed and archived bookmarks are always excluded regardless of the
  * filter: neither belongs on a page the owner is showing to other people.
+ *
+ * Returns `null` when a collection-backed share's collection no longer exists
+ * (or belongs to someone else) — the caller turns that into a 404, matching
+ * the "disabled share" semantics of not confirming the target ever existed.
  */
 export async function renderShare(
   env: Env,
   share: Share,
   userId: string,
-): Promise<PublicShare> {
-  const params: unknown[] = [userId];
-  const where = ['b.user_id = ?', 'b.deleted_at IS NULL', 'b.is_archived = 0', PRIVATE_BOOKMARK_CLAUSE];
-
+): Promise<PublicShare | null> {
   const ownerRow = await env.DB.prepare(
     `SELECT display_name FROM users WHERE id = ? LIMIT 1`,
   )
     .bind(userId)
     .first<{ display_name: string }>();
 
-  if (share.tagIds.length > 0) {
-    const ph = share.tagIds.map(() => '?').join(',');
-    if (share.matchAllTags) {
-      where.push(
-        `(SELECT COUNT(DISTINCT bt.tag_id) FROM bookmark_tags bt
-           WHERE bt.bookmark_id = b.id AND bt.tag_id IN (${ph})) = ?`,
-      );
-      params.push(...share.tagIds, share.tagIds.length);
-    } else {
-      where.push(
-        `EXISTS (SELECT 1 FROM bookmark_tags bt
-                  WHERE bt.bookmark_id = b.id AND bt.tag_id IN (${ph}))`,
-      );
-      params.push(...share.tagIds);
-    }
-  }
+  let rows: { results: Record<string, unknown>[] };
 
-  const rows = await env.DB.prepare(
-    `SELECT b.id, b.url, b.title, b.description, b.favicon_url, b.note,
-            b.manual_order, b.created_at
-       FROM bookmarks b
-      WHERE ${where.join(' AND ')}
-      ORDER BY b.manual_order DESC, b.created_at DESC
-      LIMIT ?`,
-  )
-    .bind(...params, MAX_PUBLIC_ITEMS)
-    .all<Record<string, unknown>>();
+  if (share.collectionId) {
+    // Collection mode: membership order is the point of a curated list.
+    const collection = await env.DB.prepare(
+      `SELECT id FROM collections WHERE id = ? AND user_id = ? LIMIT 1`,
+    )
+      .bind(share.collectionId, userId)
+      .first<{ id: string }>();
+    if (!collection) return null;
+
+    rows = await env.DB.prepare(
+      `SELECT b.id, b.url, b.title, b.description, b.favicon_url, b.note,
+              b.manual_order, b.created_at
+         FROM collection_bookmarks cb
+         JOIN bookmarks b ON b.id = cb.bookmark_id
+        WHERE cb.collection_id = ?
+          AND b.user_id = ? AND b.deleted_at IS NULL AND b.is_archived = 0
+          AND ${PRIVATE_BOOKMARK_CLAUSE}
+        ORDER BY cb.position, b.created_at DESC
+        LIMIT ?`,
+    )
+      .bind(share.collectionId, userId, MAX_PUBLIC_ITEMS)
+      .all<Record<string, unknown>>();
+  } else {
+    const params: unknown[] = [userId];
+    const where = ['b.user_id = ?', 'b.deleted_at IS NULL', 'b.is_archived = 0', PRIVATE_BOOKMARK_CLAUSE];
+
+    if (share.tagIds.length > 0) {
+      const ph = share.tagIds.map(() => '?').join(',');
+      if (share.matchAllTags) {
+        where.push(
+          `(SELECT COUNT(DISTINCT bt.tag_id) FROM bookmark_tags bt
+             WHERE bt.bookmark_id = b.id AND bt.tag_id IN (${ph})) = ?`,
+        );
+        params.push(...share.tagIds, share.tagIds.length);
+      } else {
+        where.push(
+          `EXISTS (SELECT 1 FROM bookmark_tags bt
+                    WHERE bt.bookmark_id = b.id AND bt.tag_id IN (${ph}))`,
+        );
+        params.push(...share.tagIds);
+      }
+    }
+
+    rows = await env.DB.prepare(
+      `SELECT b.id, b.url, b.title, b.description, b.favicon_url, b.note,
+              b.manual_order, b.created_at
+         FROM bookmarks b
+        WHERE ${where.join(' AND ')}
+        ORDER BY b.manual_order DESC, b.created_at DESC
+        LIMIT ?`,
+    )
+      .bind(...params, MAX_PUBLIC_ITEMS)
+      .all<Record<string, unknown>>();
+  }
 
   const ids = rows.results.map((r) => r.id as string);
   const tagsByBookmark = new Map<string, { name: string; colorIndex: number }[]>();
