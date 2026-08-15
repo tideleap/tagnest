@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PrivateTagsResponse, Tag, TagInput } from '@shared/types';
+import type { PrivateTagsResponse, Tag, TagInput, TagMergeLogEntry } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -56,14 +56,46 @@ export function useDeleteTag() {
 export function useMergeTags() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { sourceIds: string[]; targetId: string }) =>
-      api.post<{ merged: number }>('/tags/merge', input),
+    mutationFn: (input: { sourceIds?: string[]; targetId?: string; clusters?: Array<{ sourceIds: string[]; targetId: string }> }) =>
+      api.post<{ merged: number; clusters?: number; logIds?: string[] }>('/tags/merge', input),
     onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: keys.tags });
       void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      void qc.invalidateQueries({ queryKey: keys.tagMergeLog });
+      void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+      void qc.invalidateQueries({ queryKey: keys.stats });
       toast.success(`已合并 ${res.merged} 个标签`);
     },
     onError: (e: Error) => toast.error('合并失败', e.message),
+  });
+}
+
+/** T1 — merge audit trail: who was folded into what, newest first. */
+export function useMergeLog(enabled = true) {
+  return useQuery({
+    queryKey: keys.tagMergeLog,
+    queryFn: () => api.get<TagMergeLogEntry[]>('/tags/merge-log'),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * T1 — bulk delete for the governance panel's "clear all unused" action.
+ * Only tags with zero bookmarks should ever be offered here; the backend
+ * deletes tag rows only, never bookmarks.
+ */
+export function useBulkDeleteTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.post<{ deleted: number }>('/tags/bulk-delete', { ids }),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: keys.tags });
+      void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+      void qc.invalidateQueries({ queryKey: keys.stats });
+      toast.success(`已删除 ${res.deleted} 个标签`);
+    },
+    onError: (e: Error) => toast.error('删除失败', e.message),
   });
 }
 

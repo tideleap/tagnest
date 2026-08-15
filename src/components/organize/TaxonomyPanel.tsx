@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { ArrowRight, Combine, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowRight, Combine, History, ShieldCheck, Trash2 } from 'lucide-react';
 import type { AiTaxonomyAudit } from '@shared/types';
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Skeleton } from '@/components/ui';
-import { useDeleteTag, useMergeTags } from '@/hooks/queries';
+import { useBulkDeleteTags, useDeleteTag, useMergeLog, useMergeTags } from '@/hooks/queries';
+import { formatDate } from '@/lib/url';
 import { AliasSuggestions } from './AliasSuggestions';
 
 /**
- * Taxonomy health: duplicate clusters and unused tags.
+ * Taxonomy health: duplicate clusters, unused tags, low-usage tags, and the
+ * merge audit trail — the tag governance panel (T1).
  *
  * ## Why this belongs to the AI feature
  *
@@ -17,8 +19,10 @@ import { AliasSuggestions } from './AliasSuggestions';
  * audit reuses it rather than asking the user to eyeball hundreds of rows.
  *
  * Execution deliberately reuses the existing tag endpoints (`/api/tags/merge`,
- * `DELETE /api/tags/:id`): one code path rewrites tag links, no matter who
- * proposed the change.
+ * `DELETE /api/tags/:id`, `/api/tags/bulk-delete`): one code path rewrites tag
+ * links, no matter who proposed the change. "Merge all" sends every cluster in
+ * a single batch request, so it either all happens or none of it does — no
+ * half-merged library if the network drops mid-way.
  */
 
 interface Props {
@@ -29,12 +33,15 @@ interface Props {
 export function TaxonomyPanel({ audit, loading }: Props) {
   const merge = useMergeTags();
   const deleteTag = useDeleteTag();
+  const bulkDelete = useBulkDeleteTags();
   /**
    * Tag queued for deletion. Deleting a tag is irreversible, and TagsPage
    * already gates the same action behind a confirmation — doing it silently
    * here would leave the user with two different mental models for one verb.
    */
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  /** Bulk-clear confirmation for the whole unused list. */
+  const [pendingClearAll, setPendingClearAll] = useState(false);
 
   if (loading) {
     return (
@@ -48,7 +55,8 @@ export function TaxonomyPanel({ audit, loading }: Props) {
 
   if (!audit) return null;
 
-  const clean = audit.clusters.length === 0 && audit.unused.length === 0;
+  const clean =
+    audit.clusters.length === 0 && audit.unused.length === 0 && audit.lowUsage.length === 0;
 
   if (clean) {
     return (
@@ -56,9 +64,10 @@ export function TaxonomyPanel({ audit, loading }: Props) {
         <EmptyState
           icon={<ShieldCheck size={22} />}
           title="标签体系很干净"
-          description={`共 ${audit.totalTags} 个标签，没有发现重复或未使用的标签。`}
+          description={`共 ${audit.totalTags} 个标签，没有发现重复、未使用或低频的标签。`}
         />
         <AliasSuggestions />
+        <MergeHistory />
       </div>
     );
   }
@@ -70,6 +79,24 @@ export function TaxonomyPanel({ audit, loading }: Props) {
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-semibold text-ink">疑似重复</h3>
             <Badge tone="caution">{audit.clusters.length}</Badge>
+            {audit.clusters.length > 1 && (
+              <Button
+                size="sm"
+                variant="secondary"
+                iconLeft={<Combine size={13} />}
+                loading={merge.isPending}
+                onClick={() =>
+                  merge.mutate({
+                    clusters: audit.clusters.map((c) => ({
+                      sourceIds: c.duplicates.map((d) => d.id),
+                      targetId: c.canonicalId,
+                    })),
+                  })
+                }
+              >
+                一键全部合并
+              </Button>
+            )}
           </div>
           <p className="text-2xs text-ink-faint">
             合并后，重复标签下的书签会转移到保留标签，重复标签本身被删除。
@@ -128,6 +155,16 @@ export function TaxonomyPanel({ audit, loading }: Props) {
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-semibold text-ink">未使用</h3>
             <Badge tone="neutral">{audit.unused.length}</Badge>
+            {audit.unused.length > 1 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                iconLeft={<Trash2 size={13} />}
+                onClick={() => setPendingClearAll(true)}
+              >
+                全部清理
+              </Button>
+            )}
           </div>
           <ul className="flex flex-wrap gap-1.5">
             {audit.unused.map((tag) => (
@@ -149,7 +186,31 @@ export function TaxonomyPanel({ audit, loading }: Props) {
         </section>
       )}
 
+      {audit.lowUsage.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold text-ink">低频标签</h3>
+            <Badge tone="neutral">{audit.lowUsage.length}</Badge>
+          </div>
+          <p className="text-2xs text-ink-faint">
+            只关联了 1 个书签的标签——考虑合并到更通用的标签，或保留作为细分。
+          </p>
+          <ul className="flex flex-wrap gap-1.5">
+            {audit.lowUsage.map((tag) => (
+              <li key={tag.id}>
+                <span className="inline-flex h-7 items-center gap-1 rounded-md border border-line px-2 text-2xs text-ink-soft">
+                  {tag.name}
+                  <span className="tabular-nums text-ink-faint">1</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <AliasSuggestions />
+
+      <MergeHistory />
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -168,6 +229,58 @@ export function TaxonomyPanel({ audit, loading }: Props) {
         tone="danger"
         loading={deleteTag.isPending}
       />
+
+      <ConfirmDialog
+        open={pendingClearAll}
+        onClose={() => setPendingClearAll(false)}
+        onConfirm={() => {
+          bulkDelete.mutate(audit.unused.map((t) => t.id));
+          setPendingClearAll(false);
+        }}
+        title="清理全部未使用标签"
+        message={`确定删除全部 ${audit.unused.length} 个未使用标签吗？它们都没有关联书签，删除后无法撤销。`}
+        confirmLabel="全部删除"
+        tone="danger"
+        loading={bulkDelete.isPending}
+      />
     </div>
+  );
+}
+
+/**
+ * The merge audit trail. Every merge writes a row server-side (names are
+ * snapshotted because the merged-away tags no longer exist), so this list is
+ * the user-visible proof that governance actions are traceable.
+ */
+function MergeHistory() {
+  const { data: log, isLoading } = useMergeLog();
+
+  if (isLoading) {
+    return <Skeleton className="h-12 w-full rounded-md" />;
+  }
+  if (!log || log.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <History size={13} className="text-ink-faint" aria-hidden />
+        <h3 className="text-xs font-semibold text-ink">合并历史</h3>
+        <Badge tone="neutral">{log.length}</Badge>
+      </div>
+      <ul className="flex flex-col gap-1">
+        {log.slice(0, 10).map((entry) => (
+          <li
+            key={entry.id}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-line bg-surface px-3 py-2 text-2xs text-ink-soft"
+          >
+            <span className="text-ink-faint">{formatDate(entry.createdAt)}</span>
+            <span className="line-through opacity-70">{entry.sourceTagNames.join('、')}</span>
+            <ArrowRight size={11} className="shrink-0 text-ink-faint" aria-hidden />
+            <span className="font-medium text-ink">{entry.targetTagName}</span>
+            <span className="tabular-nums text-ink-faint">×{entry.mergedCount}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

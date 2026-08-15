@@ -14,6 +14,8 @@ export const keys = {
   /** O1 — structural health report (duplicates, orphan tags, score). */
   health: ['bookmarks-health'] as const,
   tags: ['tags'] as const,
+  /** T1 — merge audit trail shown in the governance panel. */
+  tagMergeLog: ['tag-merge-log'] as const,
   stats: ['stats'] as const,
   aiSettings: ['ai-settings'] as const,
   /** User-level application settings (snapshot retention, …). */

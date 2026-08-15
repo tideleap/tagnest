@@ -551,6 +551,18 @@ export interface AiTaxonomyAudit {
   clusters: AiTaxonomyCluster[];
   /** Tags attached to nothing; safe to delete. */
   unused: Array<{ id: string; name: string }>;
+  /** Tags attached to exactly one bookmark; governance candidates, not auto-deletable. */
+  lowUsage: Array<{ id: string; name: string; count: number }>;
+}
+
+/** One recorded tag merge (audit trail, names snapshotted at merge time). */
+export interface TagMergeLogEntry {
+  id: string;
+  targetTagId: string;
+  targetTagName: string;
+  sourceTagNames: string[];
+  mergedCount: number;
+  createdAt: string;
 }
 
 /** A proposed alias spelling for an existing tag, before the user confirms it. */
