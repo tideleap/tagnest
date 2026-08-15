@@ -3,7 +3,7 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
-import { colorForName, mapTag } from '../../_lib/db';
+import { colorForName, mapTag, validateTagParent } from '../../_lib/db';
 
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -51,11 +51,16 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const id = newId();
   const ts = nowIso();
 
+  // The parent must exist, belong to this user, and not create a cycle.
+  // (A brand-new id can never be part of an existing cycle, so the walk-up
+  // check only guards against grafting onto a corrupt subtree.)
+  const parentId = await validateTagParent(ctx.env, userId, id, body.parentId ?? null);
+
   await ctx.env.DB.prepare(
     `INSERT INTO tags (id, user_id, name, color_index, parent_id, sort_order, created_at)
      VALUES (?, ?, ?, ?, ?, 0, ?)`,
   )
-    .bind(id, userId, name, colorIndex, body.parentId ?? null, ts)
+    .bind(id, userId, name, colorIndex, parentId, ts)
     .run();
 
   return json(
@@ -63,7 +68,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       id,
       name,
       color_index: colorIndex,
-      parent_id: body.parentId ?? null,
+      parent_id: parentId,
       sort_order: 0,
       count: 0,
       created_at: ts,

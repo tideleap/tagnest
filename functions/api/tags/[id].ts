@@ -2,7 +2,7 @@ import { TAG_COLOR_COUNT } from '../../../shared/types';
 import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../_lib/http';
-import { mapTag, setTagPrivate } from '../../_lib/db';
+import { mapTag, setTagPrivate, validateTagParent } from '../../_lib/db';
 import { nowIso } from '../../_lib/ids';
 
 export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ctx) => {
@@ -48,10 +48,10 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
   }
 
   if ('parentId' in body) {
-    // Self-parenting would produce a cycle the tree renderer cannot escape.
-    if (body.parentId === id) throw badRequest('标签不能作为自己的父级');
+    // Existence + ownership + cycle guard (self-parenting included).
+    const parentId = await validateTagParent(ctx.env, userId, id, body.parentId ?? null);
     sets.push('parent_id = ?');
-    params.push(body.parentId ?? null);
+    params.push(parentId);
   }
 
   if (sets.length > 0) {

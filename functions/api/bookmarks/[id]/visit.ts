@@ -1,6 +1,6 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
-import { json } from '../../../_lib/http';
+import { json, notFound } from '../../../_lib/http';
 import { nowIso } from '../../../_lib/ids';
 
 /**
@@ -13,13 +13,17 @@ import { nowIso } from '../../../_lib/ids';
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
 
-  await ctx.env.DB.prepare(
+  const result = await ctx.env.DB.prepare(
     `UPDATE bookmarks
         SET visit_count = visit_count + 1, last_visited_at = ?
       WHERE id = ? AND user_id = ?`,
   )
     .bind(nowIso(), String(ctx.params.id), userId)
     .run();
+
+  // Previously this returned { ok: true } even when nothing matched, so a
+  // visit against a deleted/foreign id silently "succeeded".
+  if (!result.meta.changes) throw notFound('书签不存在');
 
   return json({ ok: true });
 };

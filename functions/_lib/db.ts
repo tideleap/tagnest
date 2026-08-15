@@ -956,6 +956,49 @@ export async function clearBookmarkPrivate(
 }
 
 /**
+ * Validates a proposed `parent_id` for a tag before it is written:
+ *   - `null` / empty clears the parent and is always allowed;
+ *   - the parent must exist and belong to the same user — previously the POST
+ *     endpoint stored whatever string it was given, so a caller could hang a
+ *     tag off a nonexistent id (dangling FK the tree renderer treats as a
+ *     root) or even off *another user's* tag id (cross-user tree grafting);
+ *   - the parent must not be the tag itself;
+ *   - walking UP from the proposed parent must never reach the tag itself —
+ *     that would create a cycle, and the recursive subtree queries (privacy
+ *     cascade in `setTagPrivate`, the frontend tree renderer) assume a DAG.
+ * The walk is depth-bounded so already-corrupt data cannot loop forever.
+ * Returns the validated parent id (or null); throws badRequest on violation.
+ */
+export async function validateTagParent(
+  env: Env,
+  userId: string,
+  tagId: string,
+  parentId: string | null | undefined,
+): Promise<string | null> {
+  if (parentId === null || parentId === undefined || parentId === '') return null;
+  if (parentId === tagId) throw badRequest('标签不能作为自己的父级');
+
+  const parent = await env.DB.prepare(`SELECT id FROM tags WHERE id = ? AND user_id = ? LIMIT 1`)
+    .bind(parentId, userId)
+    .first<{ id: string }>();
+  if (!parent) throw badRequest('父级标签不存在');
+
+  let cursor: string | null = parentId;
+  for (let depth = 0; cursor !== null && depth < 64; depth++) {
+    if (cursor === tagId) throw badRequest('不能把标签移到自己的子级下');
+    // Explicit annotation: without it TS sees a circular inference between
+    // `row` (read from `cursor`) and `cursor` (written from `row`).
+    const row: { parent_id: string | null } | null = await env.DB.prepare(
+      `SELECT parent_id FROM tags WHERE id = ? AND user_id = ? LIMIT 1`,
+    )
+      .bind(cursor, userId)
+      .first<{ parent_id: string | null }>();
+    cursor = row?.parent_id ?? null;
+  }
+  return parentId;
+}
+
+/**
  * Sets or clears a tag's private flag, cascading to every descendant tag so a
  * "big category" private toggle hides (or restores) the whole subtree at once.
  *

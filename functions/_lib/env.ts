@@ -4,6 +4,12 @@ export interface Env {
   DB: D1Database;
   /** HMAC secret for access tokens. Set via `wrangler pages secret put`. */
   JWT_SECRET?: string;
+  /**
+   * System var injected by Cloudflare Pages ("1" on every deployment, absent
+   * in `wrangler pages dev` and unit tests). Used to refuse insecure secret
+   * fallbacks outside local development.
+   */
+  CF_PAGES?: string;
   /** Overrides the PBKDF2 cost; see auth.ts for the trade-off. */
   PBKDF2_ITERATIONS?: string;
   /** Set to "true" to reject new registrations on a private instance. */
@@ -76,3 +82,13 @@ export interface RequestData extends Record<string, unknown> {
 }
 
 export type Ctx = EventContext<Env, string, RequestData>;
+
+/**
+ * True only on live Cloudflare Pages deployments: the platform injects
+ * `CF_PAGES=1` into every deployment's env, while `wrangler pages dev` and
+ * unit tests leave it absent. Security-sensitive fallbacks (e.g. the dev
+ * JWT secret) must refuse to engage when this is true.
+ */
+export function isDeployedPages(env: Env): boolean {
+  return env.CF_PAGES === '1';
+}

@@ -1,4 +1,5 @@
 import type { Env } from './env';
+import { isDeployedPages } from './env';
 import { base64UrlDecode, base64UrlEncode } from './ids';
 
 /**
@@ -31,7 +32,17 @@ const DEV_SECRET = 'tagnest-insecure-development-secret-change-me';
 
 function secretFor(env: Env): string {
   const secret = env.JWT_SECRET?.trim();
-  return secret && secret.length >= 16 ? secret : DEV_SECRET;
+  if (secret && secret.length >= 16) return secret;
+
+  // Same policy as auth.ts: a live deployment without a real secret must fail
+  // closed (encrypting with a public key is worse than refusing), while local
+  // dev keeps the fixed fallback for out-of-the-box use.
+  if (isDeployedPages(env)) {
+    throw new Error(
+      'JWT_SECRET is unset or shorter than 16 characters; field encryption refuses to use the development secret on a live deployment.',
+    );
+  }
+  return DEV_SECRET;
 }
 
 let cached: { secret: string; key: CryptoKey } | null = null;

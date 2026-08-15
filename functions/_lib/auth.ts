@@ -1,5 +1,6 @@
 import type { User } from '../../shared/types';
 import type { Ctx, Env } from './env';
+import { isDeployedPages } from './env';
 import { base64UrlDecode, base64UrlEncode, isoFromNow, newId, nowIso, randomToken } from './ids';
 import { ApiException, unauthorized } from './http';
 import { sha256Hex } from './crypto';
@@ -79,8 +80,17 @@ function secretFor(env: Env): string {
   const secret = env.JWT_SECRET?.trim();
   if (secret && secret.length >= 16) return secret;
 
-  // Refusing to boot would make `wrangler pages dev` unusable out of the box,
-  // so development falls back to a fixed key — loudly.
+  // On live Pages deployments a missing/short secret is a configuration
+  // accident that would silently downgrade every session token to a publicly
+  // known key — refuse instead of degrading. Local dev (`wrangler pages dev`,
+  // unit tests) keeps the fixed fallback so the project runs out of the box.
+  if (isDeployedPages(env)) {
+    throw new Error(
+      'JWT_SECRET is unset or shorter than 16 characters. ' +
+        'Set it with `wrangler pages secret put JWT_SECRET`, then redeploy.',
+    );
+  }
+
   console.warn(
     '[tagnest] JWT_SECRET is unset or too short; using the development secret. ' +
       'Run `wrangler pages secret put JWT_SECRET` before deploying.',
