@@ -1,10 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Wand2 } from 'lucide-react';
 import { Button, Input, Modal, Textarea } from '@/components/ui';
+import { toast } from '@/components/ui/Toast';
 import { TagPicker } from './TagPicker';
 import { useOverlay } from '@/stores/ui';
 import { useCreateBookmark, useFetchMetadata } from '@/hooks/queries';
 import { normalizeUrl } from '@/lib/url';
+
+/**
+ * The clipboard auto-fill is best-effort. When the browser denies it we used
+ * to fail completely silently, so users could not tell why the link they just
+ * copied did not appear. Surface a light hint instead — but at most once per
+ * session, because many browsers deny by default and a toast on every open
+ * would be noise.
+ */
+let clipboardHintShown = false;
 
 /**
  * Paste a URL, hit save.
@@ -38,7 +48,12 @@ export function QuickAddDialog() {
           setUrl(text.trim());
         }
       } catch {
-        /* clipboard permission denied — no harm done */
+        // Clipboard permission denied — the field stays empty for manual
+        // input. Hint once per session so the silence is not mysterious.
+        if (!clipboardHintShown) {
+          clipboardHintShown = true;
+          toast.info('无法读取剪贴板', '浏览器拒绝了剪贴板访问，请手动粘贴网址。');
+        }
       }
     })();
   }, []);

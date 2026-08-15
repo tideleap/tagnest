@@ -19,6 +19,7 @@ import {
   Input,
   Menu,
   Modal,
+  QueryErrorState,
   Skeleton,
   tagColorVars,
 } from '@/components/ui';
@@ -36,7 +37,7 @@ import { api, qs } from '@/lib/api';
 import { cx } from '@/lib/cx';
 
 export function TabGroupsPage() {
-  const { data: groups, isLoading } = useTabGroups();
+  const { data: groups, isLoading, isError, error, refetch } = useTabGroups();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -72,6 +73,14 @@ export function TabGroupsPage() {
               </li>
             ))}
           </ul>
+        ) : isError ? (
+          <div className="p-2">
+            <QueryErrorState
+              compact
+              message={error instanceof Error ? error.message : undefined}
+              onRetry={() => void refetch()}
+            />
+          </div>
         ) : (groups ?? []).length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-4 text-center">
             <p className="text-xs leading-relaxed text-ink-faint">

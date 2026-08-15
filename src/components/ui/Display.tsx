@@ -192,7 +192,7 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 export function Spinner({ size = 16, label }: { size?: number; label?: string }) {
   return (
-    <span role="status" aria-label={label ?? 'åŠ è½½ä¸­'} className="inline-flex">
+    <span role="status" aria-label={label ?? 'åŠ è½½ä¸?'} className="inline-flex">
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="anim-spin">
         <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.2" />
         <path
@@ -242,6 +242,64 @@ export function EmptyState({ icon, title, description, action, compact }: EmptyS
         <p className="max-w-sm text-sm leading-relaxed text-ink-soft">{description}</p>
       )}
       {action && <div className="mt-1.5">{action}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * QueryErrorState ¡ª the honest counterpart of EmptyState
+ * ------------------------------------------------------------------ */
+
+/**
+ * Rendered when a list query FAILS. Deliberately distinct from EmptyState:
+ * a failed load must never read as "there is no data" ¡ª that confusion hides
+ * outages and makes users trust nothing. Offers a retry.
+ */
+export function QueryErrorState({
+  message,
+  onRetry,
+  compact,
+}: {
+  message?: string;
+  onRetry?: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cx(
+        'flex flex-col items-center justify-center gap-3 text-center',
+        compact ? 'px-4 py-8' : 'px-6 py-16',
+      )}
+      role="alert"
+    >
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-critical-soft text-critical shadow-raised">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface text-critical shadow-raised">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+          </svg>
+        </span>
+      </span>
+      <h3 className="text-lg font-semibold text-ink">¼ÓÔØÊ§°Ü</h3>
+      <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
+        {message || 'ÍøÂç»ò·şÎñÆ÷Òì³££¬ÄÚÈİÃ»ÓĞ¼ÓÔØ³öÀ´¡£'}
+      </p>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-1 inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-raised transition-all hover:border-line-strong hover:bg-surface-hover"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+            <path d="M8 16H3v5" />
+          </svg>
+          ÖØÊÔ
+        </button>
+      )}
     </div>
   );
 }

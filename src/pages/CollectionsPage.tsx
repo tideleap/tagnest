@@ -12,6 +12,7 @@ import {
   Menu,
   Modal,
   PageHeader,
+  QueryErrorState,
   Skeleton,
   tagColorVars,
 } from '@/components/ui';
@@ -25,7 +26,7 @@ import { cx } from '@/lib/cx';
 
 export function CollectionsPage() {
   const navigate = useNavigate();
-  const { data: collections, isLoading } = useCollections();
+  const { data: collections, isLoading, isError, error, refetch } = useCollections();
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Collection | null>(null);
@@ -61,6 +62,11 @@ export function CollectionsPage() {
             </li>
           ))}
         </ul>
+      ) : isError ? (
+        <QueryErrorState
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => void refetch()}
+        />
       ) : visible.length === 0 ? (
         <EmptyState
           icon={<FolderIcon size={22} />}

@@ -22,6 +22,7 @@ import {
   Menu,
   Modal,
   PageHeader,
+  QueryErrorState,
   Select,
   Skeleton,
   Switch,
@@ -39,7 +40,7 @@ import {
 
 export function TagsPage() {
   const navigate = useNavigate();
-  const { data: tags, isLoading } = useTags();
+  const { data: tags, isLoading, isError, error, refetch } = useTags();
 
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState<TagSortKey>('count');
@@ -129,6 +130,11 @@ export function TagsPage() {
             </li>
           ))}
         </ul>
+      ) : isError ? (
+        <QueryErrorState
+          message={error instanceof Error ? error.message : undefined}
+          onRetry={() => void refetch()}
+        />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<TagIcon size={22} />}

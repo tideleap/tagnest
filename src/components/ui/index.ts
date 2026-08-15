@@ -20,6 +20,7 @@ export {
   Badge,
   EmptyState,
   Kbd,
+  QueryErrorState,
   SegmentedControl,
   Skeleton,
   Spinner,

@@ -102,6 +102,15 @@ export function BookmarkEditor({ id }: { id: string }) {
             submit();
           }}
         >
+          {update.isError && (
+            <div
+              role="alert"
+              className="rounded-md border border-critical/30 bg-critical-soft px-3.5 py-2.5 text-xs leading-relaxed text-critical"
+            >
+              保存失败：{update.error instanceof Error ? update.error.message : '请稍后重试'}
+            </div>
+          )}
+
           <Input label="标题" value={title} onChange={(e) => setTitle(e.target.value)} />
 
           <Input
