@@ -50,6 +50,28 @@ export function useBookmarkSnapshots(id: string | null, enabled = true) {
   });
 }
 
+/**
+ * Time machine (O2): promotes a retained historical snapshot to be the
+ * bookmark's current preview via POST /bookmarks/:id/snapshots/restore. The
+ * backend does a lossless pointer swap on `snapshot_key`, so restoring is
+ * idempotent and instantly reversible — no confirmation dialog needed.
+ */
+export function useRestoreSnapshot(id: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) =>
+      api.post<{ snapshotKey: string }>(`/bookmarks/${id}/snapshots/restore`, { key }),
+    onSuccess: (_res, key) => {
+      void qc.invalidateQueries({ queryKey: ['bookmark-snapshots', id ?? ''] });
+      void qc.invalidateQueries({ queryKey: bookmarkSnapshotStatusKey(id ?? '') });
+      void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
+      if (id) void qc.invalidateQueries({ queryKey: keys.bookmark(id) });
+      toast.success('已恢复到该版本', `快照 ${key.split('-').pop()?.replace('.webp', '') ?? ''} 现为当前预览`);
+    },
+    onError: (e: Error) => toast.error('恢复失败', e.message),
+  });
+}
+
 export const bookmarkSnapshotStatusKey = (id: string) => ['bookmark-snapshot-status', id] as const;
 
 /**

@@ -28,6 +28,7 @@ import {
   useCaptureSnapshotSilent,
   useGenerateSnapshot,
   useRefreshBookmarkSnapshot,
+  useRestoreSnapshot,
 } from '@/hooks/queries/snapshots';
 import { useAddToCollection, useCollections } from '@/hooks/queries';
 import { scheduleSnapshotRefresh, releaseSnapshotRefresh } from '@/lib/snapshotScheduler';
@@ -224,6 +225,7 @@ function BookmarkCardBase({
   const generate = useGenerateSnapshot();
   const refreshSnapshot = useRefreshBookmarkSnapshot();
   const capture = useCaptureSnapshotSilent();
+  const restoreSnapshot = useRestoreSnapshot(b.id);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const {
     data: snapList,
@@ -349,7 +351,7 @@ function BookmarkCardBase({
           ? [
               {
                 id: 'view-snapshots',
-                label: '查看快照历史',
+                label: '时光机（快照历史）',
                 icon: <Images size={15} />,
                 onSelect: () => setShowSnapshots(true),
               },
@@ -694,7 +696,7 @@ function BookmarkCardBase({
     <Modal
       open={showSnapshots}
       onClose={() => setShowSnapshots(false)}
-      title="网页快照历史"
+      title="时光机"
       size="lg"
     >
       {snapsLoading ? (
@@ -707,25 +709,41 @@ function BookmarkCardBase({
           </Button>
         </div>
       ) : snapList && snapList.snapshots.length > 0 ? (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {snapList.snapshots.map((s) => (
-            <li key={s.key} className="overflow-hidden rounded-lg border border-line">
-              <a href={s.url} target="_blank" rel="noreferrer noopener">
-                <RemoteImage
-                  src={s.url}
-                  alt=""
-                  className="aspect-[16/10] w-full bg-sunken object-cover"
-                />
-              </a>
-              <div className="flex items-center justify-between gap-2 px-3 py-2 text-2xs text-ink-faint">
-                <span>{s.capturedAt ? new Date(s.capturedAt).toLocaleString() : '未知时间'}</span>
-                {s.isLatest && (
-                  <span className="rounded-full bg-brand-soft px-1.5 py-0.5 text-brand-ink">最新</span>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="mb-3 text-xs leading-relaxed text-ink-faint">
+            这里保存了该书签历次抓取的网页快照。点击「恢复到此版本」即可把卡片预览切换回当时的画面；恢复只改预览指向，不会删除任何版本。
+          </p>
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {snapList.snapshots.map((s) => (
+              <li key={s.key} className="overflow-hidden rounded-lg border border-line">
+                <a href={s.url} target="_blank" rel="noreferrer noopener">
+                  <RemoteImage
+                    src={s.url}
+                    alt=""
+                    className="aspect-[16/10] w-full bg-sunken object-cover"
+                  />
+                </a>
+                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="text-2xs text-ink-faint">
+                    {s.capturedAt ? new Date(s.capturedAt).toLocaleString() : '未知时间'}
+                  </span>
+                  {s.isLatest ? (
+                    <span className="rounded-full bg-brand-soft px-1.5 py-0.5 text-2xs text-brand-ink">当前版本</span>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={restoreSnapshot.isPending}
+                      onClick={() => restoreSnapshot.mutate(s.key)}
+                    >
+                      恢复到此版本
+                    </Button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <div className="flex h-40 items-center justify-center text-sm text-ink-faint">
           还没有快照
