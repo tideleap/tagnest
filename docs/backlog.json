@@ -198,18 +198,18 @@
       "title": "数据层健壮性（超时 / 重试分流 / 无状态镜像）",
       "source": "docs/03-TagNest优化清单.md P1-5",
       "priority": "P1",
-      "status": "open",
+      "status": "superseded",
       "aliasOf": "B7",
-      "note": "React Query 缓存与偏好单写已具备；剩余的请求超时与重试分流由 B7 承载。"
+      "note": "B7（api 客户端请求超时与重试分流）已 done：AbortSignal 超时 + 重试分流证据在案（src/lib/api.ts）。本条为 B7 别名，无独立剩余工作，故标记 superseded。"
     },
     {
       "id": "F-P1-6",
       "title": "AI 能力：接线或明确下线",
       "source": "docs/03-TagNest优化清单.md P1-6",
       "priority": "P1",
-      "status": "open",
+      "status": "superseded",
       "aliasOf": "O11",
-      "note": "配置层与加密已就绪但推理未接；执行单元见 O11。"
+      "note": "O11（AI 自动标签 / 摘要）已 done：AI 重构拆包（functions/_lib/ai/）+ 模型优先 + 未配置 Key 时静默降级，证据在案。本条为 O11 别名，无独立剩余工作，故标记 superseded。"
     },
     {
       "id": "F-P2-1",
