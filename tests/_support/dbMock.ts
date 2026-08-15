@@ -59,6 +59,8 @@ export class MockDb {
   bookmarks: MockRow[] = [];
   bookmark_tags: MockRow[] = [];
   tags: MockRow[] = [];
+  tag_suggestions: MockRow[] = [];
+  ai_settings: MockRow[] = [];
   private_vault: MockRow[] = [];
   /** Number of rows affected by the most recent mutation statement. */
   lastChanges = 0;
@@ -197,9 +199,10 @@ export class MockDb {
     // --- ai_jobs (run history) ---------------------------------------
     if (u.startsWith('INSERT INTO AI_JOBS')) {
       // Columns: id, user_id, kind, status, scope, total, processed,
-      // suggested, failed, created_at, updated_at. `status` is the literal
-      // 'queued'; processed/suggested/failed are literal 0.
-      const [id, user_id, kind, scope, total, created_at, updated_at] = params as string[];
+      // suggested, failed, created_at, updated_at, prompt_version. `status`
+      // is the literal 'queued'; processed/suggested/failed are literal 0.
+      const [id, user_id, kind, scope, total, created_at, updated_at, prompt_version] =
+        params as string[];
       this.ai_jobs.push({
         id,
         user_id,
@@ -214,6 +217,7 @@ export class MockDb {
         error: null,
         created_at,
         updated_at,
+        prompt_version: prompt_version ?? null,
       });
       return [];
     }
@@ -403,6 +407,168 @@ export class MockDb {
         )
         .slice(0, 1)
         .map((b) => ({ id: b.id }));
+    }
+
+    // --- ai_settings (config lookup for estimate/run) ----------------
+    if (u.startsWith('SELECT * FROM AI_SETTINGS WHERE USER_ID = ? LIMIT 1')) {
+      const userId = params[0] as string;
+      return this.ai_settings.filter((r) => r.user_id === userId);
+    }
+
+    // --- ai: resolveScope explicit ids -------------------------------
+    if (
+      u.startsWith('SELECT ID FROM BOOKMARKS B WHERE B.USER_ID = ?') &&
+      u.includes('AND B.ID IN')
+    ) {
+      const userId = params[0] as string;
+      const ids = (params.slice(1) as string[]).map(String);
+      return this.bookmarks
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.deleted_at == null &&
+            b.is_private !== 1 &&
+            !this.hasPrivateTag(b.id, userId) &&
+            ids.includes(b.id),
+        )
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .map((b) => ({ id: b.id }));
+    }
+
+    // --- ai: resolveScope untagged/all + loadBookmarkInputs ----------
+    if (u.startsWith('SELECT B.ID AS ID FROM BOOKMARKS B WHERE B.USER_ID = ?')) {
+      const userId = params[0] as string;
+      const limit = Number(params[1]);
+      let rows = this.bookmarks.filter(
+        (b) =>
+          b.user_id === userId &&
+          b.deleted_at == null &&
+          b.is_private !== 1 &&
+          !this.hasPrivateTag(b.id, userId),
+      );
+      // The `untagged` scope hides every bookmark that carries ANY tag. Its
+      // subquery uses alias `BT WHERE`, which the PRIVATE_BOOKMARK_CLAUSE's
+      // `BT_PV JOIN` never matches, so this detection is unambiguous.
+      if (u.includes('NOT EXISTS (SELECT 1 FROM BOOKMARK_TAGS BT WHERE')) {
+        rows = rows.filter((b) => !this.bookmark_tags.some((bt) => bt.bookmark_id === b.id));
+      }
+      rows.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      if (Number.isFinite(limit) && limit > 0) rows = rows.slice(0, limit);
+      return rows.map((b) => ({ id: b.id }));
+    }
+    if (u.startsWith('SELECT ID, URL, TITLE, DESCRIPTION FROM BOOKMARKS B WHERE B.USER_ID = ?')) {
+      const userId = params[0] as string;
+      const ids = (params.slice(1) as string[]).map(String);
+      return this.bookmarks
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.deleted_at == null &&
+            b.is_private !== 1 &&
+            !this.hasPrivateTag(b.id, userId) &&
+            ids.includes(b.id),
+        )
+        .map((b) => ({
+          id: b.id,
+          url: b.url,
+          title: b.title ?? '',
+          description: b.description ?? null,
+        }));
+    }
+
+    // --- ai: loadVocabulary (tags + usage counts) --------------------
+    if (
+      u.startsWith(
+        'SELECT T.ID AS ID, T.NAME AS NAME, T.ALIASES AS ALIASES, COUNT(B.ID) AS CNT FROM TAGS T LEFT JOIN',
+      )
+    ) {
+      const userId = params[0] as string;
+      return this.tags
+        .filter((t) => t.user_id === userId)
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          aliases: t.aliases ?? null,
+          cnt: this.bookmark_tags.filter((bt) => {
+            if (bt.tag_id !== t.id) return false;
+            const b = this.bookmarks.find((x) => x.id === bt.bookmark_id && x.deleted_at == null);
+            return Boolean(b);
+          }).length,
+        }));
+    }
+
+    // --- ai: undoJob step 1 — delete traceable source='ai' links -----
+    if (u.startsWith("DELETE FROM BOOKMARK_TAGS WHERE SOURCE = 'AI'")) {
+      const userId = params[0] as string;
+      const jobId = params[1] as string;
+      const accepted = this.tag_suggestions.filter(
+        (s) => s.user_id === userId && s.job_id === jobId && s.status === 'accepted',
+      );
+      const before = this.bookmark_tags.length;
+      this.bookmark_tags = this.bookmark_tags.filter((bt) => {
+        if (bt.source !== 'ai') return true;
+        return !accepted.some(
+          (s) =>
+            s.bookmark_id === bt.bookmark_id &&
+            this.tags.some(
+              (t) =>
+                t.id === bt.tag_id &&
+                t.user_id === userId &&
+                String(t.name).toLowerCase() === String(s.tag_name).toLowerCase(),
+            ),
+        );
+      });
+      this.lastChanges = before - this.bookmark_tags.length;
+      return [];
+    }
+
+    // --- ai: undoJob step 2 — restore accepted → pending -------------
+    if (
+      u.startsWith("UPDATE TAG_SUGGESTIONS SET STATUS = 'PENDING', DECIDED_AT = NULL") &&
+      u.includes('AND JOB_ID = ?')
+    ) {
+      const userId = params[0] as string;
+      const jobId = params[1] as string;
+      let changes = 0;
+      for (const s of this.tag_suggestions) {
+        if (s.user_id !== userId || s.job_id !== jobId || s.status !== 'accepted') continue;
+        const blocked = this.tag_suggestions.some(
+          (s2) =>
+            s2.id !== s.id &&
+            s2.bookmark_id === s.bookmark_id &&
+            String(s2.tag_name).toLowerCase() === String(s.tag_name).toLowerCase() &&
+            s2.status === 'pending',
+        );
+        if (blocked) continue;
+        s.status = 'pending';
+        s.decided_at = null;
+        changes += 1;
+      }
+      this.lastChanges = changes;
+      return [];
+    }
+
+    // --- ai: undoJob step 3 — drop superseded accepted rows ----------
+    if (
+      u.startsWith('DELETE FROM TAG_SUGGESTIONS WHERE USER_ID = ? AND JOB_ID = ?') &&
+      u.includes("STATUS = 'ACCEPTED'")
+    ) {
+      const userId = params[0] as string;
+      const jobId = params[1] as string;
+      const before = this.tag_suggestions.length;
+      this.tag_suggestions = this.tag_suggestions.filter((s) => {
+        if (s.user_id !== userId || s.job_id !== jobId || s.status !== 'accepted') return true;
+        const superseded = this.tag_suggestions.some(
+          (s2) =>
+            s2.id !== s.id &&
+            s2.bookmark_id === s.bookmark_id &&
+            String(s2.tag_name).toLowerCase() === String(s.tag_name).toLowerCase() &&
+            s2.status === 'pending',
+        );
+        return !superseded;
+      });
+      this.lastChanges = before - this.tag_suggestions.length;
+      return [];
     }
 
     // --- bookmark_tags (tag re-link on restore) ----------------------
@@ -808,15 +974,6 @@ export class MockDb {
     }
 
     return [];
-  }
-
-  /** A bookmark is hidden by category privacy when any tag it carries is private. */
-  private hasPrivateTag(bookmarkId: string, userId: string): boolean {
-    return this.bookmark_tags.some((bt) => {
-      if (bt.bookmark_id !== bookmarkId) return false;
-      const tag = this.tags.find((t) => t.id === bt.tag_id && t.user_id === userId);
-      return Boolean(tag && tag.is_private === 1);
-    });
   }
 
   private toCollectionRow(c: MockRow): MockRow {

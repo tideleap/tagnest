@@ -172,8 +172,10 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         return rows.length > 0 ? rows[0] : null;
       },
       run() {
-        applyMutation(sql, rawSql, params);
-        return { success: true, meta: {} };
+        // applyMutation returns the affected-row count; undoJob reads it back
+        // as D1's `meta.changes`, so the mock must surface the real number.
+        const changes = applyMutation(sql, rawSql, params);
+        return { success: true, meta: { changes } };
       },
     };
     return stmt;
@@ -408,8 +410,9 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     return [];
   }
 
-  /** INSERT / UPDATE / DELETE side effects. */
-  function applyMutation(sql: string, rawSql: string, params: unknown[]) {
+  /** INSERT / UPDATE / DELETE side effects. Returns the affected-row count,
+   *  which `run()` surfaces as D1's `meta.changes`. */
+  function applyMutation(sql: string, rawSql: string, params: unknown[]): number {
     // createJob — columns: id, user_id, kind, status('queued'), scope, total,
     // processed(0), suggested(0), failed(0), created_at, updated_at, prompt_version.
     // processed/suggested/failed are literal 0 in the SQL, so the bound params
@@ -431,14 +434,14 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         updated_at: String(params[6]),
         prompt_version: params[7] == null ? null : String(params[7]),
       });
-      return;
+      return 1;
     }
 
     // updateJob — generic SET parser
     if (sql.startsWith('UPDATE AI_JOBS SET')) {
       const jobId = String(params[params.length - 1]);
       const job = state.ai_jobs.find((j) => j.id === jobId);
-      if (!job) return;
+      if (!job) return 0;
       const setPart = sql.substring(sql.indexOf(' SET ') + 5, sql.indexOf(' WHERE '));
       const columns = setPart.split(',').map((c) => c.split('=')[0].trim().toLowerCase());
       // Param order mirrors the SET order; the last param is the id.
@@ -453,17 +456,94 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         else if (col === 'engine') job.engine = v == null ? null : String(v);
         else if (col === 'error') job.error = v == null ? null : String(v);
       });
-      return;
+      return 1;
+    }
+
+    // undoJob step 1 — delete the `source = 'ai'` links traceable to an
+    // ACCEPTED suggestion of this job. Matched by tag NAME (a new tag has
+    // tag_id = NULL on the suggestion until accept resolves it). Must be
+    // checked before the generic BOOKMARK_TAGS insert branch below.
+    if (sql.startsWith('DELETE FROM BOOKMARK_TAGS WHERE SOURCE =')) {
+      const userId = String(params[0]);
+      const jobId = String(params[1]);
+      const accepted = state.tag_suggestions.filter(
+        (s) => s.user_id === userId && s.job_id === jobId && s.status === 'accepted',
+      );
+      const before = state.bookmark_tags.length;
+      state.bookmark_tags = state.bookmark_tags.filter((bt) => {
+        if (bt.source !== 'ai') return true;
+        return !accepted.some(
+          (s) =>
+            s.bookmark_id === bt.bookmark_id &&
+            state.tags.some(
+              (t) =>
+                t.id === bt.tag_id &&
+                t.user_id === userId &&
+                t.name.toLowerCase() === s.tag_name.toLowerCase(),
+            ),
+        );
+      });
+      return before - state.bookmark_tags.length;
+    }
+
+    // undoJob step 2 — flip the job's accepted suggestions back to pending,
+    // unless a newer pending proposal for the same (bookmark, tag) exists.
+    // Literal 'pending' in the SET distinguishes it from markDecided's
+    // parameterised `SET STATUS = ?`.
+    if (sql.startsWith("UPDATE TAG_SUGGESTIONS SET STATUS = 'PENDING', DECIDED_AT = NULL")) {
+      const userId = String(params[0]);
+      const jobId = String(params[1]);
+      let changes = 0;
+      for (const s of state.tag_suggestions) {
+        if (s.user_id !== userId || s.job_id !== jobId || s.status !== 'accepted') continue;
+        const blocked = state.tag_suggestions.some(
+          (s2) =>
+            s2.id !== s.id &&
+            s2.bookmark_id === s.bookmark_id &&
+            s2.tag_name.toLowerCase() === s.tag_name.toLowerCase() &&
+            s2.status === 'pending',
+        );
+        if (blocked) continue;
+        s.status = 'pending';
+        s.decided_at = null;
+        changes += 1;
+      }
+      return changes;
+    }
+
+    // undoJob step 3 — drop the stale accepted rows a newer pending proposal
+    // already represents. `JOB_ID = ?` distinguishes it from saveSuggestions'
+    // pending-delete below.
+    if (
+      sql.startsWith('DELETE FROM TAG_SUGGESTIONS WHERE USER_ID = ? AND JOB_ID = ?') &&
+      sql.includes("STATUS = 'ACCEPTED'")
+    ) {
+      const userId = String(params[0]);
+      const jobId = String(params[1]);
+      const before = state.tag_suggestions.length;
+      state.tag_suggestions = state.tag_suggestions.filter((s) => {
+        if (s.user_id !== userId || s.job_id !== jobId || s.status !== 'accepted') return true;
+        const superseded = state.tag_suggestions.some(
+          (s2) =>
+            s2.id !== s.id &&
+            s2.bookmark_id === s.bookmark_id &&
+            s2.tag_name.toLowerCase() === s.tag_name.toLowerCase() &&
+            s2.status === 'pending',
+        );
+        return !superseded;
+      });
+      return before - state.tag_suggestions.length;
     }
 
     // saveSuggestions: DELETE pending for a bookmark
     if (sql.startsWith('DELETE FROM TAG_SUGGESTIONS') && sql.includes('STATUS =')) {
       const bookmarkId = String(params[0]);
       const userId = String(params[1]);
+      const before = state.tag_suggestions.length;
       state.tag_suggestions = state.tag_suggestions.filter(
         (s) => !(s.bookmark_id === bookmarkId && s.user_id === userId && s.status === 'pending'),
       );
-      return;
+      return before - state.tag_suggestions.length;
     }
 
     // saveSuggestions: INSERT ... SELECT ... WHERE NOT EXISTS (...)
@@ -473,7 +553,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const tagId = params[5] == null ? null : String(params[5]);
       // Guard 1: bookmark already carries this tag.
       if (tagId && state.bookmark_tags.some((bt) => bt.bookmark_id === bookmarkId && bt.tag_id === tagId)) {
-        return;
+        return 0;
       }
       // Guard 2: a rejected suggestion with the same name already exists.
       const alreadyRejected = state.tag_suggestions.some(
@@ -482,7 +562,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
           s.status === 'rejected' &&
           s.tag_name.toLowerCase() === tagName.toLowerCase(),
       );
-      if (alreadyRejected) return;
+      if (alreadyRejected) return 0;
       state.tag_suggestions.push({
         id: String(params[0]),
         user_id: String(params[1]),
@@ -500,7 +580,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         decided_at: null,
         created_at: String(params[12]),
       });
-      return;
+      return 1;
     }
 
     // recordFeedback: INSERT INTO AI_FEEDBACK
@@ -518,7 +598,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         context: params[9] == null ? null : String(params[9]),
         created_at: String(params[10]),
       });
-      return;
+      return 1;
     }
 
     // saveSuggestions / autoApply-style summary write
@@ -526,8 +606,11 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const summary = String(params[0]);
       const bookmarkId = String(params[1]);
       const b = state.bookmarks.find((x) => x.id === bookmarkId);
-      if (b && (b.ai_summary == null || b.ai_summary === '')) b.ai_summary = summary;
-      return;
+      if (b && (b.ai_summary == null || b.ai_summary === '')) {
+        b.ai_summary = summary;
+        return 1;
+      }
+      return 0;
     }
 
     // decideSuggestions reject / accept mark (markDecided binds status first)
@@ -535,13 +618,15 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const status = String(params[0]) as SuggestionRow['status'];
       const userId = String(params[2]);
       const ids = params.slice(3).map(String);
+      let changes = 0;
       for (const s of state.tag_suggestions) {
         if (s.user_id === userId && ids.includes(s.id)) {
           s.status = status;
           s.decided_at = String(params[1]);
+          changes += 1;
         }
       }
-      return;
+      return changes;
     }
 
     // ensureTags insert
@@ -555,7 +640,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         sort_order: Number(params[5]),
         created_at: String(params[6]),
       });
-      return;
+      return 1;
     }
 
     // decideSuggestions bookmark_tags insert ('ai' source)
@@ -575,9 +660,12 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
           confidence,
           created_at: createdAt,
         });
+        return 1;
       }
-      return;
+      return 0;
     }
+
+    return 0;
   }
 
   const db = {
