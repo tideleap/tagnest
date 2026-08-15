@@ -1,6 +1,7 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { badRequest, conflict, json, noContent, notFound, readJson } from '../../../_lib/http';
+import { nowIso } from '../../../_lib/ids';
 import { loadPrivateTagBookmark, updateBookmarkFields } from '../../../_lib/db';
 import { canonicalUrl, urlKey } from '../../../_lib/urlkey';
 
@@ -99,10 +100,10 @@ export const onRequestDelete: PagesFunction<Env, string, RequestData> = async (c
   if (!existing) throw notFound('书签不存在');
 
   const result = await ctx.env.DB.prepare(
-    `UPDATE bookmarks SET deleted_at = datetime('now'), updated_at = datetime('now')
+    `UPDATE bookmarks SET deleted_at = ?, updated_at = ?
       WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
   )
-    .bind(id, userId)
+    .bind(nowIso(), nowIso(), id, userId)
     .run();
 
   if (!result.meta.changes) throw notFound('书签不存在');
