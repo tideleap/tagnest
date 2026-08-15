@@ -1,11 +1,8 @@
 import type { Env, RequestData } from '../_lib/env';
 import { requireUserId } from '../_lib/auth';
 import { badRequest, json, readJson } from '../_lib/http';
+import { isBlockedHost } from '../_lib/ssrf';
 import { faviconFor, parseUrl, titleFallback } from '../_lib/urlkey';
-
-/** Hostnames that must never be fetched on a user's behalf. */
-const BLOCKED_HOSTS =
-  /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?|\[?::ffff:|\[0:0:0:0:0:ffff:)/i;
 
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_BYTES = 512 * 1024;
@@ -32,7 +29,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   // SSRF guard. The edge cannot reach a customer's LAN, but a redirect into a
   // Cloudflare-internal address is worth refusing outright.
-  if (BLOCKED_HOSTS.test(target.hostname)) {
+  if (isBlockedHost(target.hostname)) {
     throw badRequest('不支持抓取该地址');
   }
 
@@ -102,7 +99,7 @@ async function fetchWithSafeRedirects(
       const next = safeJoin(current, loc);
       const parsed = parseUrl(next);
       if (!parsed) return null;
-      if (BLOCKED_HOSTS.test(parsed.hostname)) return null; // refuse hop → treat as miss
+      if (isBlockedHost(parsed.hostname)) return null; // refuse hop → treat as miss
       current = next;
       await res.arrayBuffer().catch(() => null); // release body
       continue;
