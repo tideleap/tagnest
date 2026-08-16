@@ -64,6 +64,8 @@ export class MockDb {
   private_vault: MockRow[] = [];
   shares: MockRow[] = [];
   tag_merge_log: MockRow[] = [];
+  backupTargets: MockRow[] = [];
+  backupRuns: MockRow[] = [];
   /** Number of rows affected by the most recent mutation statement. */
   lastChanges = 0;
 
@@ -739,6 +741,100 @@ export class MockDb {
         .filter((r) => r.user_id === userId)
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, 50);
+    }
+
+    // --- backup: targets & runs (WebDAV / S3 push) -------------------
+    if (u.startsWith('SELECT * FROM BACKUP_TARGETS WHERE USER_ID = ?')) {
+      const userId = params[0] as string;
+      let rows = this.backupTargets.filter((t) => t.user_id === userId);
+      if (u.includes('ENABLED = 1')) rows = rows.filter((t) => t.enabled === 1);
+      if (u.includes('AND ID = ?')) {
+        const id = params[1] as string;
+        rows = rows.filter((t) => t.id === id);
+      }
+      rows.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      return rows;
+    }
+    if (u.startsWith('SELECT * FROM BACKUP_TARGETS WHERE ID = ? AND USER_ID = ?')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      return this.backupTargets.filter((t) => t.id === id && t.user_id === userId);
+    }
+    if (u.startsWith('SELECT ID, ENCRYPTED_SECRET FROM BACKUP_TARGETS WHERE ID = ? AND USER_ID = ?')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      return this.backupTargets
+        .filter((t) => t.id === id && t.user_id === userId)
+        .map((t) => ({ id: t.id, encrypted_secret: t.encrypted_secret }));
+    }
+    if (u.startsWith('SELECT ID FROM BACKUP_TARGETS WHERE ID = ? AND USER_ID = ?')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      return this.backupTargets.filter((t) => t.id === id && t.user_id === userId);
+    }
+    if (u.startsWith('INSERT INTO BACKUP_TARGETS')) {
+      const [id, user_id, kind, endpoint, bucket, username, encrypted_secret, remote_path, enabled, frequency, created_at, updated_at] =
+        params as [string, string, string, string, string | null, string | null, string | null, string, number, string, string, string];
+      this.backupTargets.push({
+        id, user_id, kind, endpoint, bucket: bucket ?? null, username: username ?? null,
+        encrypted_secret: encrypted_secret ?? null, remote_path, enabled, frequency,
+        last_run_at: null, last_status: null, created_at, updated_at,
+      });
+      return [];
+    }
+    if (u.startsWith('INSERT INTO BACKUP_RUNS')) {
+      // ok: (id,user_id,target_id,started_at,finished_at,bytes,sha256)  status literal 'ok'
+      // failed: (id,user_id,target_id,started_at,finished_at,error)      status literal 'failed'
+      const status = u.includes("'OK'") ? 'ok' : 'failed';
+      const [rid, user_id, target_id, started_at, finished_at] = params as [string, string, string, string, string];
+      if (status === 'ok') {
+        const bytes = params[5] as number;
+        const sha256 = params[6] as string;
+        this.backupRuns.push({ id: rid, user_id, target_id, started_at, finished_at, status, bytes, sha256, error: null });
+      } else {
+        const error = params[5] as string;
+        this.backupRuns.push({ id: rid, user_id, target_id, started_at, finished_at, status, bytes: null, sha256: null, error });
+      }
+      return [];
+    }
+    if (u.startsWith('UPDATE BACKUP_TARGETS SET')) {
+      const id = params[params.length - 2] as string;
+      const userId = params[params.length - 1] as string;
+      const row = this.backupTargets.find((t) => t.id === id && t.user_id === userId);
+      if (!row) return [];
+      const setClause = sql.slice(sql.toUpperCase().indexOf('SET') + 3, sql.toUpperCase().indexOf('WHERE')).trim();
+      const cols = setClause.split(',').map((c) => c.trim().split('=')[0].trim().toLowerCase());
+      for (let i = 0; i < cols.length; i += 1) {
+        row[cols[i]] = params[i];
+      }
+      return [];
+    }
+    if (u.startsWith('DELETE FROM BACKUP_RUNS WHERE TARGET_ID = ? AND USER_ID = ?')) {
+      const targetId = params[0] as string;
+      const userId = params[1] as string;
+      this.backupRuns = this.backupRuns.filter((r) => !(r.target_id === targetId && r.user_id === userId));
+      return [];
+    }
+    if (u.startsWith('DELETE FROM BACKUP_TARGETS WHERE ID = ? AND USER_ID = ?')) {
+      const id = params[0] as string;
+      const userId = params[1] as string;
+      this.backupTargets = this.backupTargets.filter((t) => !(t.id === id && t.user_id === userId));
+      return [];
+    }
+    if (u.startsWith('SELECT R.ID, R.TARGET_ID, T.KIND, T.ENDPOINT, R.STARTED_AT, R.FINISHED_AT, R.STATUS, R.BYTES, R.SHA256, R.ERROR FROM BACKUP_RUNS R JOIN BACKUP_TARGETS T')) {
+      const userId = params[0] as string;
+      return this.backupRuns
+        .filter((r) => r.user_id === userId)
+        .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))
+        .slice(0, 50)
+        .map((r) => {
+          const t = this.backupTargets.find((x) => x.id === r.target_id);
+          return {
+            id: r.id, target_id: r.target_id, kind: t?.kind ?? null, endpoint: t?.endpoint ?? null,
+            started_at: r.started_at, finished_at: r.finished_at, status: r.status,
+            bytes: r.bytes, sha256: r.sha256, error: r.error,
+          };
+        });
     }
 
     // --- tags: category-private listing (listPrivateTagsWithBookmarks) -

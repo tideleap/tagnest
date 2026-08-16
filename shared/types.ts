@@ -818,6 +818,56 @@ export interface ShareInput {
   collectionId?: string | null;
 }
 
+/* ------------------------------------------------------------------ *
+ * Backup targets & runs (Y2: WebDAV / S3 push)
+ * ------------------------------------------------------------------ */
+
+export type BackupKind = 'webdav' | 's3';
+export type BackupFrequency = 'off' | 'daily' | 'weekly';
+
+/** A configured remote destination. The secret is NEVER returned to the client. */
+export interface BackupTarget {
+  id: string;
+  kind: BackupKind;
+  endpoint: string;
+  bucket: string | null;
+  username: string | null;
+  remotePath: string;
+  enabled: boolean;
+  frequency: BackupFrequency;
+  lastRunAt: string | null;
+  lastStatus: 'ok' | 'failed' | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Write payload for upserting a target. Omitting `secret` keeps the stored one. */
+export interface BackupTargetInput {
+  id?: string;
+  kind: BackupKind;
+  endpoint: string;
+  bucket?: string | null;
+  username?: string | null;
+  /** Plaintext secret (WebDAV password or S3 secret key); encrypted server-side. Omit to leave unchanged. */
+  secret?: string | null;
+  remotePath?: string;
+  enabled?: boolean;
+  frequency?: BackupFrequency;
+}
+
+export interface BackupRun {
+  id: string;
+  targetId: string;
+  kind: BackupKind;
+  endpoint: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: 'ok' | 'failed';
+  bytes: number | null;
+  sha256: string | null;
+  error: string | null;
+}
+
 /** Trimmed bookmark shape served to anonymous visitors. */
 export interface PublicBookmark {
   id: string;

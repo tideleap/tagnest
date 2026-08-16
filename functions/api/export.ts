@@ -313,6 +313,31 @@ async function renderHtmlStream(ctx: ExportCtx): Promise<ReadableStream<Uint8Arr
 }
 
 /* ------------------------------------------------------------------ *
+ * Backup helper: collect the full JSON export as a single string
+ * ------------------------------------------------------------------ */
+
+/**
+ * Reads the streamed JSON export into one string so the backup pipeline can
+ * PUT it to a remote (WebDAV/S3) instead of streaming it to the browser.
+ * A small-to-medium library fits in worker memory; very large libraries would
+ * benefit from an R2 staging hop, deferred as a later optimisation.
+ */
+export async function collectExportBody(
+  env: Env,
+  userId: string,
+  opts: ExportRenderOpts = {
+    includeTags: true,
+    includeMetadata: true,
+    includeVisits: true,
+    pretty: true,
+  },
+): Promise<string> {
+  const ctx: ExportCtx = { env, userId, includeTrash: true };
+  const stream = await renderJsonStream(ctx, opts, new Date().toISOString());
+  return new Response(stream).text();
+}
+
+/* ------------------------------------------------------------------ *
  * Request handler
  * ------------------------------------------------------------------ */
 

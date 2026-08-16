@@ -2,6 +2,7 @@ import { NavLink, useParams } from 'react-router-dom';
 import {
   Camera,
   Database,
+  DatabaseBackup,
   Info,
   KeyRound,
   Keyboard,
@@ -24,6 +25,7 @@ import { StorageSection } from './settings/StorageSection';
 import { JobsSection } from './settings/JobsSection';
 import { ShortcutsSection } from './settings/ShortcutsSection';
 import { AboutSection } from './settings/AboutSection';
+import { BackupSection } from './settings/BackupSection';
 
 const SECTIONS = [
   { id: 'account', label: '账户', icon: User },
@@ -37,6 +39,7 @@ const SECTIONS = [
   { id: 'autoclear', label: '自动清空', icon: Timer },
   { id: 'shortcuts', label: '快捷键', icon: Keyboard },
   { id: 'about', label: '关于', icon: Info },
+  { id: 'backup', label: '备份', icon: DatabaseBackup },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]['id'];
@@ -83,6 +86,7 @@ export function SettingsPage() {
         {active === 'autoclear' && <AutoClearSection />}
         {active === 'shortcuts' && <ShortcutsSection />}
         {active === 'about' && <AboutSection />}
+        {active === 'backup' && <BackupSection />}
       </div>
     </div>
   );

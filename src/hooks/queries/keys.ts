@@ -43,6 +43,8 @@ export const keys = {
   storageUsage: ['storage-usage'] as const,
   exportPreview: ['export-preview'] as const,
   shares: ['shares'] as const,
+  backupTargets: ['backupTargets'] as const,
+  backupRuns: ['backupRuns'] as const,
   tabGroups: ['tab-groups'] as const,
   tabGroup: (id: string) => ['tab-group', id] as const,
   /** User-curated named bookmark sets (design plan module). */
