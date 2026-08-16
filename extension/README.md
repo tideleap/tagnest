@@ -50,3 +50,7 @@
 - 密钥只保存在 `chrome.storage.local`（不同步到云端）。
 - 不用主机权限：网络请求全部由后台 Service Worker 发出，密钥不会暴露到任意网站页面。
 - 扩展密钥无权访问 `/api/keys` 与 `/api/auth`（后端中间件强制），泄露也无法自助签发更多密钥。
+
+## 双向同步（B-12）
+
+扩展内建「同步对账」（只读三态 diff）与「双向同步」（写回浏览器书签栏「TagNest」文件夹）两个入口，由弹窗按钮打开。协议为 hub-and-spoke 增量同步（后端 `updated_at` 水印、字段级 LWW、同步前快照回滚），详见 [`docs/SYNC-Y3-B12-2026-08-16.md`](../docs/SYNC-Y3-B12-2026-08-16.md)；**本地端到端验证步骤**见 [`docs/SYNC-LOCAL-VERIFY.md`](../docs/SYNC-LOCAL-VERIFY.md)。
