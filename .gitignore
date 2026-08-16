@@ -12,4 +12,6 @@ dist_*/
 coverage/
 parser.bundle.mjs
 _tmp_*.mjs
+ci-logs.zip
+ci-logs/
 .workbuddy/
