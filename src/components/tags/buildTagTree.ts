@@ -63,3 +63,69 @@ export function filterTagTree(nodes: TreeNode[], query: string): TreeNode[] {
 
   return nodes.map(prune).filter((c): c is TreeNode => c !== null);
 }
+
+/**
+ * Collects a tag id plus every descendant id in its subtree.
+ *
+ * Powers "include subtags" filtering: clicking a parent tag in the sidebar or
+ * on the Tags page should surface every bookmark tagged with that tag OR any of
+ * its children. The result is fed straight into the existing multi-tag
+ * `?tagIds` (OR) filter, so no backend change is needed. Pure and deterministic.
+ */
+export function subtreeIds(tags: Tag[], rootId: string): string[] {
+  const childrenOf = new Map<string | null, string[]>();
+  for (const t of tags) {
+    const key = t.parentId ?? null;
+    if (!childrenOf.has(key)) childrenOf.set(key, []);
+    childrenOf.get(key)!.push(t.id);
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const stack: string[] = [rootId];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    for (const child of childrenOf.get(id) ?? []) stack.push(child);
+  }
+  return out;
+}
+
+/**
+ * Builds the option list for a "parent tag" picker.
+ *
+ * Every tag except `excludeId` and its descendants is offered (a tag can never
+ * be its own ancestor). Labels are indented to mirror the tree so the hierarchy
+ * reads clearly in a flat dropdown. The (top-level) option carries an empty
+ * value, which the API maps to `parent_id = NULL`.
+ */
+export interface ParentOption {
+  value: string;
+  label: string;
+}
+
+export function candidateParents(tags: Tag[], excludeId?: string | null): ParentOption[] {
+  const excluded = excludeId ? new Set(subtreeIds(tags, excludeId)) : new Set<string>();
+
+  // Depth of each tag = number of ancestors, used purely for label indentation.
+  const depthOf = new Map<string, number>();
+  const resolve = (t: Tag, depth: number): number => {
+    if (depthOf.has(t.id)) return depthOf.get(t.id)!;
+    const d = t.parentId && depthOf.has(t.parentId) ? depthOf.get(t.parentId)! + 1 : depth;
+    depthOf.set(t.id, d);
+    return d;
+  };
+  for (const t of tags) resolve(t, 0);
+
+  const ordered = tags
+    .filter((t) => !excluded.has(t.id))
+    .slice()
+    .sort((a, b) => (depthOf.get(a.id) ?? 0) - (depthOf.get(b.id) ?? 0) || a.name.localeCompare(b.name, 'zh-CN'));
+
+  return ordered.map((t) => ({
+    value: t.id,
+    label: (depthOf.get(t.id) ?? 0) > 0 ? `${' '.repeat(depthOf.get(t.id)!)}↳ ${t.name}` : t.name,
+  }));
+}

@@ -34,7 +34,9 @@ import { useCreateTag, useDeleteTag, useMergeTags, useSetTagPrivate, useTags, us
 import { cx } from '@/lib/cx';
 import {
   buildTagTree,
+  candidateParents,
   filterTagTree,
+  subtreeIds,
   type TagSortKey,
   type TreeNode,
 } from '@/components/tags/buildTagTree';
@@ -72,7 +74,12 @@ export function TagsPage() {
 
   const togglePrivate = (tag: Tag) =>
     setTagPrivate.mutate({ id: tag.id, isPrivate: !tag.isPrivate });
-  const goToTag = (id: string) => navigate(`/library/all?tagIds=${encodeURIComponent(id)}`);
+  // Browsing a tag opens the library filtered to its whole subtree, so a parent
+  // shows every bookmark tagged with it or any of its children.
+  const goToTag = (id: string) => {
+    const ids = subtreeIds(tags ?? [], id);
+    navigate(`/library/all?tagIds=${encodeURIComponent(ids.join(','))}`);
+  };
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -369,9 +376,11 @@ function TagFormDialog({
 }) {
   const createTag = useCreateTag();
   const updateTag = useUpdateTag();
+  const { data: allTags } = useTags();
 
   const [name, setName] = useState('');
   const [colorIndex, setColorIndex] = useState(0);
+  const [parentId, setParentId] = useState<string | null>(null);
   const [error, setError] = useState<string>();
 
   // Reset whenever the dialog target changes.
@@ -381,8 +390,14 @@ function TagFormDialog({
     setLastKey(key);
     setName(tag?.name ?? '');
     setColorIndex(tag?.colorIndex ?? 0);
+    setParentId(tag?.parentId ?? null);
     setError(undefined);
   }
+
+  const parentOptions = useMemo(
+    () => [{ value: '', label: '（顶级标签）' }, ...candidateParents(allTags ?? [], tag?.id)],
+    [allTags, tag?.id],
+  );
 
   const submit = () => {
     const trimmed = name.trim();
@@ -390,10 +405,11 @@ function TagFormDialog({
       setError('标签名不能为空');
       return;
     }
+    const payload = { name: trimmed, colorIndex, parentId };
     if (tag) {
-      updateTag.mutate({ id: tag.id, patch: { name: trimmed, colorIndex } }, { onSuccess: onClose });
+      updateTag.mutate({ id: tag.id, patch: payload }, { onSuccess: onClose });
     } else {
-      createTag.mutate({ name: trimmed, colorIndex }, { onSuccess: onClose });
+      createTag.mutate(payload, { onSuccess: onClose });
     }
   };
 
@@ -429,6 +445,14 @@ function TagFormDialog({
             }
           }}
           placeholder="例如：设计参考"
+        />
+
+        <Select
+          label="父级"
+          value={parentId ?? ''}
+          onChange={(e) => setParentId(e.target.value === '' ? null : e.target.value)}
+          options={parentOptions}
+          aria-label="父级标签"
         />
 
         <ColorPicker value={colorIndex} onChange={setColorIndex} />

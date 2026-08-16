@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Tag } from '@shared/types';
-import { buildTagTree, type TreeNode } from '@/components/tags/buildTagTree';
+import { buildTagTree, subtreeIds, type TreeNode } from '@/components/tags/buildTagTree';
 import { cx } from '@/lib/cx';
 import { IconButton, Skeleton } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
@@ -196,11 +196,15 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
     [params],
   );
 
-  // Clicking a常用标签 toggles it in/out of the multi-tag `?tagIds=` filter,
-  // staying in the library. Existing selections are preserved (accumulative).
+  // Clicking a tag toggles its whole subtree in/out of the multi-tag
+  // `?tagIds=` filter (OR semantics), staying in the library. Clicking a parent
+  // therefore browses every bookmark under it, not just those tagged directly.
   const toggleTag = (id: string) => {
-    const has = activeTagIds.includes(id);
-    const nextTagIds = has ? activeTagIds.filter((t) => t !== id) : [...activeTagIds, id];
+    const sub = subtreeIds(tags ?? [], id);
+    const allActive = sub.every((sid) => activeTagIds.includes(sid));
+    const nextTagIds = allActive
+      ? activeTagIds.filter((t) => !sub.includes(t))
+      : Array.from(new Set([...activeTagIds, ...sub]));
 
     const next = new URLSearchParams(params);
     if (nextTagIds.length > 0) next.set('tagIds', nextTagIds.join(','));
