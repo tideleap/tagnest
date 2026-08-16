@@ -4,6 +4,7 @@ import { Archive, ExternalLink, Lock, Star } from 'lucide-react';
 import { Button, Input, Modal, Skeleton, Switch, Textarea } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { TagPicker } from './TagPicker';
+import { SimilarBookmarks } from './SimilarBookmarks';
 import { useOverlay } from '@/stores/ui';
 import { useBookmark, useUpdateBookmark } from '@/hooks/queries';
 import { useSetBookmarkPrivate } from '@/hooks/queries/vault';
@@ -210,6 +211,8 @@ export function BookmarkEditor({ id }: { id: string }) {
               </dd>
             </div>
           </dl>
+
+          <SimilarBookmarks id={id} />
         </form>
       )}
     </Modal>

@@ -150,6 +150,12 @@ export interface Page<T> {
   total: number;
 }
 
+/** Response shape for `GET /api/bookmarks/:id/similar`. */
+export interface SimilarBookmarks {
+  items: Bookmark[];
+  total: number;
+}
+
 export interface BookmarkInput {
   url: string;
   title?: string;

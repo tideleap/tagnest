@@ -11,6 +11,8 @@ export const keys = {
   bookmarks: (q: BookmarkQuery) => ['bookmarks', q] as const,
   bookmarksRoot: ['bookmarks'] as const,
   bookmark: (id: string) => ['bookmark', id] as const,
+  /** A2 — related bookmarks ranked by tag/domain/text similarity. */
+  similar: (id: string) => ['similar', id] as const,
   /** O1 — structural health report (duplicates, orphan tags, score). */
   health: ['bookmarks-health'] as const,
   tags: ['tags'] as const,

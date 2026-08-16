@@ -17,6 +17,7 @@ export {
   useReorderBookmarks,
   useRecordVisit,
   useFetchMetadata,
+  useSimilarBookmarks,
 } from './queries/bookmarks';
 
 export {

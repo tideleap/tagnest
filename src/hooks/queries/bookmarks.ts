@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Bookmark, BookmarkInput, BookmarkPatch, BookmarkQuery, Page } from '@shared/types';
+import type { Bookmark, BookmarkInput, BookmarkPatch, BookmarkQuery, Page, SimilarBookmarks } from '@shared/types';
 import { api, qs } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys, PAGE_SIZE } from '@/hooks/queries/keys';
@@ -32,6 +32,24 @@ export function useBookmark(id: string | null) {
     queryKey: keys.bookmark(id ?? ''),
     queryFn: () => api.get<Bookmark>(`/bookmarks/${id}`),
     enabled: Boolean(id),
+  });
+}
+
+/**
+ * A2 — related bookmarks for the editor's "related" panel.
+ *
+ * Keyed by id so each panel is independently cacheable, and enabled only when
+ * an id is present (the editor mounts with a null id for the closed state). A
+ * missing source is an empty list, not a loading spinner, so the panel simply
+ * does not render.
+ */
+export function useSimilarBookmarks(id: string | null, limit = 8) {
+  return useQuery({
+    queryKey: keys.similar(id ?? ''),
+    queryFn: () =>
+      api.get<SimilarBookmarks>(`/bookmarks/${id}/similar${qs({ limit })}`),
+    enabled: Boolean(id),
+    staleTime: 30_000,
   });
 }
 
