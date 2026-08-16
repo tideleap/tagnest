@@ -10,6 +10,17 @@ import '@/styles/atelier.css';
 const container = document.getElementById('root');
 if (!container) throw new Error('#root not found');
 
+// Global runtime error net. ErrorBoundary catches render-time exceptions, but
+// fire-and-forget async work (event handlers, timers, dynamic imports) can
+// still reject outside React's tree. Log with a stable prefix so production
+// console telemetry is greppable; the browser devtools surface the rest.
+window.addEventListener('error', (event) => {
+  console.error('[tagnest] uncaught error', event.error ?? event.message);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[tagnest] unhandled rejection', event.reason);
+});
+
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

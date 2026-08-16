@@ -180,7 +180,7 @@ async function probeFetch(url: string): Promise<number | null> {
           signal: controller.signal,
           headers: { 'User-Agent': 'TagNest-HealthCheck/1.0' },
         });
-      } catch (e) {
+      } catch {
         // Some servers reject HEAD outright (405 comes back as a response,
         // but a few just drop the connection); retry once with GET.
         if (hop === 0) {

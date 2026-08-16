@@ -101,7 +101,6 @@ function splitBlocks(xml: string, tag: string): string[] {
   const out: string[] = [];
   const re = new RegExp(`<${tag}\\b[\\s>][\\s\\S]*?</${tag}>`, 'gi');
   let m: RegExpExecArray | null;
-  // eslint-disable-next-line no-cond-assign -- clear loop-read pattern
   while ((m = re.exec(xml)) !== null) out.push(m[0]);
   return out;
 }

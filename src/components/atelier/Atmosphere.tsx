@@ -42,7 +42,6 @@ export function Atmosphere() {
     };
     let brand = readColor('--color-brand', '#6366f1');
     let accent = readColor('--color-brand-accent', '#8b5cf6');
-    let ink = readColor('--color-ink', '#0f172a');
 
     let width = 0;
     let height = 0;
@@ -194,7 +193,6 @@ export function Atmosphere() {
     const colorTimer = window.setTimeout(() => {
       brand = readColor('--color-brand', brand);
       accent = readColor('--color-brand-accent', accent);
-      ink = readColor('--color-ink', ink);
     }, 60);
 
     if (reduce) {
