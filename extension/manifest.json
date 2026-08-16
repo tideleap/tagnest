@@ -5,6 +5,7 @@
   "description": "一键收藏当前页或整个窗口到你的 TagNest 书签库，并自动归档到标签页组。",
   "default_locale": null,
   "permissions": ["activeTab", "tabs", "storage", "scripting"],
+  "optional_permissions": ["bookmarks"],
   "background": {
     "service_worker": "bg/service-worker.js",
     "type": "module"

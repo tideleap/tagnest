@@ -12,6 +12,7 @@ const els = {
   noteInput: $('noteInput'),
   result: $('result'),
   openOptions: $('openOptions'),
+  openSync: $('openSync'),
   shortcutHint: $('shortcutHint'),
 };
 
@@ -133,6 +134,11 @@ els.openOptions.addEventListener('keydown', (e) => {
     e.preventDefault();
     openOptions();
   }
+});
+
+// Open the read-only reconciliation page (B-12 Phase A) in its own tab.
+els.openSync.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('reconcile.html') });
 });
 
 // Apply the chosen theme (from extension settings; system -> OS). Follow live

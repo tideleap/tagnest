@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TagNest 书签同步对账</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link rel="stylesheet" href="reconcile.css" />
+  </head>
+  <body>
+    <div class="app wide">
+      <header class="header">
+        <img class="mark" src="../icons/icon48.png" alt="" width="28" height="28" />
+        <div>
+          <h1>书签同步对账</h1>
+          <div class="sub" id="subline">只读视图 · 暂不改写浏览器书签</div>
+        </div>
+      </header>
+
+      <div class="status" id="status" hidden>
+        <span class="dot"></span>
+        <span class="text" id="statusText"></span>
+      </div>
+
+      <div id="permissionGate" class="gate" hidden>
+        <p class="fine">
+          对账需要读取浏览器书签树的权限。TagNest 仅用它在本地做对比，<b>不会修改</b>你的书签。
+        </p>
+        <button class="btn btn-primary" id="grantBtn" type="button">
+          <span class="glyph">🔓</span><span>授权并对账</span>
+        </button>
+      </div>
+
+      <div class="result" id="result" hidden></div>
+
+      <div class="summary" id="summary" hidden></div>
+
+      <div id="lists" hidden>
+        <section class="panel" id="onlyInBrowser"></section>
+        <section class="panel" id="onlyInTagNest"></section>
+        <section class="panel" id="both"></section>
+      </div>
+
+      <footer class="footer">
+        <button class="btn btn-secondary" id="refreshBtn" type="button" hidden>
+          <span class="glyph">↻</span><span>重新对账</span>
+        </button>
+        <span class="spacer"></span>
+        <a class="link" id="openApp" role="button" tabindex="0">打开 TagNest</a>
+        <a class="link" id="openOptions" role="button" tabindex="0">设置</a>
+      </footer>
+    </div>
+
+    <script type="module" src="reconcile.js"></script>
+  </body>
+</html>

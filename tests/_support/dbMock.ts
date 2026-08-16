@@ -1306,6 +1306,40 @@ export class MockDb {
         .map((b) => ({ url_key: b.url_key }));
     }
 
+    // --- bookmarks: sync-keys reconciliation listing (B-12) ----------
+    // Mirrors functions/api/bookmarks/sync-keys.ts exactly. Bind order:
+    // first page  -> [userId, userId, limit]
+    // cursor page -> [userId, userId, cu, cu, cid, limit]
+    if (u.startsWith('SELECT ID, URL_KEY, UPDATED_AT, TITLE FROM BOOKMARKS WHERE USER_ID = ? AND DELETED_AT IS NULL')) {
+      const userId = params[0] as string;
+      const hasCursor = u.includes('UPDATED_AT > ?');
+      let rows = this.bookmarks.filter(
+        (b) =>
+          b.user_id === userId &&
+          b.deleted_at == null &&
+          b.is_private !== 1 &&
+          !this.hasPrivateTag(b.id, userId),
+      );
+      if (hasCursor) {
+        const cu = String(params[2]);
+        const cid = String(params[4]);
+        rows = rows.filter(
+          (b) =>
+            String(b.updated_at) > cu ||
+            (String(b.updated_at) === cu && String(b.id) > cid),
+        );
+      }
+      rows = rows.sort(
+        (a, b) =>
+          String(a.updated_at).localeCompare(String(b.updated_at)) ||
+          String(a.id).localeCompare(String(b.id)),
+      );
+      const limit = Number(params[params.length - 1]);
+      return rows
+        .slice(0, limit)
+        .map((b) => ({ id: b.id, url_key: b.url_key, updated_at: b.updated_at, title: b.title ?? '' }));
+    }
+
     // --- bookmarks: generic insert (createPrivateBookmark) -----------
     if (u.startsWith('INSERT INTO BOOKMARKS')) {
       const m = u.match(/INSERT INTO BOOKMARKS \(([^)]+)\) VALUES \(([^)]*)\)/);
