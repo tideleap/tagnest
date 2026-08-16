@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Collection, CollectionWithBookmarks } from '@shared/types';
+import type { Collection, CollectionWithBookmarks, CollectionKind, SavedSearchQuery } from '@shared/types';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { keys } from '@/hooks/queries/keys';
@@ -26,7 +26,7 @@ export function useCollection(id: string | null) {
 export function useCreateCollection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; colorIndex?: number }) =>
+    mutationFn: (input: { name: string; colorIndex?: number; kind?: CollectionKind; query?: SavedSearchQuery }) =>
       api.post<Collection>('/collections', input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.collections });
@@ -39,8 +39,13 @@ export function useCreateCollection() {
 export function useRenameCollection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: { name?: string; colorIndex?: number } }) =>
-      api.patch<Collection>(`/collections/${id}`, patch),
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: { name?: string; colorIndex?: number; query?: SavedSearchQuery };
+    }) => api.patch<Collection>(`/collections/${id}`, patch),
     onSuccess: (col) => {
       void qc.invalidateQueries({ queryKey: keys.collections });
       void qc.invalidateQueries({ queryKey: keys.collection(col.id) });

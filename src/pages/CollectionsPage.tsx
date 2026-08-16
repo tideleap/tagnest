@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Folder as FolderIcon, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Collection } from '@shared/types';
 import {
+  Badge,
   Button,
   ColorPicker,
   ConfirmDialog,
@@ -94,9 +95,12 @@ export function CollectionsPage() {
                     aria-hidden
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-ink">{c.name}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-medium text-ink">{c.name}</span>
+                      {c.kind === 'smart' && <Badge tone="brand">智能</Badge>}
+                    </span>
                     <span className="block text-2xs tabular-nums text-ink-faint">
-                      {c.count} 个书签
+                      {c.kind === 'smart' ? `实时匹配 · ${c.count} 个` : `${c.count} 个书签`}
                     </span>
                   </span>
                 </button>

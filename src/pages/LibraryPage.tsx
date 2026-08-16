@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Archive,
   Bookmark as BookmarkIcon,
+  BookmarkPlus,
   Inbox,
   LayoutGrid,
   List,
@@ -13,11 +14,15 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-import type { Bookmark, BookmarkScope, BookmarkSort, Tag } from '@shared/types';
+import type { Bookmark, BookmarkScope, BookmarkSort, Collection, SavedSearchQuery, Tag } from '@shared/types';
 import {
+  Badge,
   Button,
   ConfirmDialog,
+  DialogFooter,
   EmptyState,
+  Input,
+  Modal,
   PageHeader,
   SegmentedControl,
   Select,
@@ -38,6 +43,7 @@ import {
   useTrashBookmarks,
   useUpdateBookmark,
   useDeleteForever,
+  useCreateCollection,
 } from '@/hooks/queries';
 import { useSetBookmarkPrivate } from '@/hooks/queries/vault';
 import { useVault } from '@/stores/vault';
@@ -129,6 +135,7 @@ export function LibraryPage() {
   const { selected, toggle, selectMany, clear } = useSelection();
 
   const { data: tags } = useTags();
+  const [saving, setSaving] = useState(false);
 
   // Resolve the selected tag ids into live Tag objects (fall back to id-only
   // stubs if tags haven't loaded) for the header chips.
@@ -340,6 +347,22 @@ export function LibraryPage() {
           onChange={setViewMode}
           segments={VIEW_SEGMENTS}
         />
+        {!isLoading && (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconLeft={<BookmarkPlus size={15} />}
+            disabled={query.trim().length === 0 && tagIds.length === 0}
+            onClick={() => setSaving(true)}
+            title={
+              query.trim().length === 0 && tagIds.length === 0
+                ? '先设置搜索条件（关键词或标签）'
+                : '把当前搜索保存为智能集合'
+            }
+          >
+            保存为智能集合
+          </Button>
+        )}
         {dragEnabled && (
           <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
         )}
@@ -576,6 +599,153 @@ export function LibraryPage() {
         confirmLabel="加密并隐藏"
         loading={setBookmarkPrivate.isPending}
       />
+
+      <SaveSmartCollectionDialog
+        open={saving}
+        q={query}
+        tagIds={tagIds}
+        scope={tagIds.length > 0 ? 'all' : scope}
+        sort={sort}
+        onClose={() => setSaving(false)}
+      />
     </div>
+  );
+}
+
+/**
+ * Saves the current Library search as a smart (query-driven) collection. The
+ * query is serialized exactly as the backend expects; members are resolved
+ * live, so the collection stays consistent with the library.
+ */
+function SaveSmartCollectionDialog({
+  open,
+  q,
+  tagIds,
+  scope,
+  sort,
+  onClose,
+}: {
+  open: boolean;
+  q: string;
+  tagIds: string[];
+  scope: BookmarkScope;
+  sort: BookmarkSort;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const { data: allTags } = useTags();
+  const create = useCreateCollection();
+
+  const query: SavedSearchQuery = {
+    q: q.trim() || null,
+    tagIds,
+    matchAllTags: false,
+    scope,
+    sort,
+  };
+
+  const defaultName = q.trim()
+    ? `搜索：${q.trim()}`
+    : tagIds.length > 0
+      ? `${tagIds.length} 个标签`
+      : '智能集合';
+
+  const [name, setName] = useState(defaultName);
+  const [error, setError] = useState<string>();
+
+  const lastKey = `${open}`;
+  const [seenOpen, setSeenOpen] = useState(lastKey);
+  if (seenOpen !== lastKey) {
+    setSeenOpen(lastKey);
+    setName(defaultName);
+    setError(undefined);
+  }
+
+  const summary = (() => {
+    const parts: string[] = [];
+    if (query.q) parts.push(`“${query.q}”`);
+    if (query.tagIds.length > 0) {
+      const names = query.tagIds.map((id) => allTags?.find((t) => t.id === id)?.name ?? id);
+      parts.push(names.join(' · '));
+    }
+    const SCOPE_LABEL: Record<string, string> = {
+      inbox: '收件箱',
+      all: '全部',
+      favorites: '收藏',
+      archive: '归档',
+      trash: '回收站',
+    };
+    const SORT_LABEL: Record<string, string> = {
+      created_desc: '最新',
+      created_asc: '最早',
+      updated_desc: '最近更新',
+      title_asc: '标题',
+      visits_desc: '最多访问',
+      manual: '手动',
+    };
+    parts.push(SCOPE_LABEL[query.scope] ?? query.scope);
+    parts.push(SORT_LABEL[query.sort] ?? query.sort);
+    return parts.join(' · ');
+  })();
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('集合名称不能为空');
+      return;
+    }
+    create.mutate(
+      { name: trimmed, kind: 'smart', query },
+      {
+        onSuccess: (col: Collection) => {
+          onClose();
+          navigate(`/collections/${col.id}`);
+        },
+      },
+    );
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="保存为智能集合"
+      size="sm"
+      footer={
+        <DialogFooter
+          onCancel={onClose}
+          onSubmit={submit}
+          loading={create.isPending}
+          submitLabel="保存"
+        />
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
+          <Badge tone="brand">实时</Badge>
+          <span className="text-xs text-ink-soft">{summary}</span>
+        </div>
+        <Input
+          autoFocus
+          label="集合名称"
+          value={name}
+          error={error}
+          onChange={(e) => {
+            setName(e.target.value);
+            setError(undefined);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="例如：设计参考"
+        />
+        <p className="text-2xs text-ink-faint">
+          智能集合的成员由该搜索条件实时计算，新增或调整书签后会自动更新，无需手动维护。
+        </p>
+      </div>
+    </Modal>
   );
 }

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FolderPlus, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import type { Bookmark, Collection } from '@shared/types';
+import type { Bookmark, Collection, SavedSearchQuery, Tag } from '@shared/types';
 import { TAG_COLOR_COUNT } from '@shared/types';
 import {
+  Badge,
   Button,
   ConfirmDialog,
   EmptyState,
@@ -22,14 +23,47 @@ import {
   useDeleteCollection,
   useRemoveFromCollection,
   useRenameCollection,
+  useTags,
 } from '@/hooks/queries';
 import { api, qs } from '@/lib/api';
 import { cx } from '@/lib/cx';
+
+const SCOPE_LABEL: Record<string, string> = {
+  inbox: '收件箱',
+  all: '全部',
+  favorites: '收藏',
+  archive: '归档',
+  trash: '回收站',
+};
+
+const SORT_LABEL: Record<string, string> = {
+  created_desc: '最新',
+  created_asc: '最早',
+  updated_desc: '最近更新',
+  title_asc: '标题',
+  visits_desc: '最多访问',
+  manual: '手动',
+};
+
+/** Human-readable summary of a smart collection's saved query. */
+function summarizeQuery(q: SavedSearchQuery, tags: Tag[] | undefined): string {
+  const parts: string[] = [];
+  if (q.q) parts.push(`“${q.q}”`);
+  if (q.tagIds.length > 0) {
+    const names = q.tagIds.map((id) => tags?.find((t) => t.id === id)?.name ?? id);
+    parts.push(names.join(' · '));
+  }
+  parts.push(SCOPE_LABEL[q.scope] ?? q.scope);
+  parts.push(SORT_LABEL[q.sort] ?? q.sort);
+  if (q.matchAllTags && q.tagIds.length > 1) parts.push('需全部标签');
+  return parts.join(' · ');
+}
 
 export function CollectionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data, isLoading } = useCollection(id ?? null);
+  const { data: tags } = useTags();
 
   const remove = useRemoveFromCollection();
   const deleteCollection = useDeleteCollection();
@@ -41,6 +75,7 @@ export function CollectionDetail() {
   const collection = data?.collection ?? null;
   const bookmarks = useMemo(() => data?.bookmarks ?? [], [data]);
   const existingIds = useMemo(() => new Set(bookmarks.map((b) => b.id)), [bookmarks]);
+  const isSmart = collection?.kind === 'smart';
 
   if (isLoading && !collection) {
     return (
@@ -84,13 +119,21 @@ export function CollectionDetail() {
             aria-hidden
           />
         }
-        eyebrow="集合"
+        eyebrow={isSmart ? '智能集合' : '集合'}
         title={collection.name}
-        description={collection.count > 0 ? `${collection.count} 个书签` : '还没有书签'}
+        description={
+          isSmart
+            ? `智能集合 · 实时匹配 ${collection.count} 个书签`
+            : collection.count > 0
+              ? `${collection.count} 个书签`
+              : '还没有书签'
+        }
       >
-        <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setAdding(true)}>
-          添加书签
-        </Button>
+        {!isSmart && (
+          <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setAdding(true)}>
+            添加书签
+          </Button>
+        )}
         <Menu
           align="end"
           width={180}
@@ -116,15 +159,28 @@ export function CollectionDetail() {
         />
       </PageHeader>
 
+      {isSmart && collection.query && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
+          <Badge tone="brand">实时</Badge>
+          <span className="text-xs text-ink-soft">{summarizeQuery(collection.query, tags)}</span>
+        </div>
+      )}
+
       {bookmarks.length === 0 ? (
         <EmptyState
           icon={<FolderPlus size={22} />}
-          title="这个集合还是空的"
-          description="把已有的书签添加进来，整理成一份持久、可分享的清单。"
+          title={isSmart ? '还没有匹配的书签' : '这个集合还是空的'}
+          description={
+            isSmart
+              ? '当前搜索条件暂无匹配项。新增或调整书签后，这里会自动更新。'
+              : '把已有的书签添加进来，整理成一份持久、可分享的清单。'
+          }
           action={
-            <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setAdding(true)}>
-              添加书签
-            </Button>
+            !isSmart && (
+              <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setAdding(true)}>
+                添加书签
+              </Button>
+            )
           }
         />
       ) : (
@@ -146,13 +202,15 @@ export function CollectionDetail() {
                 >
                   {b.title || b.url}
                 </a>
-                <IconButton
-                  label="从集合移除"
-                  icon={<X size={14} />}
-                  size="sm"
-                  className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
-                  onClick={() => remove.mutate({ collectionId: collection.id, bookmarkId: b.id })}
-                />
+                {!isSmart && (
+                  <IconButton
+                    label="从集合移除"
+                    icon={<X size={14} />}
+                    size="sm"
+                    className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+                    onClick={() => remove.mutate({ collectionId: collection.id, bookmarkId: b.id })}
+                  />
+                )}
               </div>
             </li>
           ))}
