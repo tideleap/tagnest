@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 51 条（其中 2 条为跨文档别名），独立需求 49 项：✅ done 46 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
+> 登记 60 条（其中 2 条为跨文档别名），独立需求 58 项：✅ done 55 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -133,7 +133,7 @@ npm run backlog:write   # 重新生成下方状态表
 | `F-P0-7` | 清理死代码约 6000 行 | P0 | ➖ superseded | 人工核验 | 净室重写不存在原项目死代码；本仓库无 functions/api/tab/**、无孤儿页面、无混淆依赖。 |
 | `F-P0-8` | 品牌统一为 TagNest | P0 | ✅ done | 2/2 |  |
 | `F-P1-1` | 响应式断点体系 | P1 | ✅ done | 2/2 |  |
-| `F-P1-2` | 信息架构：单层导航 + 统一回收站 + 404 | P1 | ✅ done | 2/2 | 概览页单独拆为 B8 跟踪。 |
+| `F-P1-2` | 信息架构：单层导航 + 统一回收站 + 404 | P1 | ✅ done | 2/2 | 概览页单独拆为 UI-DASHBOARD 跟踪。 |
 | `F-P1-3` | 全局搜索与命令面板（Ctrl/Cmd+K） | P1 | ✅ done | 1/1 |  |
 | `F-P1-4` | 无障碍与键盘可达性 | P1 | ✅ done | 2/2 |  |
 | `F-P1-5` | 数据层健壮性（超时 / 重试分流 / 无状态镜像） | P1 | ✅ done | → B7 | B7（api 客户端请求超时与重试分流）已 done：AbortSignal 超时 + 重试分流证据在案（src/lib/api.ts）。本条为 B7 别名，无独立剩余工作，故标记 superseded。 |
@@ -166,15 +166,24 @@ npm run backlog:write   # 重新生成下方状态表
 | `Q8d` | 封面图展示 | P3 | ✅ done | 1/1 | grid 视图渲染 coverUrl 封面（16:9，懒加载，失败静默回退 favicon）；list/compact 保持紧凑不渲染。 |
 | `Q8e` | PWA 离线 | P2 | ✅ done | 3/3 |  |
 | `Q8f` | 导入进度可视化 | P2 | ✅ done | 3/3 |  |
-| `R1` | 文档漂移治理 | P0 | ✅ done | 3/3 | 已建立 docs/BACKLOG.md + backlog-check CI 门禁；README 失实描述已由 B1 纠正。 |
+| `R1` | 文档漂移治理 | P0 | ✅ done | 3/3 | 已建立 docs/BACKLOG.md + backlog-check CI 门禁；README 失实描述已由 DOC-README-AI 纠正。 |
 | `R2` | 测试覆盖缺口 | P0 | ✅ done | 1/1 |  |
 | `R5` | 凭证卫生：吊销已泄露 PAT | P0 | ⏸ blocked-external | 人工核验 | 需用户在 GitHub 手动吊销 ghp_OrnyH… 与 ghp_y2Uw…；Agent 无法代为吊销。 |
-| `B1` | 纠正 README 中 AI 已接线的失实描述 | P0 | ✅ done | 1/1 |  |
+| `DOC-README-AI` | 纠正 README 中 AI 已接线的失实描述 | P0 | ✅ done | 1/1 |  |
 | `B7` | api 客户端请求超时与重试分流 | P1 | ✅ done | 2/2 |  |
-| `B8` | 概览页 /dashboard | P3 | ✅ done | 3/3 | 登录落地首页：核心指标（书签/近7天/标签/收藏）+ 维护（未打标/归档/回收站）+ 快捷入口；数据源自 /stats。 |
-| `B9` | CI/CD 自动化部署流水线 | P2 | ✅ done | 4/4 | push main → CI→Deploy 自动把 dist 部署到 Cloudflare Pages 生产；PR 走 pr-<n> 预览；prod push 顺带逐文件幂等 D1 迁移（非阻塞）；手动 workflow_dispatch 带迁移开关；已实测 success。回滚见 docs/CICD.md §7。 |
+| `UI-DASHBOARD` | 概览页 /dashboard | P3 | ✅ done | 3/3 | 登录落地首页：核心指标（书签/近7天/标签/收藏）+ 维护（未打标/归档/回收站）+ 快捷入口；数据源自 /stats。 |
+| `CI-CD` | CI/CD 自动化部署流水线 | P2 | ✅ done | 4/4 | push main → CI→Deploy 自动把 dist 部署到 Cloudflare Pages 生产；PR 走 pr-<n> 预览；prod push 顺带逐文件幂等 D1 迁移（非阻塞）；手动 workflow_dispatch 带迁移开关；已实测 success。回滚见 docs/CICD.md §7。 |
 | `PRIV-1` | 私密保险库：单书签零知识加密（隐藏不加密之外的强保密） | P1 | ✅ done | 5/5 | 服务端只存 AES-256-GCM 密文 + 公开 salt，从所有列表/搜索/分享/导出/AI 隐藏；实现见 docs/PRIVATE-VAULT.md §1-§7。 |
 | `PRIV-2` | 类别私密：标签级整体隐藏（实时级联子树，取消即恢复） | P1 | ✅ done | 6/6 | tags.is_private 标记 + PRIVATE_BOOKMARK_CLAUSE 的 NOT EXISTS 派生隐藏；setTagPrivate 用递归 CTE 级联整棵子树；GET /api/private/tags 供本人查看/取消。仅隐藏不加密（与 §零知识并存独立）。实现见 docs/PRIVATE-VAULT.md §8。 |
+| `B-1` | 前端组件测试基建（Vitest + Testing Library 组件回归网） | P1 | ✅ done | 2/2 |  |
+| `B-2` | 统一远程图片加载（RemoteImage 组件：错误/封面统一兜底） | P2 | ✅ done | 1/1 |  |
+| `B-3` | SettingsPage 拆分为按区子组件 | P2 | ✅ done | 1/1 |  |
+| `B-4` | 主题令牌一致性 CI 守卫（SPA 与扩展双份调色板） | P2 | ✅ done | 1/1 |  |
+| `B-8` | 智能集合（保存搜索实时成集） | P1 | ✅ done | 3/3 |  |
+| `B-9` | 相似书签推荐（多信号启发式 + 相关书签面板） | P2 | ✅ done | 3/3 |  |
+| `B-10` | 嵌套标签（父级选择 + 子树过滤，扁平兼容） | P2 | ✅ done | 3/3 |  |
+| `B-11` | RSS 订阅与自动拉取收藏 | P1 | ✅ done | 3/3 |  |
+| `B-12` | 浏览器书签双向同步（变更日志 + 冲突双保留，Phase A+Phase B） | P0 | ✅ done | 5/5 |  |
 
 **当前执行队列**：空 —— 所有需求已进入终态。
 
