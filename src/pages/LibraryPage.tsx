@@ -5,6 +5,7 @@ import {
   Archive,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
+  FolderTree,
   Inbox,
   LayoutGrid,
   List,
@@ -31,6 +32,7 @@ import {
 } from '@/components/ui';
 import { BookmarkCard } from '@/components/bookmark/BookmarkCard';
 import { BulkActionBar } from '@/components/bookmark/BulkActionBar';
+import { CategoryView } from '@/components/library/CategoryView';
 import { useOverlay, useSelection, useView } from '@/stores/ui';
 import type { ViewMode } from '@/stores/ui';
 import {
@@ -110,10 +112,11 @@ const VIEW_SEGMENTS = [
   { value: 'list' as ViewMode, label: '列表', icon: <List size={14} /> },
   { value: 'grid' as ViewMode, label: '网格', icon: <LayoutGrid size={14} /> },
   { value: 'compact' as ViewMode, label: '紧凑', icon: <Rows3 size={14} /> },
+  { value: 'category' as ViewMode, label: '分类', icon: <FolderTree size={14} /> },
 ];
 
 /** Row heights feed the virtualizer's initial estimate; measurement corrects it. */
-const ROW_ESTIMATE: Record<ViewMode, number> = { list: 112, grid: 176, compact: 46 };
+const ROW_ESTIMATE: Record<ViewMode, number> = { list: 112, grid: 176, compact: 46, category: 176 };
 
 export function LibraryPage() {
   const navigate = useNavigate();
@@ -296,6 +299,15 @@ export function LibraryPage() {
     }
   }, [virtualRows, items.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // The category view groups the WHOLE library, so eagerly pull every page
+  // instead of waiting on the (unused-in-this-mode) virtualizer to request the
+  // tail. Re-fires until the cursor is exhausted.
+  useEffect(() => {
+    if (viewMode === 'category' && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [viewMode, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   const meta = SCOPE_META[scope];
   const HeaderIcon = meta.icon;
   const title = activeTags.length > 0
@@ -377,7 +389,7 @@ export function LibraryPage() {
             保存为智能集合
           </Button>
         )}
-        {dragEnabled && (
+        {dragEnabled && viewMode !== 'category' && (
           <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
         )}
       </PageHeader>
@@ -481,7 +493,15 @@ export function LibraryPage() {
           className="scrollbar-slim min-h-0 flex-1 overflow-y-auto"
           style={{ maxHeight: 'calc(100dvh - 11rem)' }}
         >
-          {isGrid ? (
+          {viewMode === 'category' ? (
+            <CategoryView
+              bookmarks={items}
+              tags={tags ?? []}
+              selected={selected}
+              selectionActive={selected.size > 0}
+              handlers={cardHandlers}
+            />
+          ) : isGrid ? (
             // Grid density defers to CSS columns — virtualizing a responsive
             // grid buys little and breaks keyboard order.
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">

@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { BookmarkScope, BookmarkSort } from '@shared/types';
 import { resolveTheme, type ThemeMode } from '@/lib/themes';
 
-export type ViewMode = 'list' | 'grid' | 'compact';
+export type ViewMode = 'list' | 'grid' | 'compact' | 'category';
 // Re-export the theme types + registry so pages can `import { THEMES } from '@/stores/ui'`.
 export { THEMES, THEME_LABEL } from '@/lib/themes';
 export type { ThemeOption } from '@/lib/themes';
