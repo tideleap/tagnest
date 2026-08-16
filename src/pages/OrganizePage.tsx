@@ -187,7 +187,8 @@ function TagExportBar() {
     a.href = url;
     a.download = `tagnest-tags.${format}`;
     a.click();
-    URL.revokeObjectURL(url);
+    // Defer revocation: revoking synchronously can abort the download on Safari.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (

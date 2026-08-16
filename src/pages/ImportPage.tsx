@@ -335,7 +335,8 @@ function ExportSection({ total }: { total: number }) {
       anchor.href = url;
       anchor.download = filename ?? `tagnest-${new Date().toISOString().slice(0, 10)}.${format}`;
       anchor.click();
-      URL.revokeObjectURL(url);
+      // Defer revocation: revoking synchronously can abort the download on Safari.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast.success('导出完成');
     } catch (err) {
       toast.error('导出失败', (err as Error).message);

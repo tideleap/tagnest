@@ -6,6 +6,7 @@ import { useHealthReport, useProbeBookmarks } from '@/hooks/queries/health';
 import { useTrashBookmarks, useDeleteTag, useBookmarks } from '@/hooks/queries';
 import { displayHost } from '@/lib/url';
 import { cx } from '@/lib/cx';
+import { toast } from '@/components/ui/Toast';
 
 /**
  * O1 — Library health panel.
@@ -48,6 +49,9 @@ export function HealthPanel() {
         acc.push(...res.results);
         setProbeResults([...acc]);
       }
+    } catch {
+      // Keep whatever batches already landed; report the failure and stop.
+      toast.error('死链探测中断', '网络或服务异常，已保留已完成部分');
     } finally {
       setProbing(false);
     }

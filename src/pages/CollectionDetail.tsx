@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, FolderPlus, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import type { Bookmark, Collection, SavedSearchQuery, Tag } from '@shared/types';
@@ -27,6 +27,7 @@ import {
 } from '@/hooks/queries';
 import { api, qs } from '@/lib/api';
 import { cx } from '@/lib/cx';
+import { toast } from '@/components/ui/Toast';
 
 const SCOPE_LABEL: Record<string, string> = {
   inbox: '收件箱',
@@ -380,6 +381,8 @@ function AddBookmarkDialog({
   const [results, setResults] = useState<Bookmark[]>([]);
   const [inGroup, setInGroup] = useState<Set<string>>(existingIds);
   const [loading, setLoading] = useState(false);
+  // Monotonic request id so a slow response can never overwrite a newer one.
+  const searchSeq = useRef(0);
 
   // Reset whenever the dialog opens.
   const [lastOpen, setLastOpen] = useState(open);
@@ -394,14 +397,20 @@ function AddBookmarkDialog({
   }, [open, existingIds]);
 
   const runSearch = async (q: string) => {
+    const seq = ++searchSeq.current;
     setLoading(true);
     try {
       const page = await api.get<{ items: Bookmark[] }>(
         `/bookmarks${qs({ scope: 'all', q: q.trim() || undefined, limit: 20, sort: 'created_desc' })}`,
       );
+      if (seq !== searchSeq.current) return; // a newer search superseded this one
       setResults(page.items);
+    } catch {
+      if (seq !== searchSeq.current) return;
+      setResults([]);
+      toast.error('搜索失败', '请检查网络后重试');
     } finally {
-      setLoading(false);
+      if (seq === searchSeq.current) setLoading(false);
     }
   };
 

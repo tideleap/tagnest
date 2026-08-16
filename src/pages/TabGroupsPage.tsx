@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ExternalLink,
   FolderOpen,
@@ -36,6 +36,7 @@ import {
 } from '@/hooks/queries';
 import { api, qs } from '@/lib/api';
 import { cx } from '@/lib/cx';
+import { toast } from '@/components/ui/Toast';
 
 export function TabGroupsPage() {
   const { data: groups, isLoading, isError, error, refetch } = useTabGroups();
@@ -416,22 +417,30 @@ function AddBookmarkDialog({
   const [results, setResults] = useState<Bookmark[]>([]);
   const [inGroup, setInGroup] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  // Monotonic request id so a slow response can never overwrite a newer one.
+  const searchSeq = useRef(0);
 
   const runSearch = async (q: string) => {
     if (!groupId) return;
+    const seq = ++searchSeq.current;
     setLoading(true);
     try {
       const page = await api.get<{ items: Bookmark[] }>(
         `/bookmarks${qs({ scope: 'all', q: q.trim() || undefined, limit: 20, sort: 'created_desc' })}`,
       );
+      if (seq !== searchSeq.current) return; // a newer search superseded this one
       setResults(page.items);
-      setInGroup(new Set(page.items.filter(() => false).map((b) => b.id)));
       // Mark which results are already in this group by reading current group.
       const detail = await api.get<{ items: TabItem[] }>(`/tab-groups/${groupId}`);
+      if (seq !== searchSeq.current) return;
       const ids = new Set(detail.items.map((i) => i.bookmarkId));
       setInGroup(ids);
+    } catch {
+      if (seq !== searchSeq.current) return;
+      setResults([]);
+      toast.error('搜索失败', '请检查网络后重试');
     } finally {
-      setLoading(false);
+      if (seq === searchSeq.current) setLoading(false);
     }
   };
 

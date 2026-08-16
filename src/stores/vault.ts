@@ -133,20 +133,23 @@ export const useVault = create<VaultState>((set, get) => ({
       set({ error: '私密保险库尚未设置' });
       return false;
     }
-    const key = await deriveKey(passphrase, salt);
     try {
+      // deriveKey can throw on a corrupt/persisted salt (WebCrypto import
+      // failure); treat that the same as a wrong passphrase instead of
+      // letting it escape as an unhandled rejection.
+      const key = await deriveKey(passphrase, salt);
       const ok = await checkVerifier(key, JSON.parse(verifier) as EncryptedBlob);
       if (!ok) {
         set({ error: '密码不正确，请重试' });
         return false;
       }
+      vaultKey = key;
+      set({ status: 'unlocked', error: null });
+      return true;
     } catch {
       set({ error: '密码不正确，请重试' });
       return false;
     }
-    vaultKey = key;
-    set({ status: 'unlocked', error: null });
-    return true;
   },
 
   lock: () => {
