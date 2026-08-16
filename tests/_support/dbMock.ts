@@ -66,6 +66,7 @@ export class MockDb {
   tag_merge_log: MockRow[] = [];
   backupTargets: MockRow[] = [];
   backupRuns: MockRow[] = [];
+  feeds: MockRow[] = [];
   /** Number of rows affected by the most recent mutation statement. */
   lastChanges = 0;
 
@@ -1226,6 +1227,85 @@ export class MockDb {
       this.lastChanges = before - this.bookmarks.length;
       return [];
     }
+    // --- feeds (B-11 RSS subscriptions) ------------------------------
+    if (
+      u.startsWith('INSERT INTO FEEDS') ||
+      u.startsWith('INSERT OR IGNORE INTO FEEDS')
+    ) {
+      const m = u.match(/INTO FEEDS \(([^)]+)\) VALUES \(([^)]*)\)/);
+      if (m) {
+        const row = parseInsertRow(m[1], m[2], params);
+        // Mirrors the unique (id) primary key: a duplicate id overwrites.
+        const existing = this.feeds.find((f) => f.id === row.id);
+        if (existing) Object.assign(existing, row);
+        else this.feeds.push(row);
+      }
+      return [];
+    }
+    if (u.startsWith('UPDATE FEEDS SET')) {
+      const [lastFetchedAt, lastStatus, updatedAt, id, userId] = params as string[];
+      const row = this.feeds.find((f) => f.id === id && f.user_id === userId);
+      if (row) {
+        row.last_fetched_at = lastFetchedAt ?? null;
+        row.last_status = lastStatus ?? null;
+        row.updated_at = updatedAt;
+        this.lastChanges = 1;
+      } else {
+        this.lastChanges = 0;
+      }
+      return [];
+    }
+    if (u.startsWith('DELETE FROM FEEDS WHERE ID = ? AND USER_ID = ?')) {
+      const [id, userId] = params as string[];
+      const before = this.feeds.length;
+      this.feeds = this.feeds.filter((f) => !(f.id === id && f.user_id === userId));
+      this.lastChanges = before - this.feeds.length;
+      return [];
+    }
+    // Single feed lookup (refresh / delete guard). Params: [id, userId].
+    if (u.includes('FROM FEEDS WHERE ID = ? AND USER_ID = ?')) {
+      const [id, userId] = params as string[];
+      return this.feeds.filter((f) => f.id === id && f.user_id === userId);
+    }
+    // List of a user's feeds, newest first. Param: [userId].
+    if (u.includes('FROM FEEDS WHERE USER_ID = ?')) {
+      const userId = params[0] as string;
+      return [...this.feeds]
+        .filter((f) => f.user_id === userId)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    }
+
+    // --- bookmarks: OR IGNORE insert (refreshFeed) -------------------
+    if (u.startsWith('INSERT OR IGNORE INTO BOOKMARKS')) {
+      const m = u.match(/INSERT OR IGNORE INTO BOOKMARKS \(([^)]+)\) VALUES \(([^)]*)\)/);
+      if (m) {
+        const row = parseInsertRow(m[1], m[2], params);
+        const dup = this.bookmarks.find(
+          (b) => b.user_id === row.user_id && b.url_key === row.url_key && b.deleted_at == null,
+        );
+        if (dup) {
+          this.lastChanges = 0;
+          return [];
+        }
+        this.bookmarks.push(row);
+        this.lastChanges = 1;
+      }
+      return [];
+    }
+
+    // --- bookmarks: existing-key lookup during feed refresh ----------
+    if (
+      u.startsWith(
+        'SELECT URL_KEY FROM BOOKMARKS WHERE USER_ID = ? AND DELETED_AT IS NULL AND URL_KEY IN',
+      )
+    ) {
+      const userId = params[0] as string;
+      const keys = (params.slice(1) as string[]).filter(Boolean);
+      return this.bookmarks
+        .filter((b) => b.user_id === userId && b.deleted_at == null && keys.includes(b.url_key))
+        .map((b) => ({ url_key: b.url_key }));
+    }
+
     // --- bookmarks: generic insert (createPrivateBookmark) -----------
     if (u.startsWith('INSERT INTO BOOKMARKS')) {
       const m = u.match(/INSERT INTO BOOKMARKS \(([^)]+)\) VALUES \(([^)]*)\)/);

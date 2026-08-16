@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Layers,
   Lock,
+  Rss,
   Settings,
   Sparkles,
   Star,
@@ -88,6 +89,7 @@ const SECONDARY: NavItem[] = [
   { to: '/timeline', label: '时间线', icon: CalendarClock },
   { to: '/report', label: '报告', icon: BarChart3 },
   { to: '/import', label: '导入导出', icon: Download },
+  { to: '/feeds', label: 'RSS 订阅', icon: Rss },
   // Deliberately has no count: the number of private bookmarks is itself
   // information the vault is supposed to withhold from a shoulder-surfer.
   { to: '/private', label: '私密保险库', icon: Lock, vaultState: true },

@@ -57,6 +57,8 @@ export const keys = {
   /** Single category-private bookmark loaded for the vault editor. */
   privateTagBookmark: (id: string | null) => ['private-tag-bookmark', id] as const,
   privateTagBookmarkRoot: ['private-tag-bookmark'] as const,
+  /** B-11 — RSS subscriptions. */
+  feeds: ['feeds'] as const,
 };
 
 export const PAGE_SIZE = 40;

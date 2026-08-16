@@ -62,6 +62,9 @@ const ReportPage = lazy(() =>
 const ShareTargetPage = lazy(() =>
   import('@/pages/ShareTargetPage').then((m) => ({ default: m.ShareTargetPage })),
 );
+const FeedsPage = lazy(() =>
+  import('@/pages/FeedsPage').then((m) => ({ default: m.FeedsPage })),
+);
 
 function RouteFallback() {
   return (
@@ -141,6 +144,7 @@ export function App() {
             {/* Old single-tag filter URL → new multi-tag search param. */}
             <Route path="/tags/:tagId" element={<OldTagRedirect />} />
             <Route path="/import" element={<ImportPage />} />
+            <Route path="/feeds" element={<FeedsPage />} />
             <Route path="/tab-groups" element={<TabGroupsPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionDetail />} />

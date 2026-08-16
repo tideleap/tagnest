@@ -1001,3 +1001,48 @@ export interface CollectionWithBookmarks {
   collection: Collection;
   bookmarks: CollectionBookmarkItem[];
 }
+
+/* ------------------------------------------------------------------ *
+ * RSS feeds (B-11) — server-pulled subscriptions that auto-create bookmarks.
+ * ------------------------------------------------------------------ */
+
+/** How often a feed is meant to be refreshed. No scheduler exists yet, so
+ *  `off` means manual-only and the other values bound the "refresh all due"
+ *  window. */
+export type FeedCadence = 'off' | 'hourly' | 'daily' | 'weekly';
+
+export const FEED_CADENCES: FeedCadence[] = ['off', 'hourly', 'daily', 'weekly'];
+
+/** A user's RSS/Atom subscription as returned to the client. */
+export interface Feed {
+  id: string;
+  userId: string;
+  title: string;
+  url: string;
+  /** Default tags applied to every bookmark pulled from this feed. */
+  tagNames: string[];
+  cadence: FeedCadence;
+  /** ISO timestamp of the last successful (or attempted) fetch, or null. */
+  lastFetchedAt: string | null;
+  /** Short machine status for the last fetch: 'ok' | 'empty' | 'http_###' |
+   *  'feed_blocked_host' | 'feed_fetch_failed' | 'never' | null. */
+  lastStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Write payload for subscribing to a feed. */
+export interface FeedInput {
+  url: string;
+  title?: string;
+  tagNames?: string[];
+  cadence?: FeedCadence;
+}
+
+/** Outcome of refreshing one feed (manual or via "refresh all"). */
+export interface FeedRefreshResult {
+  feedId: string;
+  added: number;
+  skipped: number;
+  failed: number;
+}
