@@ -97,7 +97,8 @@ TagNest 是某款书签管理器产品理念的独立清洁室实现（clean-roo
 
 **分享与扩展**
 - 公开分享页：以短链 `/s/:slug` 发布可筛选的实时书签视图，支持过期时间、主题与边缘缓存；可设置**访问密码**（密码保护的分享绕过边缘缓存，防止跨访客泄露），也可以**整个集合**为范围分享（按集合内顺序展示，与标签模式互斥）。
-- 浏览器扩展（Manifest V3）：一键保存当前页或把整个窗口捕获进标签组（Ctrl+Shift+T），通过作用域化的个人 API Key 通信。
+- 浏览器扩展（Manifest V3）：一键保存当前页或把整个窗口捕获进标签组（Ctrl+Shift+T），通过作用域化的个人 API Key 通信；扩展内建「同步对账」与「双向同步」两个入口，详见 [`docs/SYNC-Y3-B12-2026-08-16.md`](docs/SYNC-Y3-B12-2026-08-16.md)。
+- **浏览器书签双向同步（B-12 / Y3）**：TagNest 后端为唯一事实源（hub-and-spoke 星型模型），让浏览器原生书签与书签库保持一致——浏览器增删改回流 TagNest，TagNest 增删改也写回浏览器。增量同步以 `updated_at` 为统一水印（含 `deleted_at` 软删行以传播删除），`lastSyncedAt` + 同步前本地快照作三路合并基线与回滚兜底；合并采用**字段级 LWW**（note / 标签等独立合并，仅同字段并发才覆盖），真正的硬冲突标记 badge 供手动「保留浏览器 / 采用 TagNest」解决；`bookmarks` 权限**按需授权**（对账页点「授权并对账」才弹窗，规避安装即强制弹窗），回写浏览器默认关闭（`upload` 上行优先）以降低隐私面。后端端点：`GET /api/bookmarks/sync-keys`（只读对账）、`GET /api/bookmarks/sync-pull`（增量拉取）、`POST /api/bookmarks/sync-push`（批量推送）。完整协议、冲突策略与隐私评估见 [`docs/SYNC-Y3-B12-2026-08-16.md`](docs/SYNC-Y3-B12-2026-08-16.md)。
 - 标签组（Tab groups）：把已有书签策展成有序、带颜色的组，一键重开整组；扩展的「捕获窗口」会一键保存当前窗口标签页为书签，并自动归入一个标签组。
 
 **备份与数据自留（Y2）**
@@ -305,7 +306,9 @@ TagNest 是某款书签管理器产品理念的独立清洁室实现（clean-roo
 full-text search (`fts5` trigram), folder-to-tag import with URL de-duplication, live import
 progress, multi-tenant isolation, scoped personal API keys, field-level AES-256-GCM encryption,
 AI tagging (two-track: model + heuristic, fully reversible), public share pages, a Manifest V3
-browser extension, live website snapshots, and an offline-capable PWA.
+browser extension with bidirectional browser-bookmark sync (B-12: hub-and-spoke incremental
+sync-pull / sync-push over a watermark, field-level LWW, pre-sync snapshot rollback), live
+website snapshots, and an offline-capable PWA.
 
 **One-click deploy:** click the *Deploy to Cloudflare* button to fork the repo and create a Pages
 project, add a `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secret once, then run the
