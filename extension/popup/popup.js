@@ -13,6 +13,7 @@ const els = {
   result: $('result'),
   openOptions: $('openOptions'),
   openSync: $('openSync'),
+  openTwoWaySync: $('openTwoWaySync'),
   shortcutHint: $('shortcutHint'),
 };
 
@@ -139,6 +140,11 @@ els.openOptions.addEventListener('keydown', (e) => {
 // Open the read-only reconciliation page (B-12 Phase A) in its own tab.
 els.openSync.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('reconcile.html') });
+});
+
+// Open the bidirectional sync page (B-12 Phase B) in its own tab.
+els.openTwoWaySync.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('sync.html') });
 });
 
 // Apply the chosen theme (from extension settings; system -> OS). Follow live

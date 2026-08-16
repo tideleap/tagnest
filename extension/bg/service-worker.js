@@ -2,6 +2,7 @@
 import { captureWindow } from './capture-window.js';
 import { ensureBookmark, appendNote } from './api.js';
 import { loadConfig, isConfigured } from './config.js';
+import { runSync, rollbackSync } from './reconcile.js';
 
 // Keyboard shortcuts: Ctrl+Shift+S saves the active tab (selected text becomes
 // the note), Ctrl+Shift+T captures the whole window.
@@ -33,6 +34,40 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse(await savePage(msg.url, msg.title, msg.note));
     })();
     return true; // async response
+  }
+
+  // B-12 Phase B — bidirectional sync. The background worker owns chrome.bookmarks
+  // access; the sync tab sends an intent and renders the summary it gets back.
+  if (msg.type === 'run-sync') {
+    (async () => {
+      const cfg = await loadConfig();
+      if (!isConfigured(cfg)) {
+        sendResponse({ ok: false, notConfigured: true });
+        return;
+      }
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 90_000);
+      try {
+        const result = await runSync(cfg, { direction: msg.direction || 'upload', signal: ac.signal });
+        sendResponse({ ok: true, ...result });
+      } catch (err) {
+        sendResponse({ ok: false, message: err?.message || '同步失败' });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return true; // async response
+  }
+
+  if (msg.type === 'rollback-sync') {
+    (async () => {
+      try {
+        sendResponse(await rollbackSync());
+      } catch (err) {
+        sendResponse({ ok: false, message: err?.message || '恢复失败' });
+      }
+    })();
+    return true;
   }
 });
 

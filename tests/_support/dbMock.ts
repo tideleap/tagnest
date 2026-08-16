@@ -1340,6 +1340,46 @@ export class MockDb {
         .map((b) => ({ id: b.id, url_key: b.url_key, updated_at: b.updated_at, title: b.title ?? '' }));
     }
 
+    // --- bookmarks: sync-pull incremental changelog (B-12) ----------
+    // Mirrors functions/api/bookmarks/sync-pull.ts exactly. Includes soft-deleted
+    // rows so deletions propagate. `since`/`cursor` fold into one keyset
+    // `(updated_at > ? OR (updated_at = ? AND id > ?))`; a bare `since` uses
+    // id='' so every real id passes `id > ''`. Bind order:
+    //   no cursor   -> [userId, userId, limit]
+    //   cursor page -> [userId, userId, cu, cu, cid, limit]
+    if (u.startsWith('SELECT ID, URL_KEY, URL, TITLE, UPDATED_AT, DELETED_AT FROM BOOKMARKS WHERE USER_ID = ? AND IS_PRIVATE = 0')) {
+      const userId = params[0] as string;
+      const hasCursor = u.includes('UPDATED_AT = ? AND ID > ?');
+      let rows = this.bookmarks.filter(
+        (b) => b.user_id === userId && b.is_private !== 1 && !this.hasPrivateTag(b.id, userId),
+      );
+      if (hasCursor) {
+        const cu = String(params[2]);
+        const cid = String(params[4]);
+        rows = rows.filter(
+          (b) =>
+            String(b.updated_at) > cu ||
+            (String(b.updated_at) === cu && String(b.id) > cid),
+        );
+      }
+      rows = rows.sort(
+        (a, b) =>
+          String(a.updated_at).localeCompare(String(b.updated_at)) ||
+          String(a.id).localeCompare(String(b.id)),
+      );
+      const limit = Number(params[params.length - 1]);
+      return rows
+        .slice(0, limit)
+        .map((b) => ({
+          id: b.id,
+          url_key: b.url_key,
+          url: b.url,
+          title: b.title ?? '',
+          updated_at: b.updated_at,
+          deleted_at: b.deleted_at ?? null,
+        }));
+    }
+
     // --- bookmarks: generic insert (createPrivateBookmark) -----------
     if (u.startsWith('INSERT INTO BOOKMARKS')) {
       const m = u.match(/INSERT INTO BOOKMARKS \(([^)]+)\) VALUES \(([^)]*)\)/);
@@ -1368,6 +1408,68 @@ export class MockDb {
       } else {
         this.lastChanges = 0;
       }
+      return [];
+    }
+
+    // --- bookmarks: sync-push pre-lookup (B-12) ----------------------
+    // Returns the row (live OR soft-deleted) keyed by url_key so the push
+    // handler can revive vs update vs insert. Params: [userId, urlKey].
+    if (
+      u.startsWith('SELECT ID, UPDATED_AT, DELETED_AT, IS_FAVORITE, IS_ARCHIVED FROM BOOKMARKS WHERE USER_ID = ? AND URL_KEY = ?')
+    ) {
+      const [userId, urlKey] = params as string[];
+      const row = this.bookmarks.find((b) => b.user_id === userId && b.url_key === urlKey);
+      return row
+        ? [
+            {
+              id: row.id,
+              updated_at: row.updated_at,
+              deleted_at: row.deleted_at ?? null,
+              is_favorite: row.is_favorite ?? 0,
+              is_archived: row.is_archived ?? 0,
+            },
+          ]
+        : [];
+    }
+    // --- bookmarks: sync-push soft-delete by url_key (B-12) ----------
+    // Mirrors deleteByKey in functions/api/bookmarks/sync-push.ts. Params:
+    // [deleted_at, updated_at, userId, urlKey]. Idempotent: absent/live-missing
+    // is a no-op.
+    if (
+      u.startsWith(
+        'UPDATE BOOKMARKS SET DELETED_AT = ?, UPDATED_AT = ? WHERE USER_ID = ? AND URL_KEY = ?',
+      )
+    ) {
+      const [delTs, ts, userId, urlKey] = params as string[];
+      const row = this.bookmarks.find(
+        (b) => b.user_id === userId && b.url_key === urlKey && b.deleted_at == null,
+      );
+      if (row) {
+        row.deleted_at = delTs;
+        row.updated_at = ts;
+        this.lastChanges = 1;
+      } else {
+        this.lastChanges = 0;
+      }
+      return [];
+    }
+    // --- bookmarks: generic column UPDATE (sync-push field write) ----
+    // Catches `UPDATE BOOKMARKS SET <cols> WHERE id = ? AND user_id = ?`. The
+    // specific IS_PRIVATE / ENCRYPTED_BLOB / SNAPSHOT_KEY branches above run
+    // first, so this only sees the sync-push field updates. Literal `NULL`
+    // (reviving a soft-deleted row) is bound as a real `?` param here, so no
+    // special-casing is needed.
+    if (u.startsWith('UPDATE BOOKMARKS SET') && u.includes('ID = ? AND USER_ID = ?')) {
+      const id = params[params.length - 2] as string;
+      const userId = params[params.length - 1] as string;
+      const row = this.bookmarks.find((b) => b.id === id && b.user_id === userId);
+      if (!row) return [];
+      const setClause = sql.slice(sql.toUpperCase().indexOf('SET') + 3, sql.toUpperCase().indexOf('WHERE')).trim();
+      const cols = setClause.split(',').map((c) => c.trim().split('=')[0].trim().toLowerCase());
+      for (let i = 0; i < cols.length; i += 1) {
+        row[cols[i]] = params[i];
+      }
+      this.lastChanges = 1;
       return [];
     }
 

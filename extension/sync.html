@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TagNest 双向同步</title>
+    <link rel="stylesheet" href="sync.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <img class="mark" src="../icons/icon48.png" alt="" width="28" height="28" />
+        <div>
+          <h1>浏览器书签同步</h1>
+          <div class="sub" id="tagline">与 TagNest 书签库双向对齐</div>
+        </div>
+      </header>
+
+      <div class="status" id="status" hidden>
+        <span class="dot"></span>
+        <span class="text" id="statusText"></span>
+      </div>
+
+      <section class="panel">
+        <div class="field-label">同步方向</div>
+        <div class="seg" id="direction" role="radiogroup" aria-label="同步方向">
+          <button class="seg-btn is-active" data-dir="upload" type="button">仅上传</button>
+          <button class="seg-btn" data-dir="two-way" type="button">双向</button>
+        </div>
+        <p class="hint" id="dirHint">
+          仅上传：把浏览器书签推送到 TagNest（默认，最安全）。
+          双向：额外把 TagNest 的变更写回书签栏的「TagNest」文件夹。
+        </p>
+      </section>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="startSync" type="button">开始同步</button>
+      </div>
+
+      <div class="progress" id="progress" hidden><span class="spinner"></span><span id="progressText">同步中…</span></div>
+
+      <div class="result" id="result" hidden></div>
+
+      <section class="conflicts" id="conflicts" hidden>
+        <h2>需要人工解决的冲突 <span class="badge-count" id="conflictCount">0</span></h2>
+        <p class="hint">两侧同时修改了同一书签。默认已采用浏览器版本（已上传）；如需改用 TagNest 版本，点击「采用 TagNest」。</p>
+        <ul class="conflict-list" id="conflictList"></ul>
+      </section>
+
+      <section class="rollback" id="rollbackPanel" hidden>
+        <h2>快照恢复</h2>
+        <p class="hint">上一次双向同步前已备份受影响的浏览器书签。若同步结果不符合预期，可一键回滚。</p>
+        <button class="btn btn-secondary" id="rollbackBtn" type="button">恢复上次快照</button>
+      </section>
+
+      <footer class="footer">
+        <a class="link" id="openReconcile" role="button" tabindex="0">只读对账</a>
+        <a class="link" id="openOptions" role="button" tabindex="0">设置</a>
+      </footer>
+    </div>
+
+    <script type="module" src="sync.js"></script>
+  </body>
+</html>

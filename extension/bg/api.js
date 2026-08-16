@@ -130,3 +130,39 @@ export async function addGroupItem({ baseUrl, apiKey }, groupId, bookmarkId, sig
     signal,
   });
 }
+
+/**
+ * Incremental pull of the TagNest changelog for two-way sync. Returns the raw
+ * `{ items, cursor, hasMore }` so the caller can page until `cursor` is null.
+ * `since` is the last-synced watermark (inclusive); `cursor` is the pagination
+ * token from the previous page.
+ */
+export async function syncPull({ baseUrl, apiKey }, { since, cursor, limit, signal } = {}) {
+  const params = new URLSearchParams();
+  if (since) params.set('since', since);
+  if (cursor) params.set('cursor', cursor);
+  if (limit) params.set('limit', String(limit));
+  const qs = params.toString();
+  return apiFetch(`/api/bookmarks/sync-pull${qs ? `?${qs}` : ''}`, {
+    baseUrl,
+    apiKey,
+    method: 'GET',
+    signal,
+  });
+}
+
+/**
+ * Batch push of local browser changes to TagNest (the hub). `changes` is the
+ * array produced by the sync engine's `toPush` plan. The backend applies each
+ * change independently and returns per-change errors, so we surface the whole
+ * `{ applied, failed, errors }` envelope to the caller.
+ */
+export async function syncPush({ baseUrl, apiKey }, changes, signal) {
+  return apiFetch('/api/bookmarks/sync-push', {
+    baseUrl,
+    apiKey,
+    method: 'POST',
+    body: { changes },
+    signal,
+  });
+}
