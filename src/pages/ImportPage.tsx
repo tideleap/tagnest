@@ -67,7 +67,7 @@ export function ImportPage() {
         icon={<Download size={14} aria-hidden />}
         eyebrow="数据进出"
         title="导入与导出"
-        description="支持浏览器书签（HTML）、TagNest 备份（JSON）和表格（CSV）。"
+        description="支持浏览器书签（HTML）、TagNest 备份（JSON，含快照引用）和表格（CSV）。"
       />
 
       {!preview ? (

@@ -57,6 +57,15 @@
             "type": ["string", "null"],
             "format": "date-time",
             "description": "Last open timestamp. Present only when includeVisits=1."
+          },
+          "snapshotKey": {
+            "type": ["string", "null"],
+            "description": "Latest R2 snapshot object key (card preview). Carried so a TagNest→TagNest migration preserves the reference. The R2 binary blob is NOT part of this envelope."
+          },
+          "snapshotKeys": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "R2 object keys of all retained snapshots (oldest→newest). Carried so a TagNest→TagNest migration (Y4) preserves snapshot references. The R2 binary blobs themselves are NOT part of this JSON envelope; the target instance re-fetches or shows a placeholder when a key has no local blob."
           }
         },
         "additionalProperties": false

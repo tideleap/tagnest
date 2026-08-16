@@ -158,8 +158,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
                 `INSERT OR IGNORE INTO bookmarks
                    (id, user_id, url, url_key, title, description, favicon_url, cover_url, note,
                     ai_summary, is_favorite, is_archived, visit_count, last_visited_at,
-                    created_at, updated_at, deleted_at)
-                 VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 0, 0, 0, NULL, ?, ?, NULL)`,
+                    snapshot_key, snapshot_keys, created_at, updated_at, deleted_at)
+                 VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 0, 0, 0, NULL, ?, ?, ?, ?, NULL)`,
               ).bind(
                 plan.bookmarkId,
                 userId,
@@ -167,6 +167,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
                 key,
                 (item.title || titleFallback(item.url)).slice(0, 300),
                 faviconFor(item.url),
+                // Y4: carry snapshot references from a TagNest→TagNest migration
+                // package. `merge`/`skip` paths leave the existing bookmark's
+                // snapshots untouched on purpose (see docs/EXPORT-SCHEMA.md).
+                item.snapshotKey ?? null,
+                JSON.stringify(item.snapshotKeys ?? []),
                 item.addedAt ?? ts,
                 ts,
               ),

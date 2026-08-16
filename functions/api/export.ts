@@ -50,6 +50,12 @@ function bookmarkJson(r: ExportRow, opts: ExportRenderOpts): Record<string, unkn
     isArchived: r.is_archived === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    // Y4: snapshot references ride along on every JSON export so a
+    // TagNest→TagNest migration carries them — the R2 binaries themselves stay
+    // out of the envelope (see docs/EXPORT-SCHEMA.md). Emitted unconditionally
+    // because they are part of the bookmark's identity, not optional metadata.
+    snapshotKey: r.snapshot_key ?? null,
+    snapshotKeys: snapshotKeysOf(r),
   };
   if (opts.includeTags) b.tags = tagsOf(r);
   if (opts.includeMetadata) {
@@ -66,6 +72,21 @@ function bookmarkJson(r: ExportRow, opts: ExportRenderOpts): Record<string, unkn
 
 function tagsOf(row: ExportRow): string[] {
   return row.tags ? row.tags.split(SEP).filter(Boolean) : [];
+}
+
+/**
+ * `snapshot_keys` is stored as a JSON array of R2 object keys (oldest→newest).
+ * Defend against a corrupted/legacy value: anything that is not a clean string
+ * array becomes an empty list rather than taking the whole export down.
+ */
+function snapshotKeysOf(row: ExportRow): string[] {
+  if (!row.snapshot_keys) return [];
+  try {
+    const arr = JSON.parse(row.snapshot_keys);
+    return Array.isArray(arr) ? arr.filter((k): k is string => typeof k === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /* ------------------------------------------------------------------ *

@@ -27,6 +27,17 @@
 | `includeVisits` | `1` | 是否内嵌 `visitCount` / `lastVisitedAt` |
 | `pretty` | `0` | 是否美化打印 JSON |
 
+## 快照引用（Y4）
+
+JSON 导出会为每条书签附带快照引用，使 TagNest→TagNest 迁移（Y4）能保留它们：
+
+- `snapshotKey` (`string | null`)：最新一次 R2 快照对象键，用于卡片预览。
+- `snapshotKeys` (`string[]`)：该书签保留的全部快照 R2 对象键（旧→新），存为 JSON 数组。
+
+这两个字段**无条件**随 JSON 导出（不受 `includeMetadata` 控制），因为快照引用是书签身份的一部分；无快照的书签导出为 `null` / `[]`。导入流程（`/api/import`）解析后写回 `bookmarks.snapshot_key` / `snapshot_keys`，从而完成跨实例迁移。
+
+**边界**：R2 中的快照二进制 blob **不**包含在 JSON 包内——迁移包只携带引用（键）。迁入目标实例后，若目标 R2 桶中没有对应对象，打开快照会回退（应用已有 404 回退 / 按需重抓逻辑），但引用本身已正确迁移。如需完整快照二进制随迁，需单独做 R2 桶复制，超出 JSON 迁移包范围。
+
 ## AI 数据边界（A4）
 
 导出文件是**用户数据边界**的清晰表达——AI 功能（自动摘要、相似书签、标签建议、周报）只

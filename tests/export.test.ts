@@ -208,3 +208,81 @@ describe('export JSON collections (Y1)', () => {
     expect(parsed.collections).toEqual([]);
   });
 });
+
+describe('export JSON snapshot references (Y4)', () => {
+  /** Two bookmarks: one with a full snapshot history, one with none. */
+  function makeDbSnap() {
+    const rows = [
+      {
+        id: 's1',
+        url: 'https://snap.example/a',
+        title: 'Snap A',
+        description: null,
+        note: null,
+        ai_summary: null,
+        is_favorite: 0,
+        is_archived: 0,
+        visit_count: 0,
+        last_visited_at: null,
+        manual_order: 0,
+        snapshot_key: 'snap/latest-a',
+        snapshot_keys: JSON.stringify(['snap/old-a', 'snap/latest-a']),
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+        deleted_at: null,
+        tags: '',
+      },
+      {
+        id: 's2',
+        url: 'https://snap.example/b',
+        title: 'Snap B',
+        description: null,
+        note: null,
+        ai_summary: null,
+        is_favorite: 0,
+        is_archived: 0,
+        visit_count: 0,
+        last_visited_at: null,
+        manual_order: 0,
+        snapshot_key: null,
+        snapshot_keys: null,
+        created_at: '2024-01-01T00:00:00.000Z',
+        updated_at: '2024-01-01T00:00:00.000Z',
+        deleted_at: null,
+        tags: '',
+      },
+    ];
+    return {
+      prepare(sql: string) {
+        return {
+          bind(..._args: unknown[]) {
+            return this;
+          },
+          async all() {
+            if (/FROM collections/.test(sql)) return { results: [] };
+            if (/collection_bookmarks/.test(sql)) return { results: [] };
+            return { results: rows };
+          },
+        };
+      },
+    };
+  }
+
+  it('emits snapshotKey and snapshotKeys from the bookmarks table', async () => {
+    const env = { DB: makeDbSnap() } as unknown as Env;
+    const opts: ExportRenderOpts = { includeTags: true, includeMetadata: true, includeVisits: true, pretty: false };
+    const stream = await renderJsonStream(
+      { env, userId: 'u-user', includeTrash: true },
+      opts,
+      '2024-01-05T00:00:00.000Z',
+    );
+    const parsed = JSON.parse(await collectStream(stream));
+    expect(parsed.bookmarks).toHaveLength(2);
+    // The reference rides along unconditionally, regardless of includeMetadata.
+    expect(parsed.bookmarks[0].snapshotKey).toBe('snap/latest-a');
+    expect(parsed.bookmarks[0].snapshotKeys).toEqual(['snap/old-a', 'snap/latest-a']);
+    // A bookmark with no snapshots exports an explicit null / empty array.
+    expect(parsed.bookmarks[1].snapshotKey).toBeNull();
+    expect(parsed.bookmarks[1].snapshotKeys).toEqual([]);
+  });
+});

@@ -6,6 +6,13 @@ export interface ParsedItem {
   folderPath: string[];
   addedAt: string | null;
   tagNames: string[];
+  /**
+   * Y4: snapshot references carried by a TagNest→TagNest migration package.
+   * Absent for browser/CSV imports; present only when the source file is a
+   * TagNest JSON export that embedded them.
+   */
+  snapshotKey?: string | null;
+  snapshotKeys?: string[];
 }
 
 export interface ParseOutcome {
@@ -219,12 +226,32 @@ export function parseJson(source: string): ParseOutcome {
         ? folder.split('/').map((s) => s.trim()).filter(Boolean)
         : [];
 
+    // Y4: preserve snapshot references from a TagNest export so they survive a
+    // TagNest→TagNest migration. Other formats leave these undefined and the
+    // commit handler writes NULL/empty for them.
+    const snapKeyRaw = rec.snapshotKey ?? rec.snapshot_key;
+    const snapshotKey = typeof snapKeyRaw === 'string' ? snapKeyRaw : null;
+    const snapKeysRaw = rec.snapshotKeys ?? rec.snapshot_keys;
+    let snapshotKeys: string[] = [];
+    if (Array.isArray(snapKeysRaw)) {
+      snapshotKeys = snapKeysRaw.filter((k): k is string => typeof k === 'string');
+    } else if (typeof snapKeysRaw === 'string') {
+      try {
+        const arr = JSON.parse(snapKeysRaw);
+        if (Array.isArray(arr)) snapshotKeys = arr.filter((k): k is string => typeof k === 'string');
+      } catch {
+        snapshotKeys = [];
+      }
+    }
+
     items.push({
       url,
       title: String(rec.title ?? rec.name ?? '').replace(/\s+/g, ' ').trim(),
       folderPath,
       addedAt: normaliseDate(rec.createdAt ?? rec.created ?? rec.addedAt ?? rec.date),
       tagNames,
+      snapshotKey,
+      snapshotKeys,
     });
   }
 
