@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ExternalLink, Link2, Lock, Search } from 'lucide-react';
+import { BookmarkPlus, ExternalLink, Link2, Lock, Search } from 'lucide-react';
 import type { PublicBookmark, PublicShare, SharePalette, ShareTheme } from '@shared/types';
-import { Button, EmptyState, Input, PageHeader, Spinner, TagChip } from '@/components/ui';
+import { Button, EmptyState, IconButton, Input, PageHeader, Spinner, TagChip } from '@/components/ui';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { api, HttpError } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/stores/auth';
+import { useCollectShare } from '@/hooks/queries/shares';
 
 /** The palettes a share page can render with (subset of the app themes). */
 const VALID_PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 'starlight'];
@@ -127,6 +129,12 @@ export function SharePage() {
     }
   }, [data, wrongPassword, password, slug]);
 
+  const { status } = useAuth();
+  const authed = status === 'authenticated';
+  const collect = useCollectShare();
+  const collectAll = () => collect.mutate({ slug, password: password || undefined });
+  const collectOne = (url: string) => collect.mutate({ slug, urls: [url], password: password || undefined });
+
   if (gated) {
     return (
       <div className="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center px-6">
@@ -232,10 +240,23 @@ export function SharePage() {
           )}
         </div>
 
+        {authed && (
+          <div className="mt-4 flex justify-end">
+            <Button
+              variant="primary"
+              iconLeft={<BookmarkPlus size={16} />}
+              onClick={collectAll}
+              loading={collect.isPending}
+            >
+              收藏到我的书签
+            </Button>
+          </div>
+        )}
+
         {data.items.length === 0 ? (
           <EmptyState icon={<Link2 size={22} />} title="还没有书签" description="这个分享页暂时是空的。" />
         ) : (
-          <ShareList items={data.items} theme={data.theme} />
+          <ShareList items={data.items} theme={data.theme} authed={authed} onCollect={collectOne} />
         )}
 
         <footer className="mt-10 border-t border-line pt-4 text-center text-2xs text-ink-faint">
@@ -249,13 +270,23 @@ export function SharePage() {
   );
 }
 
-function ShareList({ items, theme }: { items: PublicBookmark[]; theme: ShareTheme }) {
+function ShareList({
+  items,
+  theme,
+  authed,
+  onCollect,
+}: {
+  items: PublicBookmark[];
+  theme: ShareTheme;
+  authed: boolean;
+  onCollect: (url: string) => void;
+}) {
   if (theme === 'cards') {
     return (
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {items.map((b) => (
           <li key={b.id}>
-            <PublicCard bookmark={b} />
+            <PublicCard bookmark={b} authed={authed} onCollect={onCollect} />
           </li>
         ))}
       </ul>
@@ -267,7 +298,7 @@ function ShareList({ items, theme }: { items: PublicBookmark[]; theme: ShareThem
     <ul className="flex flex-col gap-2">
       {items.map((b) => (
         <li key={b.id}>
-          <PublicRow bookmark={b} compact={compact} />
+          <PublicRow bookmark={b} compact={compact} authed={authed} onCollect={onCollect} />
         </li>
       ))}
     </ul>
@@ -290,73 +321,113 @@ function Favicon({ url, size }: { url: string; size: number }) {
   );
 }
 
-function PublicRow({ bookmark: b, compact }: { bookmark: PublicBookmark; compact: boolean }) {
+function PublicRow({
+  bookmark: b,
+  compact,
+  authed,
+  onCollect,
+}: {
+  bookmark: PublicBookmark;
+  compact: boolean;
+  authed: boolean;
+  onCollect: (url: string) => void;
+}) {
   return (
-    <a
-      href={b.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group flex items-start gap-3 rounded-md border border-line bg-surface px-3.5 py-3 transition-colors hover:border-line-strong"
-    >
-      <Favicon url={b.url} size={compact ? 16 : 20} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <h3 className="min-w-0 truncate text-sm font-medium text-ink group-hover:text-brand-ink">
-            {b.title || displayHost(b.url)}
-          </h3>
-          <ExternalLink size={13} className="shrink-0 text-ink-faint opacity-0 group-hover:opacity-100" aria-hidden />
-        </div>
-        {!compact && (b.note || b.description) && (
-          <p className="line-clamp-2 text-xs leading-relaxed text-ink-soft">
-            {b.note || b.description}
-          </p>
-        )}
-        {!compact && (
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-ink-faint">
-            <span className="shrink-0">{displayHost(b.url)}</span>
-            <span aria-hidden>·</span>
-            <time dateTime={b.createdAt}>{relativeTime(b.createdAt)}</time>
-            {b.tags.length > 0 && (
-              <span className="flex flex-wrap gap-1">
-                {b.tags.map((t) => (
-                  <TagChip key={t.name} name={t.name} colorIndex={t.colorIndex} size="sm" />
-                ))}
-              </span>
-            )}
+    <div className="group flex items-stretch gap-2">
+      <a
+        href={b.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group flex flex-1 items-start gap-3 rounded-md border border-line bg-surface px-3.5 py-3 transition-colors hover:border-line-strong"
+      >
+        <Favicon url={b.url} size={compact ? 16 : 20} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h3 className="min-w-0 truncate text-sm font-medium text-ink group-hover:text-brand-ink">
+              {b.title || displayHost(b.url)}
+            </h3>
+            <ExternalLink size={13} className="shrink-0 text-ink-faint opacity-0 group-hover:opacity-100" aria-hidden />
           </div>
-        )}
-      </div>
-    </a>
+          {!compact && (b.note || b.description) && (
+            <p className="line-clamp-2 text-xs leading-relaxed text-ink-soft">
+              {b.note || b.description}
+            </p>
+          )}
+          {!compact && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-ink-faint">
+              <span className="shrink-0">{displayHost(b.url)}</span>
+              <span aria-hidden>·</span>
+              <time dateTime={b.createdAt}>{relativeTime(b.createdAt)}</time>
+              {b.tags.length > 0 && (
+                <span className="flex flex-wrap gap-1">
+                  {b.tags.map((t) => (
+                    <TagChip key={t.name} name={t.name} colorIndex={t.colorIndex} size="sm" />
+                  ))}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </a>
+      {authed && (
+        <IconButton
+          label="收藏到我的书签"
+          size="sm"
+          icon={<BookmarkPlus size={15} />}
+          onClick={() => onCollect(b.url)}
+          className="self-center opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+        />
+      )}
+    </div>
   );
 }
 
-function PublicCard({ bookmark: b }: { bookmark: PublicBookmark }) {
+function PublicCard({
+  bookmark: b,
+  authed,
+  onCollect,
+}: {
+  bookmark: PublicBookmark;
+  authed: boolean;
+  onCollect: (url: string) => void;
+}) {
   return (
-    <a
-      href={b.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-3.5 transition-colors hover:border-line-strong"
-    >
-      <div className="flex items-center gap-2">
-        <Favicon url={b.url} size={18} />
-        <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
-      </div>
-      <h3 className="line-clamp-2 text-sm font-medium text-ink group-hover:text-brand-ink">
-        {b.title || displayHost(b.url)}
-      </h3>
-      {b.note || b.description ? (
-        <p className="line-clamp-3 flex-1 text-xs leading-relaxed text-ink-soft">
-          {b.note || b.description}
-        </p>
-      ) : null}
-      {b.tags.length > 0 && (
-        <div className="mt-auto flex flex-wrap gap-1 pt-1">
-          {b.tags.map((t) => (
-            <TagChip key={t.name} name={t.name} colorIndex={t.colorIndex} size="sm" />
-          ))}
+    <div className="relative">
+      <a
+        href={b.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-3.5 transition-colors hover:border-line-strong"
+      >
+        <div className="flex items-center gap-2">
+          <Favicon url={b.url} size={18} />
+          <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
         </div>
+        <h3 className="line-clamp-2 text-sm font-medium text-ink group-hover:text-brand-ink">
+          {b.title || displayHost(b.url)}
+        </h3>
+        {b.note || b.description ? (
+          <p className="line-clamp-3 flex-1 text-xs leading-relaxed text-ink-soft">
+            {b.note || b.description}
+          </p>
+        ) : null}
+        {b.tags.length > 0 && (
+          <div className="mt-auto flex flex-wrap gap-1 pt-1">
+            {b.tags.map((t) => (
+              <TagChip key={t.name} name={t.name} colorIndex={t.colorIndex} size="sm" />
+            ))}
+          </div>
+        )}
+      </a>
+      {authed && (
+        <IconButton
+          label="收藏到我的书签"
+          size="sm"
+          icon={<BookmarkPlus size={15} />}
+          onClick={() => onCollect(b.url)}
+          className="absolute right-2 top-2 bg-surface/80 backdrop-blur opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+        />
       )}
-    </a>
+    </div>
   );
 }

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tagnest.app/tagnest-export.schema.json",
+  "title": "TagNest Export",
+  "description": "JSON Schema for a TagNest full-library export (the body of GET /api/export?format=json). The envelope is stable and round-trips through the import flow. This file also documents the data boundary the AI features may see.",
+  "type": "object",
+  "required": ["application", "version", "exportedAt", "bookmarks"],
+  "properties": {
+    "application": {
+      "const": "TagNest",
+      "description": "Producer marker. Imports reject files whose application is not 'TagNest'."
+    },
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Export format version. Bumped only on a breaking envelope change."
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp of when the export was generated."
+    },
+    "bookmarks": {
+      "type": "array",
+      "description": "The user's bookmarks. Soft-deleted (trash) entries are included only when includeTrash=1.",
+      "items": {
+        "type": "object",
+        "required": ["url", "title", "isFavorite", "isArchived", "createdAt", "updatedAt"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Canonical bookmark URL. This is the stable identity used to de-duplicate on re-import."
+          },
+          "title": { "type": "string" },
+          "isFavorite": { "type": "boolean" },
+          "isArchived": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tag names attached to the bookmark. Imported as new tags when absent."
+          },
+          "description": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] },
+          "aiSummary": {
+            "type": ["string", "null"],
+            "description": "AI-generated summary. Present only when the AI feature produced one."
+          },
+          "visitCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of times the bookmark was opened. Present only when includeVisits=1."
+          },
+          "lastVisitedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Last open timestamp. Present only when includeVisits=1."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "collections": {
+      "type": "array",
+      "description": "Reading lists (curated collections) with their member URLs in order.",
+      "items": {
+        "type": "object",
+        "required": ["name", "colorIndex", "createdAt", "urls"],
+        "properties": {
+          "name": { "type": "string" },
+          "colorIndex": { "type": "integer", "minimum": 0 },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "urls": {
+            "type": "array",
+            "items": { "type": "string", "format": "uri" },
+            "description": "Member bookmarks referenced by URL so the list survives internal id churn."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

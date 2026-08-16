@@ -30,7 +30,7 @@ import {
   TagChip,
   tagColorVars,
 } from '@/components/ui';
-import { useCreateTag, useDeleteTag, useMergeTags, useSetTagPrivate, useTags, useUpdateTag } from '@/hooks/queries';
+import { useBulkDeleteTags, useCreateTag, useDeleteTag, useMergeTags, useSetTagPrivate, useTags, useUpdateTag } from '@/hooks/queries';
 import { cx } from '@/lib/cx';
 import {
   buildTagTree,
@@ -52,9 +52,11 @@ export function TagsPage() {
   const [deleting, setDeleting] = useState<Tag | null>(null);
   const [mergeSource, setMergeSource] = useState<Tag | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [cleaning, setCleaning] = useState(false);
 
   const deleteTag = useDeleteTag();
   const setTagPrivate = useSetTagPrivate();
+  const bulkDeleteTags = useBulkDeleteTags();
 
   // Grouped forest (reuses the same builder as the sidebar nav tree) so the
   // page and the nav never disagree about hierarchy.
@@ -126,7 +128,12 @@ export function TagsPage() {
           containerClassName="w-32"
         />
         {unused.length > 0 && (
-          <span className="ml-auto text-xs text-ink-faint">{unused.length} 个标签暂未使用</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-ink-faint">{unused.length} 个标签暂未使用</span>
+            <Button variant="ghost" size="sm" onClick={() => setCleaning(true)}>
+              清理
+            </Button>
+          </div>
         )}
       </div>
 
@@ -209,6 +216,22 @@ export function TagsPage() {
         confirmLabel="删除"
         tone="danger"
         loading={deleteTag.isPending}
+      />
+
+      <ConfirmDialog
+        open={cleaning}
+        onClose={() => setCleaning(false)}
+        onConfirm={() => {
+          bulkDeleteTags.mutate(
+            unused.map((t) => t.id),
+            { onSuccess: () => setCleaning(false) },
+          );
+        }}
+        title={`清理 ${unused.length} 个未使用的标签？`}
+        message="这些标签没有被任何书签使用，删除不会影响你的书签。此操作无法撤销。"
+        confirmLabel="清理"
+        tone="danger"
+        loading={bulkDeleteTags.isPending}
       />
     </div>
   );

@@ -24,6 +24,7 @@ vi.mock('@/hooks/queries', async () => {
     useDeleteTag: () => ({ mutate: vi.fn(), isPending: false }),
     useMergeTags: () => ({ mutate: vi.fn(), isPending: false }),
     useSetTagPrivate: () => ({ mutate: vi.fn(), isPending: false }),
+    useBulkDeleteTags: () => ({ mutate: vi.fn(), isPending: false }),
   };
 });
 
