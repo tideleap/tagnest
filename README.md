@@ -105,6 +105,7 @@ TagNest 是某款书签管理器产品理念的独立清洁室实现（clean-roo
 - 自有存储备份：书签库导出包（标准 JSON，含书签 / 集合 / 标签）一键推送到你的 **WebDAV** 或 **S3** 存储；密码 / Secret Key 经 AES-256-GCM 加密保存，列表与详情接口永不返回明文。
 - 手动或按频率触发：每个目标可设 `手动 / 每日 / 每周`；「立即备份」按钮即时推送到全部启用目标，推送结果（成功 / 失败、字节数、sha256、错误信息）写入历史可逐条查看。
 - 多租户隔离：备份目标与历史严格按 `user_id` 隔离，越权删除返回 404；单个远端失败时只记录该目标错误、不影响其余目标，全部成功返回 200、部分失败返回 207。设计、端点契约与已知限制见 [`docs/BACKUP-Y2-2026-08-16.md`](docs/BACKUP-Y2-2026-08-16.md)。
+- **实例间迁移（含快照引用，Y4）**：TagNest→TagNest 迁移复用标准导出包（JSON）即可，无需额外工具——导出端在每条书签上**附带快照引用** `snapshotKey`（最新 R2 快照键，用于卡片预览）与 `snapshotKeys`（保留的全部 R2 键，oldest→newest）；导入端（`POST /api/import`）解析并写回 `snapshot_key` / `snapshot_keys`，使迁入实例保留快照引用。R2 二进制 blob **不随 JSON 包迁移**，迁入后旧快照点开走应用既有 404 回退 / 按需重抓逻辑，避免包膨胀与 R2 跨实例拷贝复杂度。导出字段契约与边界见 [`docs/EXPORT-SCHEMA.md`](docs/EXPORT-SCHEMA.md)。
 
 **账户与安全**
 - 认证：WebCrypto PBKDF2-HMAC-SHA256 + HS256 JWT 访问令牌，配合可轮转的 httpOnly 刷新 Cookie。
