@@ -99,6 +99,31 @@ const MIGRATION_PROBES = {
   // references this column; probe it so a manual fix or re-run is safe.
   '0016_tags_updated_at.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('tags') WHERE name='updated_at'`,
+  // 0017 creates idx_collections_user_name (CREATE UNIQUE INDEX IF NOT EXISTS,
+  // safe to re-run, but probe so the bookkeeping write records it on re-runs).
+  '0017_collections_name_unique.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='index' AND name='idx_collections_user_name'`,
+  // 0018 adds shares.password_hash + shares.collection_id (ALTER, non-idempotent).
+  // Both columns were applied via a direct `wrangler d1 execute --file` that
+  // never wrote _d1_migrations, so probe collection_id as the marker and treat
+  // its presence as "already applied" instead of re-ADDing (which would throw
+  // "duplicate column name: password_hash").
+  '0018_share_password_collection.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('shares') WHERE name='collection_id'`,
+  // 0019 creates tag_merge_log (IF NOT EXISTS). Probe the table.
+  '0019_tag_merge_log.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='table' AND name='tag_merge_log'`,
+  // 0020 creates backup_targets (no IF NOT EXISTS). Probe the table so a re-run
+  // after a partial apply does not duplicate it.
+  '0020_backup.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='table' AND name='backup_targets'`,
+  // 0021 adds collections.kind + collections.query (ALTER, non-idempotent). Probe
+  // kind (the first added column) as the "already applied" marker.
+  '0021_collections_smart.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('collections') WHERE name='kind'`,
+  // 0022 creates feeds (IF NOT EXISTS). Probe the table.
+  '0022_feeds.sql':
+    `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='table' AND name='feeds'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
