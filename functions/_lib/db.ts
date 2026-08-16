@@ -4,6 +4,7 @@ import type { Env } from './env';
 import { badRequest, conflict } from './http';
 import { base64UrlDecode, base64UrlEncode, newId, nowIso } from './ids';
 import { canonicalUrl, urlKey } from './urlkey';
+import { bookmarkToSimilarFields, scoreBookmarkSimilarity } from './similarity';
 
 /* ------------------------------------------------------------------ *
  * Row mappers
@@ -661,6 +662,61 @@ export async function loadBookmark(
   if (!row) return null;
   const tags = await attachTags(env, userId, [id]);
   return mapBookmark(row, tags.get(id) ?? []);
+}
+
+/**
+ * Returns bookmarks from the user's own library ranked by similarity to the
+ * given source. The candidate pool is every live, privacy-filtered bookmark
+ * except the source itself; scores are computed in JS (single-user libraries
+ * are small) and the top `limit` are hydrated to full Bookmarks.
+ *
+ * Returns null when the source bookmark does not exist (or is hidden by the
+ * privacy clause), so the caller can 404. Private bookmarks never enter the
+ * pool, so they neither appear as recommendations nor leak across the privacy
+ * boundary; a private source is resolved against the non-private pool only.
+ */
+export async function similarBookmarks(
+  env: Env,
+  userId: string,
+  sourceId: string,
+  opts: { limit?: number } = {},
+): Promise<{ items: Bookmark[]; total: number } | null> {
+  const source = await loadBookmark(env, userId, sourceId);
+  if (!source) return null;
+
+  const limit = Math.min(Math.max(Math.floor(opts.limit ?? 8), 1), 30);
+
+  const pool = await env.DB.prepare(
+    `SELECT ${BOOKMARK_COLUMNS}
+       FROM bookmarks b
+      WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE}
+        AND b.deleted_at IS NULL AND b.is_archived = 0 AND b.id <> ?`,
+  )
+    .bind(userId, sourceId)
+    .all<Row>();
+
+  const ids = pool.results.map((r) => r.id as string);
+  const tagMap = await attachTags(env, userId, ids);
+
+  const src = bookmarkToSimilarFields(source);
+  const scored = pool.results
+    .map((r) => {
+      const candTags = (tagMap.get(r.id as string) ?? []).map((t) => t.id);
+      const score = scoreBookmarkSimilarity(src, {
+        tagIds: candTags,
+        url: (r.url as string) ?? '',
+        title: (r.title as string) ?? '',
+        description: (r.description as string | null) ?? null,
+        note: (r.note as string | null) ?? null,
+      });
+      return { r, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const top = scored.slice(0, limit);
+  const items = top.map((x) => mapBookmark(x.r, tagMap.get(x.r.id as string) ?? []));
+  return { items, total: scored.length };
 }
 
 /**

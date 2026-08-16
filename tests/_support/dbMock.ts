@@ -679,6 +679,35 @@ export class MockDb {
       }
       return [];
     }
+    // --- bookmark_tags: attachTags bridge (tag ids → tags for bookmarks) ---
+    if (
+      u.startsWith(
+        'SELECT BT.BOOKMARK_ID, T.ID, T.NAME, T.COLOR_INDEX, T.PARENT_ID, T.SORT_ORDER, T.CREATED_AT FROM BOOKMARK_TAGS BT JOIN TAGS T',
+      )
+    ) {
+      const ids = params as string[];
+      const rows: MockRow[] = [];
+      for (const bt of this.bookmark_tags) {
+        if (!ids.includes(bt.bookmark_id)) continue;
+        const tag = this.tags.find((t) => t.id === bt.tag_id);
+        if (!tag) continue;
+        rows.push({
+          bookmark_id: bt.bookmark_id,
+          id: tag.id,
+          name: tag.name,
+          color_index: tag.color_index ?? 0,
+          parent_id: tag.parent_id ?? null,
+          sort_order: tag.sort_order ?? 0,
+          created_at: tag.created_at ?? '',
+        });
+      }
+      rows.sort((a, b) => {
+        const so = Number(a.sort_order) - Number(b.sort_order);
+        if (so !== 0) return so;
+        return String(a.name).localeCompare(String(b.name), 'zh-CN');
+      });
+      return rows;
+    }
 
     // --- tags (ensureTags during restore) ----------------------------
     if (u.startsWith('SELECT ID, NAME FROM TAGS WHERE USER_ID = ? AND NAME COLLATE NOCASE IN')) {
@@ -975,6 +1004,27 @@ export class MockDb {
             !this.hasPrivateTag(b.id, userId),
         )
         .slice(0, 1)
+        .map((b) => ({ ...b }));
+    }
+    // --- bookmarks: similar-bookmarks candidate pool (excludes source) -
+    if (
+      u.startsWith(
+        'SELECT B.ID, B.URL, B.TITLE, B.DESCRIPTION, B.FAVICON_URL, B.COVER_URL, B.SNAPSHOT_KEY, B.SNAPSHOT_KEYS, B.NOTE, B.AI_SUMMARY, B.IS_FAVORITE, B.IS_ARCHIVED, B.VISIT_COUNT, B.LAST_VISITED_AT, B.MANUAL_ORDER, B.CREATED_AT, B.UPDATED_AT, B.DELETED_AT FROM BOOKMARKS B WHERE',
+      ) &&
+      u.includes('AND B.ID <> ?')
+    ) {
+      const userId = params[0] as string;
+      const sourceId = params[params.length - 1] as string;
+      return this.bookmarks
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.is_private !== 1 &&
+            b.deleted_at == null &&
+            b.is_archived !== 1 &&
+            !this.hasPrivateTag(b.id, userId) &&
+            b.id !== sourceId,
+        )
         .map((b) => ({ ...b }));
     }
     // --- bookmarks: public list (runList / listBookmarks) ------------
