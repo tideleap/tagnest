@@ -18,6 +18,7 @@ import {
   Skeleton,
   tagColorVars,
 } from '@/components/ui';
+import { Stagger } from '@/components/atelier';
 import {
   useCollections,
   useCreateCollection,
@@ -44,6 +45,7 @@ export function CollectionsPage() {
       <PageHeader
         icon={<FolderIcon size={14} aria-hidden />}
         eyebrow="整理分类"
+        index="09 / 16"
         title="集合"
         description="把书签收进持久、可分享的收藏夹——比标签更稳定，比标签页组更适合长期保存。一个书签可以属于多个集合。"
       >
@@ -80,10 +82,10 @@ export function CollectionsPage() {
           }
         />
       ) : (
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <Stagger as="ul" className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((c) => (
             <li key={c.id}>
-              <div className="group flex items-center gap-3 rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong">
+              <div className="spotlight group flex items-center gap-3 rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent">
                 <button
                   type="button"
                   onClick={() => navigate(`/collections/${c.id}`)}
@@ -144,7 +146,7 @@ export function CollectionsPage() {
               </div>
             </li>
           ))}
-        </ul>
+        </Stagger>
       )}
 
       <CollectionFormDialog

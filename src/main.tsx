@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { queryClient } from '@/lib/queryClient';
 import { App } from '@/App';
 import '@/styles/index.css';
+import '@/styles/atelier.css';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root not found');

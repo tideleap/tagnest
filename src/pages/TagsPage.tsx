@@ -30,6 +30,7 @@ import {
   TagChip,
   tagColorVars,
 } from '@/components/ui';
+import { Reveal } from '@/components/atelier';
 import { useBulkDeleteTags, useCreateTag, useDeleteTag, useMergeTags, useSetTagPrivate, useTags, useUpdateTag } from '@/hooks/queries';
 import { cx } from '@/lib/cx';
 import {
@@ -95,6 +96,7 @@ export function TagsPage() {
       <PageHeader
         icon={<TagIcon size={14} aria-hidden />}
         eyebrow="整理分类"
+        index="07 / 16"
         title="标签"
         description="按分组管理你的标签词汇表——把书签收进一致的层级，合并、重命名或清理从不使用的标签。"
       >
@@ -106,7 +108,7 @@ export function TagsPage() {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <Reveal delay={60} className="flex flex-wrap items-center gap-2">
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -135,7 +137,7 @@ export function TagsPage() {
             </Button>
           </div>
         )}
-      </div>
+      </Reveal>
 
       {isLoading ? (
         <ul className="flex flex-col gap-1.5">
@@ -166,6 +168,7 @@ export function TagsPage() {
           }
         />
       ) : (
+        <Reveal delay={120}>
         <ul className="flex flex-col gap-1.5">
           {filtered.map((top) => (
             <GroupRow
@@ -183,6 +186,7 @@ export function TagsPage() {
             />
           ))}
         </ul>
+        </Reveal>
       )}
 
       <TagFormDialog

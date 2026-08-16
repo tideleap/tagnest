@@ -33,11 +33,11 @@ export function EvaluationPanel({ overview }: Props) {
   const hasData = feedback.total > 0 || feedback.proposalTotal > 0;
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-line bg-surface p-4">
+    <section className="spotlight flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <BarChart3 size={17} className="shrink-0 text-brand" aria-hidden />
-          <h2 className="text-sm font-semibold text-ink">整理效果评估</h2>
+          <BarChart3 size={17} className="shrink-0 text-brand-accent" aria-hidden />
+          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">整理效果评估</h2>
         </div>
         <Badge tone="brand" dot>
           Prompt {promptVersion}

@@ -61,7 +61,7 @@ export function HealthPanel() {
 
   if (isLoading) {
     return (
-      <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-10 w-full" />
@@ -71,7 +71,7 @@ export function HealthPanel() {
 
   if (isError || !report) {
     return (
-      <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-4">
+      <section className="flex flex-col gap-2 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
         <p className="text-sm text-ink-soft">健康报告加载失败。</p>
         <Button size="sm" variant="secondary" onClick={() => void refetch()}>
           重试
@@ -84,11 +84,11 @@ export function HealthPanel() {
   const suspiciousCount = probeResults.filter((r) => r.status === 'suspicious').length;
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+    <section className="spotlight flex flex-col gap-4 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
       {/* Score header */}
       <div className="flex items-center gap-3">
-        <Activity size={15} className="text-ink-faint" aria-hidden />
-        <h3 className="text-xs font-semibold text-ink">书签库健康</h3>
+        <Activity size={15} className="text-brand-accent" aria-hidden />
+        <h3 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">书签库健康</h3>
         <span className="ml-auto flex items-center gap-2">
           <span
             className={cx(

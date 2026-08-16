@@ -405,7 +405,7 @@ function BookmarkGroupList({
       {groups.map((group) => (
         <li
           key={group.bookmarkId}
-          className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+          className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent"
         >
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -497,7 +497,7 @@ function TopicGroupList({
       {groups.map((tg) => (
         <li
           key={tg.topic}
-          className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+          className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent"
         >
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-xs font-medium text-ink-soft">
@@ -567,7 +567,7 @@ function HierarchyGroupList({
         return (
           <li
             key={hg.category}
-            className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-line-strong"
+            className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent"
           >
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs font-medium text-brand-ink">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarClock, ExternalLink } from 'lucide-react';
 import type { Bookmark } from '@shared/types';
 import { Button, EmptyState, PageHeader, RemoteImage, Skeleton, TagChip } from '@/components/ui';
+import { Reveal } from '@/components/atelier';
 import { useBookmarks } from '@/hooks/queries';
 import { displayHost, faviconFor } from '@/lib/url';
 
@@ -48,6 +49,7 @@ export function TimelinePage() {
       <PageHeader
         icon={<CalendarClock size={20} aria-hidden />}
         eyebrow="浏览"
+        index="10 / 16"
         title="时间线"
         description="按收藏时间回顾你的书签，最新的在最上面。"
       />
@@ -78,13 +80,14 @@ export function TimelinePage() {
       ) : (
         <ol className="relative flex flex-col gap-8 border-l border-line pl-6">
           {months.map(([key, list]) => (
-            <li key={key} className="relative flex flex-col gap-3">
+            <li key={key} className="relative">
+              <Reveal className="flex flex-col gap-3">
               {/* Month node on the rail */}
               <span
                 aria-hidden
                 className="absolute -left-[31px] top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-brand-accent"
               />
-              <h2 className="text-sm font-bold text-ink">
+              <h2 className="font-display text-sm font-bold tracking-tight text-ink">
                 {monthLabel(key)}
                 <span className="ml-2 text-2xs font-normal tabular-nums text-ink-faint">
                   {list.length} 条
@@ -129,6 +132,7 @@ export function TimelinePage() {
                   </li>
                 ))}
               </ul>
+              </Reveal>
             </li>
           ))}
         </ol>

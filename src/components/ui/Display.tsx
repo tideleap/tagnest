@@ -134,7 +134,7 @@ export function DialogFooter({
   onSubmit,
   loading,
   submitLabel,
-  cancelLabel = 'ȡ消',
+  cancelLabel = '取消',
 }: {
   onCancel: () => void;
   onSubmit: () => void;
@@ -302,8 +302,8 @@ export function EmptyState({ icon, title, description, action, compact }: EmptyS
   return (
     <div
       className={cx(
-        'flex flex-col items-center justify-center text-center',
-        compact ? 'gap-2.5 px-4 py-8' : 'gap-3 px-6 py-16',
+        'anim-atelier-enter flex flex-col items-center justify-center text-center',
+        compact ? 'gap-2.5 px-4 py-8' : 'gap-3.5 px-6 py-16',
       )}
     >
       {icon && (
@@ -313,7 +313,7 @@ export function EmptyState({ icon, title, description, action, compact }: EmptyS
           </span>
         </span>
       )}
-      <h3 className="text-lg font-semibold text-ink">{title}</h3>
+      <h3 className="atelier-display atelier-display--3 text-ink">{title}</h3>
       {description && (
         <p className="max-w-sm text-sm leading-relaxed text-ink-soft">{description}</p>
       )}

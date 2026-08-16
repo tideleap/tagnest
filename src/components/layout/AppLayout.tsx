@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { useOverlay, useView } from '@/stores/ui';
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys';
@@ -33,12 +33,13 @@ const BookmarkEditor = lazy(() =>
 export function AppLayout() {
   const collapsed = useView((s) => s.sidebarCollapsed);
   const { commandOpen, quickAddOpen, editingBookmarkId } = useOverlay();
+  const { pathname } = useLocation();
 
   useGlobalHotkeys();
   useAutoClear();
 
   return (
-    <div className="relative flex min-h-dvh bg-canvas">
+    <div className="relative flex min-h-dvh">
       {/* Static decoration layer — gradient light blobs + a faint dot texture.
           pointer-events-none, low opacity, so it adds warmth and depth without
           ever crowding content or swallowing clicks. */}
@@ -91,7 +92,10 @@ export function AppLayout() {
           tabIndex={-1}
           className="mx-auto w-full max-w-7xl flex-1 px-3 pb-24 pt-3 outline-none sm:px-5 md:pb-8 md:pt-5 xl:px-8 xl:pt-6"
         >
-          <Outlet />
+          {/* Keyed by pathname so every navigation replays the atelier entrance. */}
+          <div key={pathname} className="anim-atelier-enter h-full">
+            <Outlet />
+          </div>
         </main>
       </div>
 

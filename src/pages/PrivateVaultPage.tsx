@@ -251,13 +251,13 @@ function PassphrasePanel({
   const isSetup = mode === 'setup';
   return (
     <div className="mx-auto mt-6 w-full max-w-md sm:mt-10">
-      <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-float sm:p-6">
+      <div className="atelier-edge anim-atelier-enter flex flex-col gap-4 rounded-2xl border border-line bg-surface/90 p-5 shadow-float backdrop-blur-sm sm:p-6">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-soft text-brand-ink">
             {isSetup ? <ShieldCheck size={18} /> : <Lock size={18} />}
           </span>
           <div>
-            <h2 className="text-base font-semibold text-ink">
+            <h2 className="atelier-display text-lg text-ink">
               {isSetup ? '创建私密保险库' : '解锁私密保险库'}
             </h2>
             <p className="text-2xs text-ink-faint">
@@ -391,7 +391,7 @@ function UnlockedPanel({
         return (
           <li
             key={item.id}
-            className="group flex items-start gap-3 rounded-xl border border-line bg-surface p-3.5 shadow-raised transition-all hover:border-line-strong hover:shadow-float sm:items-center"
+            className="spotlight group flex items-start gap-3 rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-all hover:border-brand-accent hover:shadow-float sm:items-center"
           >
             <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunken sm:mt-0">
               {d?.faviconUrl ? (
@@ -482,7 +482,7 @@ function CategoryPrivateSection() {
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-ink">
           <Lock size={13} aria-hidden />
         </span>
-        <h2 className="text-sm font-semibold text-ink">类别私密</h2>
+        <h2 className="font-display text-sm font-semibold tracking-tight text-ink">类别私密</h2>
         <Badge tone="neutral">仅对其他人隐藏 · 未加密</Badge>
         {entries.length > 0 && (
           <span className="text-2xs tabular-nums text-ink-faint">
@@ -537,7 +537,7 @@ function CategoryPrivateSection() {
       ) : (
         <ul className="flex flex-col gap-3">
           {entries.map(({ tag, bookmarks }) => (
-            <li key={tag.id} className="rounded-xl border border-line bg-surface p-3.5 shadow-raised">
+            <li key={tag.id} className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-all hover:border-brand-accent">
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   style={tagColorVars(tag.colorIndex)}
@@ -718,6 +718,7 @@ export function PrivateVaultPage() {
       <PageHeader
         eyebrow="私密空间"
         icon={<Lock size={13} />}
+        index="14 / 16"
         title="私密保险库"
         description={
           status === 'unlocked'

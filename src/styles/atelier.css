@@ -1,0 +1,458 @@
+/*
+ * TagNest — Atelier layer
+ * ------------------------------------------------------------------
+ * Avant-garde / editorial design language layered on top of the existing
+ * conservative token system. Everything here is additive: it introduces new
+ * utility classes and component primitives (atmosphere canvas, bespoke cursor,
+ * kinetic type, physics reveals) without touching the existing `--p-*` tokens,
+ * so every one of the five themes keeps working.
+ *
+ * Visual direction: "Editorial Kinetic" — confident fluid display type, thin
+ * rules, mono section indices, a generative canvas, a magnetic cursor, and
+ * motion that respects prefers-reduced-motion everywhere.
+ */
+
+:root {
+  --font-display: 'Space Grotesk', 'Inter var', 'Inter', -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+
+  /* Spring-ish easing for the physics reveals. */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout: cubic-bezier(0.65, 0.05, 0.36, 1);
+
+  /* Display scale — fluid, clamped. Much larger than the app's `text-*` scale
+     but gated behind dedicated classes so ordinary UI never grows. */
+  --display-1: clamp(2.75rem, 1.4rem + 6.4vw, 7rem);
+  --display-2: clamp(2.25rem, 1.3rem + 4.6vw, 5rem);
+  --display-3: clamp(1.75rem, 1.1rem + 2.8vw, 3.25rem);
+  --tracking-tightest: -0.045em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Display typography                                                  */
+/* ------------------------------------------------------------------ */
+.atelier-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tightest);
+  line-height: 0.94;
+  text-wrap: balance;
+}
+.atelier-display--1 { font-size: var(--display-1); }
+.atelier-display--2 { font-size: var(--display-2); }
+.atelier-display--3 { font-size: var(--display-3); }
+
+/* Editorial serif accent — use for a single emphatic word. */
+.atelier-serif {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Gradient text (brand → accent), clipped. */
+.atelier-gradient-text {
+  background-image: linear-gradient(115deg, var(--color-brand), var(--color-brand-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Outline / stroke text — big, light, used as a ghosted layer. */
+.atelier-stroke {
+  color: transparent;
+  -webkit-text-stroke: 1.4px color-mix(in oklab, var(--color-ink) 42%, transparent);
+  text-stroke: 1.4px color-mix(in oklab, var(--color-ink) 42%, transparent);
+}
+
+/* Mono section index — "01 / 04" style labels. */
+.atelier-index {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.atelier-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--color-brand-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+}
+.atelier-eyebrow::before {
+  content: '';
+  width: 1.8rem;
+  height: 1px;
+  background: var(--color-brand-accent);
+  display: inline-block;
+}
+
+/* Thin rule that draws itself in when revealed. */
+.atelier-rule {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-line-strong) 18%,
+    var(--color-line-strong) 82%,
+    transparent
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Atmosphere: canvas, grain, vignette                                */
+/* ------------------------------------------------------------------ */
+.atelier-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+}
+
+.atelier-grain {
+  position: fixed;
+  inset: -50%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  will-change: transform;
+  animation: atelier-grain-shift 7s steps(6) infinite;
+}
+@keyframes atelier-grain-shift {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(-12px, 8px); }
+}
+
+.atelier-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 100% at 50% 0%,
+    transparent 55%,
+    color-mix(in oklab, var(--color-ink) 10%, transparent) 100%
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Physics reveals                                                     */
+/* ------------------------------------------------------------------ */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 0.9s var(--ease-spring),
+    transform 0.9s var(--ease-spring),
+    filter 0.9s var(--ease-spring);
+  transition-delay: var(--rv-delay, 0ms);
+  will-change: opacity, transform;
+}
+.reveal--blur { filter: blur(14px); }
+.reveal--scale { transform: translateY(20px) scale(0.94); }
+.reveal--rotate { transform: translateY(24px) rotate(-1.6deg); }
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* Stagger helper: children fade/rise in sequence (set --rv-i per child). */
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s var(--ease-spring),
+    transform 0.7s var(--ease-spring);
+  transition-delay: calc(var(--rv-i, 0) * 70ms);
+}
+.reveal-stagger.is-visible > * {
+  opacity: 1;
+  transform: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tilt + spotlight cards                                              */
+/* ------------------------------------------------------------------ */
+.tilt {
+  position: relative;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+.tilt__inner {
+  transition: transform 0.18s var(--ease-out-soft);
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.tilt__glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: radial-gradient(
+    220px circle at var(--glare-x, 50%) var(--glare-y, 0%),
+    color-mix(in oklab, var(--color-brand-accent) 38%, transparent),
+    transparent 60%
+  );
+  mix-blend-mode: soft-light;
+}
+.tilt:hover .tilt__glare { opacity: 1; }
+
+/* Pointer-tracked spotlight on any surface. */
+.spotlight {
+  position: relative;
+  overflow: hidden;
+}
+.spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    320px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    color-mix(in oklab, var(--color-brand-soft) 90%, transparent),
+    transparent 65%
+  );
+}
+.spotlight:hover::before { opacity: 1; }
+
+/* ------------------------------------------------------------------ */
+/* Kinetic marquee                                                     */
+/* ------------------------------------------------------------------ */
+.marquee {
+  display: flex;
+  overflow: hidden;
+  user-select: none;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.marquee__track {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2.5rem;
+  padding-right: 2.5rem;
+  animation: marquee-scroll var(--marquee-dur, 26s) linear infinite;
+  white-space: nowrap;
+}
+.marquee--reverse .marquee__track {
+  animation-direction: reverse;
+}
+.marquee:hover .marquee__track {
+  animation-play-state: paused;
+}
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Magnetic wrapper (cursor-follow). JS sets --mx/--my translate.       */
+/* ------------------------------------------------------------------ */
+.magnetic {
+  display: inline-flex;
+  transition: transform 0.4s var(--ease-spring);
+  will-change: transform;
+}
+
+/* Scramble base — invisible until resolved to avoid layout jump. */
+.scramble {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'ss01';
+}
+
+/* A refined focus ring tuned for the editorial language. */
+.atelier-focus:focus-visible {
+  outline: 2px solid var(--color-brand-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* Rich glass used by the immersive auth split + overlays. */
+.atelier-glass {
+  background: color-mix(in oklab, var(--color-surface) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid color-mix(in oklab, var(--color-line) 80%, transparent);
+}
+
+/* Animated gradient hairline border for hero blocks. */
+.atelier-edge {
+  position: relative;
+}
+.atelier-edge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    130deg,
+    color-mix(in oklab, var(--color-brand) 60%, transparent),
+    transparent 40%,
+    color-mix(in oklab, var(--color-brand-accent) 60%, transparent)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* One-shot entrance used on route mount for the shell content. */
+.anim-atelier-enter {
+  animation: atelier-enter 0.7s var(--ease-spring) both;
+}
+@keyframes atelier-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.995);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* Hide bespoke cursor + atmosphere helpers on touch / reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .atelier-grain { animation: none; }
+  .marquee__track { animation: none; }
+  .reveal,
+  .reveal-stagger > * {
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+  .anim-atelier-enter { animation: none; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Shell accents (sidebar / topbar)                                    */
+/* ------------------------------------------------------------------ */
+.atelier-wordmark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* Nav row — active pill with brand outline + animated left accent bar. */
+.nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 2.5rem;
+  border-radius: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-ink-soft);
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.18s var(--ease-spring);
+}
+.nav-row:hover {
+  color: var(--color-ink);
+  background: color-mix(in oklab, var(--color-surface-hover) 80%, transparent);
+  transform: translateX(2px);
+}
+.nav-row.is-active {
+  color: var(--color-brand-ink);
+  background: color-mix(in oklab, var(--color-brand-soft) 92%, transparent);
+}
+.nav-row__bar {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 1.15rem;
+  width: 3px;
+  transform: translateY(-50%) scaleY(0);
+  border-radius: 9999px;
+  background: var(--color-brand-accent);
+  transition: transform 0.22s var(--ease-spring), opacity 0.2s ease;
+  opacity: 0;
+}
+.nav-row:hover .nav-row__bar { opacity: 0.45; transform: translateY(-50%) scaleY(0.7); }
+.nav-row.is-active .nav-row__bar { opacity: 1; transform: translateY(-50%) scaleY(1); }
+.nav-row__icon {
+  flex-shrink: 0;
+  transition: transform 0.18s var(--ease-spring);
+}
+.nav-row:hover .nav-row__icon { transform: scale(1.12) rotate(-4deg); }
+
+/* Sidebar section label. */
+.nav-section {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+/* Topbar search — editorial capsule. */
+.atelier-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-surface) 80%, transparent);
+  border: 1px solid var(--color-line);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.atelier-search:focus-within {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-brand) 16%, transparent);
+  background: var(--color-surface);
+}
+.atelier-search input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+}
+.atelier-search input::placeholder { color: var(--color-ink-faint); }
+
+/* Icon button shell in the chrome — round, glassy, hover lift. */
+.chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  color: var(--color-ink-soft);
+  border: 1px solid transparent;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease-spring);
+}
+.chrome-btn:hover {
+  color: var(--color-ink);
+  background: color-mix(in oklab, var(--color-surface-hover) 80%, transparent);
+  border-color: var(--color-line);
+  transform: translateY(-1px);
+}
+.chrome-btn:active { transform: translateY(0) scale(0.96); }

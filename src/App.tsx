@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 import { useAuth } from '@/stores/auth';
 import { useTheme } from '@/stores/ui';
 import { Spinner, Toaster } from '@/components/ui';
+import { Atmosphere } from '@/components/atelier';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import { LibraryPage } from '@/pages/LibraryPage';
@@ -111,6 +112,10 @@ export function App() {
 
   return (
     <ErrorBoundary>
+      {/* Living art canvas — fixed, pointer-events-none, so it sits behind every
+          route and never intercepts interaction. */}
+      <Atmosphere />
+
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/signin" element={<AuthPage mode="signin" />} />

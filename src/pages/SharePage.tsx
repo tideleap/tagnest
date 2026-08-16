@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { BookmarkPlus, ExternalLink, Link2, Lock, Search } from 'lucide-react';
 import type { PublicBookmark, PublicShare, SharePalette, ShareTheme } from '@shared/types';
 import { Button, EmptyState, IconButton, Input, PageHeader, Spinner, TagChip } from '@/components/ui';
+import { Reveal } from '@/components/atelier';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { api, HttpError } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -223,8 +224,8 @@ export function SharePage() {
   return (
     <div className="min-h-dvh bg-canvas">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <PageHeader title={data.title} description={data.description ?? undefined} />
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
+        <PageHeader eyebrow="公开分享" title={data.title} description={data.description ?? undefined} />
+        <Reveal delay={80} className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
           <span>由 {data.owner} 分享</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">{data.total} 个书签</span>
@@ -238,7 +239,7 @@ export function SharePage() {
               </span>
             </>
           )}
-        </div>
+        </Reveal>
 
         {authed && (
           <div className="mt-4 flex justify-end">

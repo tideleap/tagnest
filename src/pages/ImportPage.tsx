@@ -12,6 +12,7 @@ import type { ImportPreview } from '@shared/types';
 import { Badge, Button, Checkbox, EmptyState, PageHeader, Spinner } from '@/components/ui';
 import { TagPicker } from '@/components/bookmark/TagPicker';
 import { toast } from '@/components/ui/Toast';
+import { Reveal } from '@/components/atelier';
 import { useImportCommit, useImportPreview, useStats } from '@/hooks/queries';
 import { displayHost } from '@/lib/url';
 import { downloadBlob } from '@/lib/api';
@@ -66,12 +67,14 @@ export function ImportPage() {
       <PageHeader
         icon={<Download size={14} aria-hidden />}
         eyebrow="数据进出"
+        index="12 / 16"
         title="导入与导出"
         description="支持浏览器书签（HTML）、TagNest 备份（JSON，含快照引用）和表格（CSV）。"
       />
 
       {!preview ? (
         <>
+          <Reveal delay={80}>
           <section
             onDragOver={(e) => {
               e.preventDefault();
@@ -84,8 +87,8 @@ export function ImportPage() {
               handleFile(e.dataTransfer.files[0]);
             }}
             className={cx(
-              'rounded-lg border-2 border-dashed p-8 text-center transition-colors',
-              dragging ? 'border-brand bg-brand-soft' : 'border-line bg-surface',
+              'spotlight rounded-2xl border-2 border-dashed p-10 text-center transition-colors',
+              dragging ? 'border-brand bg-brand-soft' : 'border-line bg-surface/85 backdrop-blur-sm',
             )}
           >
             {previewMutation.isPending ? (
@@ -122,9 +125,11 @@ export function ImportPage() {
               </div>
             )}
           </section>
+          </Reveal>
 
-          <section className="rounded-md border border-line bg-surface p-4">
-            <h2 className="mb-2 text-sm font-semibold text-ink">怎么导出浏览器书签？</h2>
+          <Reveal delay={140}>
+          <section className="rounded-xl border border-line bg-surface/85 p-5 backdrop-blur-sm">
+            <h2 className="mb-2 font-display text-[0.95rem] font-semibold tracking-tight text-ink">怎么导出浏览器书签？</h2>
             <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-ink-soft">
               <li>
                 <strong className="font-medium text-ink">Chrome / Edge：</strong>
@@ -140,8 +145,11 @@ export function ImportPage() {
               </li>
             </ul>
           </section>
+          </Reveal>
 
-          <ExportSection total={stats?.bookmarks ?? 0} />
+          <Reveal delay={200}>
+            <ExportSection total={stats?.bookmarks ?? 0} />
+          </Reveal>
         </>
       ) : (
         <section className="flex flex-col gap-4">

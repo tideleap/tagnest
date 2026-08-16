@@ -77,7 +77,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
       {audit.clusters.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold text-ink">疑似重复</h3>
+            <h3 className="font-display text-sm font-semibold tracking-tight text-ink">疑似重复</h3>
             <Badge tone="caution">{audit.clusters.length}</Badge>
             {audit.clusters.length > 1 && (
               <Button
@@ -153,7 +153,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
       {audit.unused.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold text-ink">未使用</h3>
+            <h3 className="font-display text-sm font-semibold tracking-tight text-ink">未使用</h3>
             <Badge tone="neutral">{audit.unused.length}</Badge>
             {audit.unused.length > 1 && (
               <Button
@@ -189,7 +189,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
       {audit.lowUsage.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold text-ink">低频标签</h3>
+            <h3 className="font-display text-sm font-semibold tracking-tight text-ink">低频标签</h3>
             <Badge tone="neutral">{audit.lowUsage.length}</Badge>
           </div>
           <p className="text-2xs text-ink-faint">
@@ -264,7 +264,7 @@ function MergeHistory() {
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <History size={13} className="text-ink-faint" aria-hidden />
-        <h3 className="text-xs font-semibold text-ink">合并历史</h3>
+        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">合并历史</h3>
         <Badge tone="neutral">{log.length}</Badge>
       </div>
       <ul className="flex flex-col gap-1">

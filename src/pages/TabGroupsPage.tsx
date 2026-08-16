@@ -55,9 +55,9 @@ export function TabGroupsPage() {
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-4 md:grid-cols-[16rem_1fr]">
       {/* Group list */}
-      <aside className="flex min-h-0 flex-col rounded-lg border border-line bg-surface">
+      <aside className="flex min-h-0 flex-col rounded-xl border border-line bg-surface/85 shadow-raised backdrop-blur-sm">
         <header className="flex items-center justify-between border-b border-line px-3 py-2.5">
-          <h2 className="text-sm font-semibold text-ink">分组</h2>
+          <h2 className="nav-section">分组 / Groups</h2>
           <IconButton
             label="新建分组"
             icon={<Plus size={16} />}
@@ -216,14 +216,14 @@ function GroupDetail({
   if (!group) return null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-lg border border-line bg-surface">
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-line bg-surface/85 shadow-raised backdrop-blur-sm">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
         <span
           style={tagColorVars(group.colorIndex)}
           className="h-3.5 w-3.5 shrink-0 rounded-full bg-[var(--tag-dot)]"
           aria-hidden
         />
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-ink">{group.name}</h1>
+        <h1 className="atelier-display atelier-display--3 min-w-0 flex-1 truncate text-ink">{group.name}</h1>
         {items.length > 0 && (
           <Button variant="ghost" iconLeft={<ExternalLink size={15} />} onClick={openAll}>
             全部打开

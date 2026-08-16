@@ -143,7 +143,7 @@ export function BookmarkEditor({ id }: { id: string }) {
             placeholder="记下为什么保存这条，以后会用得上。"
           />
 
-          <div className="flex flex-col gap-2.5 rounded-md border border-line px-3.5 py-3">
+          <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface/60 px-4 py-3.5">
             <Switch
               checked={isFavorite}
               onChange={setIsFavorite}
@@ -181,10 +181,8 @@ export function BookmarkEditor({ id }: { id: string }) {
           </div>
 
           {bookmark.aiSummary && (
-            <div className="rounded-md bg-brand-soft px-3.5 py-3">
-              <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-brand-ink">
-                AI 摘要
-              </p>
+            <div className="rounded-xl bg-brand-soft/70 px-4 py-3.5">
+              <p className="atelier-eyebrow mb-1.5">AI 摘要</p>
               <p className="text-xs leading-relaxed text-ink-soft">{bookmark.aiSummary}</p>
             </div>
           )}

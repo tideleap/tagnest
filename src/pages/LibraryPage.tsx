@@ -52,6 +52,15 @@ import { cx } from '@/lib/cx';
 
 const VALID_SCOPES: BookmarkScope[] = ['inbox', 'all', 'favorites', 'archive', 'trash'];
 
+/** Editorial section index per scope, matching the sidebar order (16 sections). */
+const SCOPE_INDEX: Record<BookmarkScope, string> = {
+  inbox: '02 / 16',
+  all: '03 / 16',
+  favorites: '04 / 16',
+  archive: '05 / 16',
+  trash: '15 / 16',
+};
+
 const SCOPE_META: Record<
   BookmarkScope,
   { title: string; icon: typeof Inbox; empty: string; hint: string }
@@ -326,7 +335,12 @@ export function LibraryPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader icon={<HeaderIcon size={20} />} title={title}>
+      <PageHeader
+        icon={<HeaderIcon size={16} aria-hidden />}
+        eyebrow="书签分区"
+        index={SCOPE_INDEX[scope]}
+        title={title}
+      >
         {!isLoading && (
           <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-xs tabular-nums text-ink-faint">
             {total}

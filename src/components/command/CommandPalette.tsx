@@ -254,8 +254,8 @@ export function CommandPalette() {
         aria-controls="command-list"
         className="-mx-5 -mt-4 md:-mt-5"
       >
-        <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
-          <Search size={17} className="shrink-0 text-ink-faint" aria-hidden />
+        <div className="flex items-center gap-2.5 border-b border-line px-4 py-3.5">
+          <Search size={17} className="shrink-0 text-brand-accent" aria-hidden />
           <input
             ref={inputRef}
             value={query}
@@ -291,9 +291,7 @@ export function CommandPalette() {
           ) : (
             grouped.map(([group, entries]) => (
               <li key={group}>
-                <p className="px-4 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wide text-ink-faint">
-                  {group}
-                </p>
+                <p className="nav-section px-4 pb-1 pt-2.5">{group}</p>
                 <ul>
                   {entries.map(({ command, index }) => (
                     <li key={command.id}>
@@ -305,19 +303,33 @@ export function CommandPalette() {
                         onMouseMove={() => setActiveIndex(index)}
                         onClick={() => runAt(index)}
                         className={cx(
-                          'flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm transition-colors',
-                          index === activeIndex ? 'bg-surface-hover text-ink' : 'text-ink-soft',
+                          'relative flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm transition-colors',
+                          index === activeIndex ? 'bg-brand-soft/70 text-ink' : 'text-ink-soft',
                         )}
                       >
-                        <span className="shrink-0 text-ink-faint" aria-hidden>
+                        {index === activeIndex && (
+                          <span
+                            aria-hidden
+                            className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-brand-accent"
+                          />
+                        )}
+                        <span
+                          className={cx(
+                            'shrink-0 transition-colors',
+                            index === activeIndex ? 'text-brand-ink' : 'text-ink-faint',
+                          )}
+                          aria-hidden
+                        >
                           {command.icon}
                         </span>
                         <span className="min-w-0 flex-1 truncate">{command.label}</span>
                         {command.hint && (
-                          <span className="shrink-0 text-2xs text-ink-faint">{command.hint}</span>
+                          <span className="shrink-0 text-2xs tabular-nums text-ink-faint">
+                            {command.hint}
+                          </span>
                         )}
                         {index === activeIndex && (
-                          <ArrowRight size={13} className="shrink-0 text-ink-faint" aria-hidden />
+                          <ArrowRight size={13} className="shrink-0 text-brand-accent" aria-hidden />
                         )}
                       </button>
                     </li>
@@ -327,6 +339,20 @@ export function CommandPalette() {
             ))
           )}
         </ul>
+
+        <div className="flex items-center gap-3 border-t border-line px-4 py-2.5 text-2xs text-ink-faint">
+          <span className="inline-flex items-center gap-1">
+            <Kbd>↑</Kbd>
+            <Kbd>↓</Kbd> 选择
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Kbd>Enter</Kbd> 执行
+          </span>
+          <span className="ml-auto inline-flex items-center gap-1">
+            <Kbd>Ctrl</Kbd>
+            <Kbd>K</Kbd> 唤起
+          </span>
+        </div>
       </div>
     </Modal>
   );

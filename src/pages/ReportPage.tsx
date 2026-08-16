@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { BarChart3, HeartPulse, Library, Sparkles, Tags, TrendingUp } from 'lucide-react';
 import { Badge, Card, CardBody, CardHeader, PageHeader, Skeleton } from '@/components/ui';
+import { Reveal, Stagger } from '@/components/atelier';
 import { useStats, useStatsTrend } from '@/hooks/queries';
 import { useHealthReport } from '@/hooks/queries/health';
 import { useAiOverview } from '@/hooks/queries/organize';
@@ -51,6 +52,7 @@ export function ReportPage() {
       <PageHeader
         icon={<BarChart3 size={14} aria-hidden />}
         eyebrow="数据洞察"
+        index="11 / 16"
         title="报告"
         description="书签库的整体画像——规模、标签分布、收藏趋势、AI 贡献与健康度，一页看全。"
       />
@@ -64,7 +66,7 @@ export function ReportPage() {
       ) : (
         <>
           {/* Headline numbers */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <Stagger className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <Headline label="书签总数" value={String(stats?.bookmarks ?? 0)} />
             <Headline label="标签数" value={String(stats?.tags ?? 0)} />
             <Headline label="收藏" value={String(stats?.favorites ?? 0)} />
@@ -75,9 +77,9 @@ export function ReportPage() {
               value={health ? String(health.score) : '—'}
               tone={health ? scoreTone(health.score) : undefined}
             />
-          </div>
+          </Stagger>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          <Reveal delay={120} className="grid gap-3 lg:grid-cols-2">
             {/* Collection trend */}
             <Card>
               <CardHeader
@@ -131,9 +133,10 @@ export function ReportPage() {
                 />
               </CardBody>
             </Card>
-          </div>
+          </Reveal>
 
           {/* Library scale strip */}
+          <Reveal delay={180}>
           <Card>
             <CardHeader title={<span className="inline-flex items-center gap-1.5"><Library size={14} aria-hidden />库规模</span>} hint="按状态拆分" />
             <CardBody>
@@ -146,6 +149,7 @@ export function ReportPage() {
               </div>
             </CardBody>
           </Card>
+          </Reveal>
         </>
       )}
     </div>

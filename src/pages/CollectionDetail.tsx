@@ -120,6 +120,7 @@ export function CollectionDetail() {
           />
         }
         eyebrow={isSmart ? '智能集合' : '集合'}
+        index="09 / 16"
         title={collection.name}
         description={
           isSmart

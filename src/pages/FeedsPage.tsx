@@ -12,6 +12,7 @@ import {
 } from '@/components/ui';
 import type { SelectOption } from '@/components/ui';
 import { TagPicker } from '@/components/bookmark/TagPicker';
+import { Reveal } from '@/components/atelier';
 import { displayHost } from '@/lib/url';
 import {
   useFeeds,
@@ -83,12 +84,13 @@ export function FeedsPage() {
       <PageHeader
         icon={<Rss size={14} aria-hidden />}
         eyebrow="自动收集"
+        index="13 / 16"
         title="RSS 订阅"
         description="订阅喜欢的站点，新文章会自动存为书签并按标签归类。"
       />
 
-      <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold text-ink">添加订阅</h2>
+      <Reveal as="section" delay={80} className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
+        <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">添加订阅</h2>
         <Input
           label="订阅源地址"
           placeholder="https://example.com/feed.xml"
@@ -123,11 +125,11 @@ export function FeedsPage() {
             订阅
           </Button>
         </div>
-      </section>
+      </Reveal>
 
-      <section className="flex flex-col gap-3">
+      <Reveal as="section" delay={140} className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">我的订阅</h2>
+          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">我的订阅</h2>
           <Button
             variant="ghost"
             size="sm"
@@ -198,7 +200,7 @@ export function FeedsPage() {
             })}
           </ul>
         )}
-      </section>
+      </Reveal>
     </div>
   );
 }

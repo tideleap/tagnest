@@ -70,9 +70,9 @@ function UsageCard({ usage }: { usage: AiOverview['usage'] }) {
   const outcomeTotal = outcome.accepted + outcome.rejected + outcome.pending || 1;
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-line bg-surface px-4 py-3">
+    <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 px-4 py-3.5 shadow-raised backdrop-blur-sm">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-xs font-medium text-ink">AI 整理使用率</span>
+        <span className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">AI 整理使用率</span>
         <span className="text-xs tabular-nums text-ink-faint">
           过去 30 天 {usage.touchedBookmarks} / {usage.totalBookmarks} 条书签被 AI 整理
         </span>
@@ -143,11 +143,11 @@ function ContributionCard({ contribution }: { contribution: AiOverview['contribu
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-md border border-line bg-surface px-4 py-3"
+      className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 px-4 py-3.5 shadow-raised backdrop-blur-sm"
       title="价值加权模型：直接采纳计 1.0，用户改名后采纳计 0.6，域名兜底采纳计 0.5；被拒绝的建议不计入分母。"
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-xs font-medium text-ink">AI 贡献度</span>
+        <span className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">AI 贡献度</span>
         <span className="text-xs tabular-nums text-ink-faint">
           价值加权 · 已采纳 {contribution.raw.aiAccepted} · 拒绝 {contribution.raw.rejected}
         </span>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Download, ListChecks, Settings2, Sparkles, Wrench } from 'lucide-react';
 import type { AiJobTarget } from '@shared/types';
 import { Button, PageHeader, SegmentedControl } from '@/components/ui';
+import { Reveal } from '@/components/atelier';
 import { RunPanel } from '@/components/organize/RunPanel';
 import { AiMetricsPanel } from '@/components/organize/AiMetricsPanel';
 import { EvaluationPanel } from '@/components/organize/EvaluationPanel';
@@ -75,6 +76,7 @@ export function OrganizePage() {
       <PageHeader
         icon={<Sparkles size={14} aria-hidden />}
         eyebrow="AI 引擎"
+        index="06 / 16"
         title="AI 整理"
         description="给待打标书签生成标签，确认后写入——标签库的词汇表在这里生长。"
       >
@@ -109,7 +111,7 @@ export function OrganizePage() {
       />
 
       {tab === 'run' && (
-        <>
+        <Reveal key="run" className="flex flex-col gap-4">
           <RunPanel
             overview={overview}
             run={{ ...run, start: startRun }}
@@ -117,11 +119,11 @@ export function OrganizePage() {
             onTargetChange={setTarget}
           />
           <EvaluationPanel overview={overview} />
-        </>
+        </Reveal>
       )}
 
       {tab === 'review' && (
-        <div className="flex flex-col gap-3">
+        <Reveal key="review" className="flex flex-col gap-3">
           {reviewJobId && (
             <div className="flex items-center gap-2 text-xs text-ink-faint">
               <span>正在查看最近一次整理的结果</span>
@@ -140,16 +142,16 @@ export function OrganizePage() {
             failed={queueFailed}
             onRetry={() => void refetchQueue()}
           />
-        </div>
+        </Reveal>
       )}
 
       {tab === 'audit' && (
-        <div className="flex flex-col gap-3">
+        <Reveal key="audit" className="flex flex-col gap-3">
           <HealthPanel />
           <AutoGroupPanel />
           <TaxonomyPanel audit={audit} loading={auditLoading} />
           <TagExportBar />
-        </div>
+        </Reveal>
       )}
     </div>
   );

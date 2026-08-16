@@ -19,6 +19,9 @@
     'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  /* Atelier display faces — additive tokens; ordinary UI keeps --font-sans. */
+  --font-display: 'Space Grotesk', 'Inter var', 'Inter', -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
 
   /* Six steps. Deliberately no 3xl/4xl — headings never need to shout. */
   --text-2xs: 0.6875rem;

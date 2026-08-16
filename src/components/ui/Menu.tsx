@@ -139,11 +139,11 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
             ref={menuRef}
             role="menu"
             style={{ top: pos.top, left: pos.left, width }}
-            className="anim-rise fixed z-50 overflow-hidden rounded-md border border-line bg-surface py-1 shadow-overlay"
+            className="anim-rise fixed z-50 overflow-hidden rounded-xl border border-line bg-surface/95 py-1.5 shadow-overlay backdrop-blur-xl"
           >
             {items.map((item, i) => (
               <div key={item.id}>
-                {item.separatorBefore && i > 0 && <div className="my-1 h-px bg-line" />}
+                {item.separatorBefore && i > 0 && <div className="my-1.5 mx-3 h-px bg-line" />}
                 <button
                   type="button"
                   role="menuitem"
@@ -154,22 +154,41 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
                     item.onSelect();
                   }}
                   className={cx(
-                    'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors',
+                    'relative flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors',
                     'disabled:cursor-not-allowed disabled:opacity-45',
                     item.tone === 'danger' ? 'text-critical-ink' : 'text-ink',
                     activeIndex === i &&
                       !item.disabled &&
-                      (item.tone === 'danger' ? 'bg-critical-soft' : 'bg-surface-hover'),
+                      (item.tone === 'danger' ? 'bg-critical-soft' : 'bg-brand-soft/70'),
                   )}
                 >
+                  {activeIndex === i && !item.disabled && (
+                    <span
+                      aria-hidden
+                      className={cx(
+                        'absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full',
+                        item.tone === 'danger' ? 'bg-critical' : 'bg-brand-accent',
+                      )}
+                    />
+                  )}
                   {item.icon && (
-                    <span className="flex shrink-0 text-ink-faint" aria-hidden>
+                    <span
+                      className={cx(
+                        'flex shrink-0 transition-colors',
+                        activeIndex === i && !item.disabled
+                          ? item.tone === 'danger'
+                            ? 'text-critical'
+                            : 'text-brand-ink'
+                          : 'text-ink-faint',
+                      )}
+                      aria-hidden
+                    >
                       {item.icon}
                     </span>
                   )}
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {item.trailing && (
-                    <span className="shrink-0 text-2xs text-ink-faint">{item.trailing}</span>
+                    <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{item.trailing}</span>
                   )}
                 </button>
               </div>

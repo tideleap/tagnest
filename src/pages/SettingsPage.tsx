@@ -51,22 +51,22 @@ export function SettingsPage() {
     : 'account';
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5 lg:flex-row lg:gap-8">
-      <nav aria-label="设置分区" className="shrink-0 lg:w-44">
-        <h1 className="mb-3 text-lg font-semibold text-ink">设置</h1>
+    <div className="mx-auto flex max-w-4xl flex-col gap-6 lg:flex-row lg:gap-10">
+      <nav aria-label="设置分区" className="shrink-0 lg:w-48">
+        <p className="atelier-eyebrow mb-2">偏好与账户</p>
+        <h1 className="atelier-display atelier-display--3 mb-4 text-ink">设置</h1>
         <ul className="flex gap-1 overflow-x-auto scrollbar-slim lg:flex-col">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <li key={id} className="shrink-0">
               <NavLink
                 to={`/settings/${id}`}
                 className={cx(
-                  'flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
-                  active === id
-                    ? 'bg-brand-soft text-brand-ink'
-                    : 'text-ink-soft hover:bg-surface-hover hover:text-ink',
+                  'nav-row h-9 px-3',
+                  active === id && 'is-active',
                 )}
               >
-                <Icon size={16} aria-hidden />
+                <span className="nav-row__bar" aria-hidden />
+                <Icon size={16} aria-hidden className="nav-row__icon" />
                 {label}
               </NavLink>
             </li>

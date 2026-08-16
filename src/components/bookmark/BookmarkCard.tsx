@@ -449,7 +449,7 @@ function BookmarkCardBase({
       <article
       ref={rootRef}
       className={cx(
-        'card-halo group relative flex bg-surface',
+        'card-halo spotlight group relative flex bg-surface',
         'card-lift border border-line hover:border-line-strong',
         isGrid
           ? 'h-full flex-col rounded-lg p-3'
