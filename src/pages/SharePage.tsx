@@ -4,6 +4,8 @@ import { BookmarkPlus, ExternalLink, Link2, Lock, Search } from 'lucide-react';
 import type { PublicBookmark, PublicShare, SharePalette, ShareTheme } from '@shared/types';
 import { Button, EmptyState, IconButton, Input, PageHeader, Spinner, TagChip } from '@/components/ui';
 import { Reveal } from '@/components/atelier';
+import { DirectoryView } from '@/components/directory/DirectoryView';
+import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 import { api, HttpError } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -28,7 +30,8 @@ function readStoredPassword(slug: string): string {
  * Read-only public share page.
  *
  * Renders entirely from the anonymous `/api/public/:slug` endpoint — no auth,
- * no app chrome beyond a minimal header. Theming (default / compact / cards)
+ * no app chrome beyond a minimal header. Theming (default / compact / cards /
+ * directory)
  * is stored on the share and applied here, and the color palette is set on
  * <html data-theme> so the page matches the author's chosen look rather than
  * following the viewer's own OS preference.
@@ -223,7 +226,14 @@ export function SharePage() {
 
   return (
     <div className="min-h-dvh bg-canvas">
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      {/* The directory theme carries a 220px category sidebar, so it needs a
+          much wider container than the reading-oriented list themes. */}
+      <div
+        className={cx(
+          'mx-auto px-4 py-8 sm:px-6',
+          data.theme === 'directory' ? 'max-w-6xl' : 'max-w-3xl',
+        )}
+      >
         <PageHeader eyebrow="公开分享" title={data.title} description={data.description ?? undefined} />
         <Reveal delay={80} className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
           <span>由 {data.owner} 分享</span>
@@ -256,6 +266,11 @@ export function SharePage() {
 
         {data.items.length === 0 ? (
           <EmptyState icon={<Link2 size={22} />} title="还没有书签" description="这个分享页暂时是空的。" />
+        ) : data.theme === 'directory' ? (
+          <DirectoryView
+            groups={data.groups ?? []}
+            storageKey={`tagnest.directory.${slug}`}
+          />
         ) : (
           <ShareList items={data.items} theme={data.theme} authed={authed} onCollect={collectOne} />
         )}

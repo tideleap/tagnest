@@ -37,6 +37,7 @@ const SHARE_THEME_OPTIONS: { value: ShareTheme; label: string }[] = [
   { value: 'default', label: '默认列表' },
   { value: 'compact', label: '紧凑列表' },
   { value: 'cards', label: '卡片网格' },
+  { value: 'directory', label: '分类目录' },
 ];
 
 const SHARE_PALETTE_OPTIONS: { value: SharePalette; label: string }[] = [
@@ -76,6 +77,7 @@ const SHARE_THEME_LABEL: Record<ShareTheme, string> = {
   default: '默认',
   compact: '紧凑',
   cards: '卡片',
+  directory: '目录',
 };
 
 export function SharesSection() {

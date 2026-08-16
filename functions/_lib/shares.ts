@@ -1,4 +1,6 @@
 import type {
+  DirectoryChildGroup,
+  DirectoryGroup,
   PublicBookmark,
   PublicShare,
   Share,
@@ -22,7 +24,7 @@ import { PRIVATE_BOOKMARK_CLAUSE } from './db';
  * they routinely contain things the owner never meant to publish.
  */
 
-export const THEMES: ShareTheme[] = ['default', 'compact', 'cards'];
+export const THEMES: ShareTheme[] = ['default', 'compact', 'cards', 'directory'];
 
 /** The color palettes a share page may render with. */
 export const PALETTES: SharePalette[] = ['light', 'dark', 'aurora', 'blossom', 'starlight'];
@@ -197,6 +199,13 @@ export async function renderShare(
   const ids = rows.results.map((r) => r.id as string);
   const tagsByBookmark = new Map<string, { name: string; colorIndex: number }[]>();
 
+  // Directory theme needs the full tag graph (id + parentId) so the client can
+  // rebuild first-/second-level groups; the other themes only need labels.
+  const directoryTagMap = new Map<
+    string,
+    { id: string; name: string; colorIndex: number; parentId: string | null }
+  >();
+
   if (ids.length > 0) {
     const links = await env.DB.prepare(
       `SELECT bt.bookmark_id, t.name, t.color_index
@@ -214,20 +223,67 @@ export async function renderShare(
       list.push({ name: row.name as string, colorIndex: Number(row.color_index ?? 0) });
       tagsByBookmark.set(key, list);
     }
+
+    if (share.theme === 'directory') {
+      // Pull every tag attached to the share's bookmarks so we can resolve
+      // parent → child relationships. Restricted to the visible bookmark set
+      // (or the whole user, see note below) — orphan tags from other
+      // bookmarks never affect grouping here.
+      const tagLinks = await env.DB.prepare(
+        `SELECT DISTINCT t.id, t.name, t.color_index, t.parent_id
+           FROM bookmark_tags bt
+           JOIN tags t ON t.id = bt.tag_id
+          WHERE bt.bookmark_id IN (${ids.map(() => '?').join(',')})
+            AND t.user_id = ?`,
+      )
+        .bind(...ids, userId)
+        .all<Record<string, unknown>>();
+      for (const row of tagLinks.results) {
+        const id = row.id as string;
+        directoryTagMap.set(id, {
+          id,
+          name: row.name as string,
+          colorIndex: Number(row.color_index ?? 0),
+          parentId: (row.parent_id as string | null) ?? null,
+        });
+      }
+    }
   }
 
-  const items: PublicBookmark[] = rows.results.map((r) => ({
-    // The bookmark id is already opaque and carries no cross-account meaning;
-    // it is kept so the client has a stable React key.
-    id: r.id as string,
-    url: r.url as string,
-    title: (r.title as string) || (r.url as string),
-    description: (r.description as string | null) ?? null,
-    faviconUrl: (r.favicon_url as string | null) ?? null,
-    note: share.includeNotes ? ((r.note as string | null) ?? null) : null,
-    tags: tagsByBookmark.get(r.id as string) ?? [],
-    createdAt: r.created_at as string,
-  }));
+  // When the directory theme is active the tag list per bookmark is upgraded
+  // with id + parentId so DirectoryView can bucket items without a second
+  // round-trip. Other themes keep the slim shape for backwards compatibility.
+  const items: PublicBookmark[] = rows.results.map((r) => {
+    const slim = tagsByBookmark.get(r.id as string) ?? [];
+    if (share.theme !== 'directory') {
+      return {
+        id: r.id as string,
+        url: r.url as string,
+        title: (r.title as string) || (r.url as string),
+        description: (r.description as string | null) ?? null,
+        faviconUrl: (r.favicon_url as string | null) ?? null,
+        note: share.includeNotes ? ((r.note as string | null) ?? null) : null,
+        tags: slim,
+        createdAt: r.created_at as string,
+      };
+    }
+    // Merge slim + parentId; fallback to parentId=null when the tag isn't in
+    // directoryTagMap (e.g. it was attached after the share was rendered).
+    const fullTags = slim.map((s) => {
+      const match = [...directoryTagMap.values()].find((t) => t.name === s.name);
+      return match ?? { id: '', name: s.name, colorIndex: s.colorIndex, parentId: null };
+    });
+    return {
+      id: r.id as string,
+      url: r.url as string,
+      title: (r.title as string) || (r.url as string),
+      description: (r.description as string | null) ?? null,
+      faviconUrl: (r.favicon_url as string | null) ?? null,
+      note: share.includeNotes ? ((r.note as string | null) ?? null) : null,
+      tags: fullTags,
+      createdAt: r.created_at as string,
+    };
+  });
 
   // Headline tags: the filter itself when there is one, otherwise whatever
   // the listed bookmarks actually carry.
@@ -246,7 +302,135 @@ export async function renderShare(
     items,
     total: items.length,
     updatedAt: share.updatedAt,
+    ...(share.theme === 'directory'
+      ? { groups: buildDirectoryGroups(directoryTagMap, items) }
+      : {}),
   };
+}
+
+/**
+ * Bucket bookmarks into a two-level `DirectoryGroup[]` shape.
+ *
+ * Top-level groups are top-level tags (those with no parentId, or with a
+ * parent that isn't carried by any visible bookmark — promoted to top in
+ * that case so they don't get lost). Each top-level group owns:
+ *   - `directItems`: items carrying the top-level tag and NO child of it
+ *   - `children[]`: per child-tag sub-bucket, items carrying that child tag
+ *
+ * An `__untagged` catch-all group gathers items without any tag at all so
+ * they remain reachable from the directory view. Empty groups are dropped.
+ *
+ * The result is intentionally pre-shaped for the DirectoryView client: the
+ * page renders it directly with no further aggregation work.
+ */
+export function buildDirectoryGroups(
+  tagMap: Map<string, { id: string; name: string; colorIndex: number; parentId: string | null }>,
+  items: PublicBookmark[],
+): DirectoryGroup[] {
+  if (items.length === 0) return [];
+
+  // Resolve the visible-graph parent map: for every tag id we collected,
+  // figure out who its parent is. Tags whose parent isn't in the graph
+  // are treated as top-level so we never strand an island of sub-tags.
+  const childByParent = new Map<string, string[]>();
+  for (const tag of tagMap.values()) {
+    const parent = tag.parentId && tagMap.has(tag.parentId) ? tag.parentId : null;
+    const list = childByParent.get(parent ?? '__root__') ?? [];
+    list.push(tag.id);
+    childByParent.set(parent ?? '__root__', list);
+  }
+
+  const topIds = childByParent.get('__root__') ?? [];
+  const childrenOf = (id: string) => childByParent.get(id) ?? [];
+
+  // Pre-compute each item's tag-id sets for fast bucket lookup.
+  const idsByItem = new Map<string, string[]>();
+  for (const item of items) {
+    idsByItem.set(
+      item.id,
+      item.tags.flatMap((t) => (t.id ? [t.id] : [])),
+    );
+  }
+
+  const groups: DirectoryGroup[] = [];
+  const usedItemIds = new Set<string>();
+
+  // Stable top-level ordering: by their primary display order on items, then
+  // by name as a tiebreaker. The first appearance wins for cross-tag items.
+  const orderedTopIds = [...topIds].sort((a, b) => {
+    const tagA = tagMap.get(a)!;
+    const tagB = tagMap.get(b)!;
+    return tagA.name.localeCompare(tagB.name, 'zh-CN');
+  });
+
+  for (const topId of orderedTopIds) {
+    const top = tagMap.get(topId)!;
+    const childIds = childrenOf(topId);
+
+    const directItems: PublicBookmark[] = [];
+    const childBuckets = new Map<string, PublicBookmark[]>();
+
+    for (const item of items) {
+      const ids = idsByItem.get(item.id) ?? [];
+      if (!ids.includes(topId)) continue;
+      // Pick the FIRST matching child tag (sorted by name) so a bookmark
+      // attached to both a parent and two children doesn't double-list.
+      const childMatches = childIds
+        .filter((cid) => ids.includes(cid))
+        .map((cid) => tagMap.get(cid)!)
+        .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+      if (childMatches.length > 0) {
+        const primary = childMatches[0];
+        const list = childBuckets.get(primary.id) ?? [];
+        list.push(item);
+        childBuckets.set(primary.id, list);
+        usedItemIds.add(item.id);
+      } else {
+        directItems.push(item);
+        usedItemIds.add(item.id);
+      }
+    }
+
+    const children: DirectoryChildGroup[] = childIds
+      .map((cid) => {
+        const t = tagMap.get(cid)!;
+        const list = childBuckets.get(cid) ?? [];
+        return { id: cid, name: t.name, colorIndex: t.colorIndex, items: list };
+      })
+      .filter((c) => c.items.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+
+    if (directItems.length > 0 || children.length > 0) {
+      groups.push({
+        id: topId,
+        name: top.name,
+        colorIndex: top.colorIndex,
+        directItems,
+        children,
+      });
+    }
+  }
+
+  // Catch-all: items with no recognised tag at all (no tag, or tag-id absent
+  // from the graph). Surface them so the directory view is never silently
+  // hiding the share author's unlabelled bookmarks.
+  const untagged: PublicBookmark[] = [];
+  for (const item of items) {
+    if (usedItemIds.has(item.id)) continue;
+    const ids = idsByItem.get(item.id) ?? [];
+    if (ids.length === 0) untagged.push(item);
+  }
+  if (untagged.length > 0) {
+    groups.push({
+      id: '__untagged',
+      name: '未分类',
+      colorIndex: 0,
+      directItems: untagged,
+      children: [],
+    });
+  }
+
+  return groups;
 }
 
 /* ------------------------------------------------------------------ *

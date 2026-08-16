@@ -767,7 +767,34 @@ export interface ApiKeyCreated {
  * Public shares
  * ------------------------------------------------------------------ */
 
-export type ShareTheme = 'default' | 'compact' | 'cards';
+/**
+ * `directory` is the navigation-site theme: visitors see bookmarks grouped
+ * under their first-/second-level tags with collapsible sections, matching
+ * the hao123 / haosou category-browse pattern. Data is pre-aggregated into
+ * `DirectoryGroup`s by the backend so the page never re-derives the layout.
+ */
+export type ShareTheme = 'default' | 'compact' | 'cards' | 'directory';
+
+/** A category in the directory theme: a top-level tag plus its child sub-categories. */
+export interface DirectoryGroup {
+  /** Stable id — the tag id for tagged groups, `__untagged` for the catch-all. */
+  id: string;
+  /** Human-readable group name shown in the sidebar and section header. */
+  name: string;
+  /** Tag palette slot for the sidebar accent. 0..7; ignored for the untagged group. */
+  colorIndex: number;
+  /** Bookmarks that match the top-level tag but NOT any of its child sub-categories. */
+  directItems: PublicBookmark[];
+  /** Sub-categories (second-level tags) keyed by tag id. */
+  children: DirectoryChildGroup[];
+}
+
+export interface DirectoryChildGroup {
+  id: string;
+  name: string;
+  colorIndex: number;
+  items: PublicBookmark[];
+}
 
 /** A color palette a share page renders with (a ResolvedTheme key). */
 export type SharePalette = 'light' | 'dark' | 'aurora' | 'blossom' | 'starlight';
@@ -882,7 +909,12 @@ export interface PublicBookmark {
   description: string | null;
   faviconUrl: string | null;
   note: string | null;
-  tags: { name: string; colorIndex: number }[];
+  /**
+   * Slim by default (name + color only). The `directory` share theme upgrades
+   * these to the full form with `id`/`parentId` so the backend can bucket
+   * items into the two-level DirectoryGroup tree.
+   */
+  tags: { name: string; colorIndex: number; id?: string; parentId?: string | null }[];
   createdAt: string;
 }
 
@@ -894,6 +926,11 @@ export interface PublicShare {
   owner: string;
   tags: { name: string; colorIndex: number }[];
   items: PublicBookmark[];
+  /**
+   * Pre-aggregated category layout, populated only when `theme === 'directory'`.
+   * Omitted for other themes — the client falls back to a flat list then.
+   */
+  groups?: DirectoryGroup[];
   total: number;
   updatedAt: string;
 }
