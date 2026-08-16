@@ -298,7 +298,7 @@ export class MockDb {
     // --- collections (design plan module) --------------------------
     if (
       u.startsWith(
-        'SELECT C.ID, C.NAME, C.COLOR_INDEX, C.CREATED_AT, C.UPDATED_AT, COUNT(CB.BOOKMARK_ID) AS COUNT FROM COLLECTIONS C',
+        'SELECT C.ID, C.NAME, C.COLOR_INDEX, C.KIND, C.QUERY, C.CREATED_AT, C.UPDATED_AT, COUNT(CB.BOOKMARK_ID) AS COUNT FROM COLLECTIONS C',
       )
     ) {
       // `getCollectionRow` filters by id + user; the list query only by user.
@@ -335,14 +335,29 @@ export class MockDb {
         .map((c) => ({ id: c.id }));
     }
     if (u.startsWith('INSERT OR IGNORE INTO COLLECTIONS')) {
-      const [id, user_id, name, color_index, created_at, updated_at] = params as string[];
+      const [id, user_id, name, color_index, p4, p5, p6, p7] = params as unknown[];
+      // Support both the legacy 6-param insert (id, user_id, name, color_index,
+      // created_at, updated_at — pre-B-8) and the new 8-param form that carries
+      // kind + query. D1 defaults kind to 'manual' when omitted, so the mock does
+      // the same for the short form.
+      const hasKind = params.length >= 8;
+      const kind = hasKind ? (p4 as string) : 'manual';
+      const query = hasKind ? ((p5 as string | null) ?? null) : null;
+      const created_at = hasKind ? p6 : p4;
+      const updated_at = hasKind ? p7 : p5;
       // Mirrors the unique index on (user_id, name COLLATE NOCASE): a concurrent
       // duplicate gets no row back, so the handler surfaces a 409.
       const dup = this.collections.find(
         (c) => c.user_id === user_id && String(c.name).toLowerCase() === String(name).toLowerCase(),
       );
       if (dup) return [];
-      this.collections.push({ id, user_id, name, color_index: Number(color_index), created_at, updated_at });
+      this.collections.push({
+        id, user_id, name,
+        color_index: Number(color_index),
+        kind,
+        query: (query as string | null) ?? null,
+        created_at, updated_at,
+      });
       return [{ id }];
     }
     if (u.startsWith('INSERT INTO COLLECTIONS')) {
@@ -351,11 +366,12 @@ export class MockDb {
       return [];
     }
     if (u.startsWith('UPDATE COLLECTIONS SET NAME = ?')) {
-      const [name, color_index, updated_at, id, user_id] = params as string[];
+      const [name, color_index, query, updated_at, id, user_id] = params as unknown[];
       const coll = this.collections.find((c) => c.id === id && c.user_id === user_id);
       if (coll) {
         coll.name = name;
         coll.color_index = Number(color_index);
+        coll.query = (query as string | null) ?? null;
         coll.updated_at = updated_at;
       }
       return [];
@@ -1333,13 +1349,20 @@ export class MockDb {
   }
 
   private toCollectionRow(c: MockRow): MockRow {
+    const kind = (c.kind as string) ?? 'manual';
+    const count =
+      kind === 'smart'
+        ? 0 // live count filled in by the endpoint via countSmartCollection
+        : this.collection_bookmarks.filter((cb) => cb.collection_id === c.id).length;
     return {
       id: c.id,
       name: c.name,
       color_index: c.color_index,
+      kind,
+      query: c.query ?? null,
       created_at: c.created_at,
       updated_at: c.updated_at,
-      count: this.collection_bookmarks.filter((cb) => cb.collection_id === c.id).length,
+      count,
     };
   }
 }

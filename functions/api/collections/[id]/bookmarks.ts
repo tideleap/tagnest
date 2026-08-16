@@ -1,6 +1,6 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
-import { badRequest, json, notFound, readJson } from '../../../_lib/http';
+import { badRequest, conflict, json, notFound, readJson } from '../../../_lib/http';
 import { nowIso } from '../../../_lib/ids';
 import { getCollectionRow } from '../../../_lib/collections';
 import { PRIVATE_BOOKMARK_CLAUSE } from '../../../_lib/db';
@@ -11,6 +11,12 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const c = await getCollectionRow(ctx.env, userId, collectionId);
   if (!c) throw notFound('集合不存在');
+
+  // Smart collections populate their members from a live query — manual add is
+  // meaningless and would silently diverge, so surface a clear conflict.
+  if ((c.kind as string) === 'smart') {
+    throw conflict('智能集合成员由搜索自动维护', { kind: '智能集合不可手动添加书签' });
+  }
 
   const body = await readJson<{ bookmarkId?: string }>(ctx.request);
   const bookmarkId = String(body.bookmarkId ?? '');
@@ -52,6 +58,10 @@ export const onRequestDelete: PagesFunction<Env, string, RequestData> = async (c
 
   const c = await getCollectionRow(ctx.env, userId, collectionId);
   if (!c) throw notFound('集合不存在');
+
+  if ((c.kind as string) === 'smart') {
+    throw conflict('智能集合成员由搜索自动维护', { kind: '智能集合不可手动移除书签' });
+  }
 
   const bookmarkId = new URL(ctx.request.url).searchParams.get('bookmarkId') ?? '';
   if (!bookmarkId) throw badRequest('缺少 bookmarkId');

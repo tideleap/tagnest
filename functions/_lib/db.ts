@@ -625,6 +625,28 @@ export async function listBookmarks(env: Env, p: ListParams) {
   return { items, nextCursor, total };
 }
 
+/**
+ * Counts bookmarks matching the given filter without fetching rows. Reuses
+ * `buildWhere` so the predicate is identical to `listBookmarks` (scope,
+ * privacy, tags, text). Used by smart-collection counts so the figure never
+ * drifts from what the detail view would resolve.
+ */
+export async function countBookmarks(env: Env, p: ListParams): Promise<number> {
+  const parsed = p.q ? parseSearchQuery(p.q) : null;
+  const useFts = Boolean(
+    parsed &&
+      parsed.tokens.length > 0 &&
+      parsed.tokens.every((t) => [...t].length >= 3),
+  );
+  const where = buildWhere(p, useFts);
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS c FROM bookmarks b WHERE ${where.sql}`,
+  )
+    .bind(...where.params)
+    .first<{ c: number }>();
+  return Number(row?.c ?? 0);
+}
+
 export async function loadBookmark(
   env: Env,
   userId: string,

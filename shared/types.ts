@@ -947,13 +947,38 @@ export interface GroupWithItems {
  * shareable "reading list" primitive.
  * ------------------------------------------------------------------ */
 
+export type CollectionKind = 'manual' | 'smart';
+
+/**
+ * A serializable search filter, aligned 1:1 with `listBookmarks` ListParams.
+ * Stored as JSON on a `smart` collection's `query` column; `null` for `manual`.
+ */
+export interface SavedSearchQuery {
+  /** Free-text keyword (max 200 chars). */
+  q: string | null;
+  /** Tag ids (max 20). */
+  tagIds: string[];
+  /** Require all listed tags rather than any. */
+  matchAllTags: boolean;
+  /** Bookmark scope. */
+  scope: BookmarkScope;
+  /** Sort order. */
+  sort: BookmarkSort;
+}
+
 export interface Collection {
   id: string;
   name: string;
   /** Palette slot 0-7, shared with tags. */
   colorIndex: number;
-  /** Bookmarks currently in the collection. */
+  /** Bookmarks currently in the collection. For `smart` collections this is a
+   *  live count computed from `query`, not a stored membership size. */
   count: number;
+  /** `manual` = curated membership via collection_bookmarks; `smart` = live
+   *  members resolved from `query`. */
+  kind: CollectionKind;
+  /** Serialized SavedSearchQuery for `smart` collections; `null` otherwise. */
+  query: SavedSearchQuery | null;
   createdAt: string;
   updatedAt: string;
 }
