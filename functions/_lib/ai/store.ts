@@ -157,6 +157,72 @@ export async function loadBookmarkInputs(
   return ids.map((id) => byId.get(id)).filter((x): x is NonNullable<typeof x> => Boolean(x));
 }
 
+/**
+ * Loads a handful of the user's own well-tagged bookmarks to serve as
+ * few-shot examples (方案B).
+ *
+ * "Well-tagged" = carries at least two tags, so the example demonstrates the
+ * multi-tag granularity we want the model to reproduce. Using the user's own
+ * library instead of a canned example set teaches the model their personal
+ * naming, granularity and domain mix — which is exactly the signal a static
+ * example cannot carry.
+ *
+ * Returns plain rows; the caller shapes them into prompt `Example`s.
+ */
+export async function loadFewShotExamples(
+  env: Env,
+  userId: string,
+  limit = 4,
+): Promise<
+  Array<{
+    title: string;
+    url: string;
+    description: string | null;
+    tags: string[];
+  }>
+> {
+  // Bookmarks with >= 2 tags, most recently updated first.
+  const rows = await env.DB.prepare(
+    `SELECT b.id AS id, b.url AS url, b.title AS title, b.description AS description
+       FROM bookmarks b
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        AND (SELECT COUNT(*) FROM bookmark_tags bt WHERE bt.bookmark_id = b.id) >= 2
+      ORDER BY b.updated_at DESC
+      LIMIT ?`,
+  )
+    .bind(userId, limit)
+    .all<Record<string, unknown>>();
+
+  if (rows.results.length === 0) return [];
+
+  const ids = rows.results.map((r) => String(r.id));
+  const placeholders = ids.map(() => '?').join(',');
+  const tagRows = await env.DB.prepare(
+    `SELECT bt.bookmark_id AS bookmark_id, t.name AS name
+       FROM bookmark_tags bt
+       JOIN tags t ON t.id = bt.tag_id
+      WHERE bt.bookmark_id IN (${placeholders})`,
+  )
+    .bind(...ids)
+    .all<Record<string, unknown>>();
+
+  const tagsByBookmark = new Map<string, string[]>();
+  for (const row of tagRows.results) {
+    const list = tagsByBookmark.get(String(row.bookmark_id)) ?? [];
+    list.push(String(row.name));
+    tagsByBookmark.set(String(row.bookmark_id), list);
+  }
+
+  return rows.results
+    .map((row) => ({
+      title: String(row.title ?? ''),
+      url: String(row.url),
+      description: (row.description as string | null) ?? null,
+      tags: tagsByBookmark.get(String(row.id)) ?? [],
+    }))
+    .filter((row) => row.tags.length >= 2 && row.title.trim().length > 0);
+}
+
 /* ------------------------------------------------------------------ *
  * Jobs
  * ------------------------------------------------------------------ */

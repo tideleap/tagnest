@@ -200,7 +200,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return row ? [row] : [];
     }
 
-    // loadVocabulary: tag + usage count
+    // loadVocabulary: tag + usage count (+ parent_id for hierarchical prompts)
     if (sql.includes('FROM TAGS T') || (sql.includes('FROM TAGS') && sql.includes('LEFT JOIN'))) {
       return state.tags
         .filter((t) => t.user_id === String(params[0]))
@@ -208,8 +208,43 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
           id: t.id,
           name: t.name,
           aliases: t.aliases ?? null,
+          parent_id: t.parent_id ?? null,
           cnt: state.bookmark_tags.filter((bt) => bt.tag_id === t.id).length,
         }));
+    }
+
+    // loadFewShotExamples: bookmarks carrying >= 2 tags, newest first.
+    if (
+      sql.startsWith('SELECT B.ID AS ID, B.URL AS URL, B.TITLE AS TITLE, B.DESCRIPTION AS DESCRIPTION') &&
+      sql.includes('COUNT(*) FROM BOOKMARK_TAGS')
+    ) {
+      const userId = String(params[0]);
+      const limit = Number(params[1]);
+      return state.bookmarks
+        .filter(
+          (b) =>
+            b.user_id === userId &&
+            b.deleted_at === null &&
+            state.bookmark_tags.filter((bt) => bt.bookmark_id === b.id).length >= 2,
+        )
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+        .slice(0, limit)
+        .map((b) => ({ id: b.id, url: b.url, title: b.title, description: b.description }));
+    }
+
+    // loadFewShotExamples: tag names for the selected bookmarks.
+    if (
+      sql.startsWith('SELECT BT.BOOKMARK_ID AS BOOKMARK_ID, T.NAME AS NAME') &&
+      sql.includes('IN')
+    ) {
+      const ids = params.map(String);
+      return state.bookmark_tags
+        .filter((bt) => ids.includes(bt.bookmark_id))
+        .map((bt) => {
+          const tag = state.tags.find((t) => t.id === bt.tag_id);
+          return { bookmark_id: bt.bookmark_id, name: tag?.name ?? '' };
+        })
+        .filter((row) => row.name !== '');
     }
 
     // resolveScope: explicit ids

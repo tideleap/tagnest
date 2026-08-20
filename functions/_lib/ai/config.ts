@@ -40,6 +40,10 @@ export interface ConfigRow {
   autoSummarize: boolean;
   autoApplyThreshold: number;
   maxTags: number;
+  /** Fetch each bookmark's page and feed a text excerpt to the model. */
+  fetchContent: boolean;
+  /** Extra coarse-to-fine refinement pass (costs ~1 extra call per batch). */
+  twoPass: boolean;
 }
 
 const DEFAULT_MAX_TAGS = 4;
@@ -73,6 +77,9 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
       autoSummarize: false,
       autoApplyThreshold: DEFAULT_THRESHOLD,
       maxTags: DEFAULT_MAX_TAGS,
+      // Mirrors the migration defaults: fetching on (accuracy), two-pass off (cost).
+      fetchContent: true,
+      twoPass: false,
     };
   }
 
@@ -85,6 +92,10 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
     autoSummarize: row.auto_summarize === 1,
     autoApplyThreshold: clampThreshold(row.auto_apply_threshold),
     maxTags: clampMaxTags(row.max_tags),
+    // `!== 0` so a missing column (pre-migration row) still reads as the
+    // migration default: fetching on, two-pass off.
+    fetchContent: row.fetch_content !== 0,
+    twoPass: row.two_pass === 1,
   };
 }
 
@@ -123,6 +134,8 @@ export async function loadAiConfig(env: Env, userId: string): Promise<AiConfig |
     autoSummarize: row.autoSummarize,
     autoApplyThreshold: row.autoApplyThreshold,
     maxTags: row.maxTags,
+    fetchContent: row.fetchContent,
+    twoPass: row.twoPass,
   };
 }
 
@@ -142,12 +155,13 @@ export function toLocalConfig(row: ConfigRow): LocalConfig {
  */
 export async function loadVocabulary(env: Env, userId: string): Promise<Vocabulary> {
   const rows = await env.DB.prepare(
-    `SELECT t.id AS id, t.name AS name, t.aliases AS aliases, COUNT(b.id) AS cnt
+    `SELECT t.id AS id, t.name AS name, t.aliases AS aliases, t.parent_id AS parent_id,
+            COUNT(b.id) AS cnt
        FROM tags t
        LEFT JOIN bookmark_tags bt ON bt.tag_id = t.id
        LEFT JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL
       WHERE t.user_id = ?
-      GROUP BY t.id, t.name, t.aliases`,
+      GROUP BY t.id, t.name, t.aliases, t.parent_id`,
   )
     .bind(userId)
     .all<Record<string, unknown>>();
@@ -157,6 +171,7 @@ export async function loadVocabulary(env: Env, userId: string): Promise<Vocabula
     name: String(row.name),
     aliases: parseAliases(row.aliases),
     count: Number(row.cnt ?? 0),
+    parentId: (row.parent_id as string | null) ?? null,
   }));
 
   return buildVocabulary(entries);

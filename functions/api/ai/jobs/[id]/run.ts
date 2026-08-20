@@ -13,6 +13,7 @@ import {
   loadBookmarkInputs,
   loadConfigRow,
   loadFeedbackProfile,
+  loadFewShotExamples,
   loadVocabulary,
   saveSuggestions,
   suggestForBookmarks,
@@ -97,7 +98,17 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // as processed-but-failed rather than silently shrinking the total.
   const missing = slice.length - inputs.length;
 
-  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback });
+  // 方案B: few-shot examples from the user's own well-tagged bookmarks. Loaded
+  // once per chunk (cheap, capped at 4 rows) so a long run keeps teaching the
+  // model the user's style on every batch.
+  const examples = (await loadFewShotExamples(ctx.env, userId)).map((row) => ({
+    title: row.title,
+    url: row.url,
+    description: row.description ?? undefined,
+    tags: row.tags.map((name) => ({ name, reason: '用户已标注' })),
+  }));
+
+  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback, examples });
 
   const written = await saveSuggestions(ctx.env, userId, jobId, outcome.results);
   const autoApplied = await autoApply(ctx.env, userId, local.autoApplyThreshold, jobId);

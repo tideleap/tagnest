@@ -1,4 +1,4 @@
-import type { EnrichInput, Vocabulary } from './types';
+import type { EnrichInput, VocabEntry, Vocabulary } from './types';
 
 /**
  * Prompt construction and response parsing.
@@ -16,14 +16,23 @@ import type { EnrichInput, Vocabulary } from './types';
  *     malformed output. A single bad bookmark does not fail a 500-bookmark job.
  */
 
-/** How many existing tags to show. Enough to be representative, small enough to stay cheap. */
-const VOCAB_LIMIT = 60;
+/**
+ * How many existing tags to show.
+ *
+ * Raised from 60 to 120 (方案D): with only 60 slots, users with a large
+ * taxonomy saw their low-frequency-but-relevant tags truncated, forcing the
+ * model to invent near-duplicates. 120 doubles coverage while staying well
+ * inside a reasonable prompt budget.
+ */
+const VOCAB_LIMIT = 120;
 
 /** Bookmarks per model request. */
 export const BATCH_SIZE = 10;
 
 const MAX_TITLE = 160;
 const MAX_DESCRIPTION = 400;
+/** Page excerpt budget per bookmark (方案A). */
+const MAX_EXCERPT = 500;
 
 export const MAX_TAG_LENGTH = 24;
 export const MAX_SUMMARY_LENGTH = 200;
@@ -40,13 +49,19 @@ export const MAX_REASON_LENGTH = 24;
  * comparison be more than a guess. It is a plain date tag, not a semver, so the
  * value reads as "the prompt that shipped on this day" in logs and dashboards.
  */
-export const PROMPT_VERSION = '2026-08-09';
+export const PROMPT_VERSION = '2026-08-20';
 
 export interface PromptOptions {
   maxTags: number;
   wantSummary: boolean;
   /** Optional few-shot examples to personalise output. */
   examples?: Example[];
+  /**
+   * Coarse topic judgement from the first pass (方案E). When present, the
+   * prompt anchors each bookmark to its pre-judged topic so the second pass
+   * tags with that context instead of re-deriving it from scratch.
+   */
+  coarseTopics?: Array<string | null>;
 }
 
 export interface Example {
@@ -63,12 +78,114 @@ export interface Example {
  *
  * Most-used first: those are the tags the user actually organises by, and
  * matching one of them is the outcome we want most.
+ *
+ * Kept flat for backward compatibility; `buildTaggingPrompt` now prefers the
+ * hierarchical renderer below, which also conveys parent/child granularity.
  */
 export function selectVocabulary(vocab: Vocabulary, limit = VOCAB_LIMIT): string[] {
   return [...vocab.entries]
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, limit)
     .map((entry) => (entry.count > 0 ? `${entry.name}(${entry.count})` : entry.name));
+}
+
+/**
+ * Relevance score for ordering the vocabulary (方案D).
+ *
+ * Base signal is usage count. On top of it, a tag whose name appears in the
+ * hostnames of the batch being classified gets a boost — those are the tags
+ * most likely to be correct *for this batch*, so they should survive the
+ * truncation that a large taxonomy forces.
+ */
+function relevanceScore(entry: VocabEntry, hosts: string[]): number {
+  let score = entry.count;
+  if (hosts.length > 0) {
+    const key = entry.name.toLowerCase();
+    for (const host of hosts) {
+      if (host.includes(key) || key.includes(host.split('.')[0])) {
+        // A tag that names the very host being classified is almost certainly
+        // relevant to this batch, so it outranks raw usage counts.
+        score += 100;
+        break;
+      }
+    }
+  }
+  return score;
+}
+
+/**
+ * Renders the taxonomy hierarchically (方案C).
+ *
+ * Instead of a flat list, tags are grouped under their parent so the model can
+ * see the nesting and pick the right granularity — "前端 > React, Vue" tells it
+ * that React is a kind of 前端, which a flat "前端、React、Vue" list does not.
+ *
+ * Top-level tags (no parent, or parent absent from the selected set) lead; each
+ * is followed by its children inline. Ordering within and across groups follows
+ * `relevanceScore`. The output is a list of display lines, one per top-level tag.
+ */
+export function selectVocabularyHierarchical(
+  vocab: Vocabulary,
+  limit = VOCAB_LIMIT,
+  hosts: string[] = [],
+): string[] {
+  const entries = vocab.entries;
+  if (entries.length === 0) return [];
+
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const childrenOf = new Map<string, VocabEntry[]>();
+  const roots: VocabEntry[] = [];
+
+  for (const entry of entries) {
+    const parent = entry.parentId ? byId.get(entry.parentId) : undefined;
+    if (parent) {
+      const list = childrenOf.get(parent.id) ?? [];
+      list.push(entry);
+      childrenOf.set(parent.id, list);
+    } else {
+      roots.push(entry);
+    }
+  }
+
+  const score = (e: VocabEntry) => relevanceScore(e, hosts);
+  roots.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  for (const list of childrenOf.values()) {
+    list.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  }
+
+  const label = (e: VocabEntry) => (e.count > 0 ? `${e.name}(${e.count})` : e.name);
+
+  const lines: string[] = [];
+  let used = 0;
+  for (const root of roots) {
+    if (used >= limit) break;
+    const kids = (childrenOf.get(root.id) ?? []).slice(0, Math.max(0, limit - used - 1));
+    used += 1 + kids.length;
+    lines.push(
+      kids.length > 0
+        ? `${label(root)} > ${kids.map(label).join('、')}`
+        : label(root),
+    );
+  }
+
+  // Any children whose parent was cut off still deserve a chance to appear.
+  if (used < limit) {
+    const shown = new Set<string>();
+    for (const line of lines) {
+      for (const part of line.split(/[>、]/)) shown.add(part.replace(/\(\d+\)$/, '').trim());
+    }
+    for (const entry of entries) {
+      if (used >= limit) break;
+      if (shown.has(entry.name)) continue;
+      const parent = entry.parentId ? byId.get(entry.parentId) : undefined;
+      if (parent && shown.has(parent.name)) continue; // already shown under parent
+      lines.push(label(entry));
+      shown.add(entry.name);
+      used += 1;
+    }
+  }
+
+  return lines;
 }
 
 function truncate(value: string, limit: number): string {
@@ -81,6 +198,12 @@ function renderBookmark(input: EnrichInput, index: number): string {
   parts.push(`    网址：${truncate(input.url, 200)}`);
   if (input.description) {
     parts.push(`    描述：${truncate(String(input.description), MAX_DESCRIPTION)}`);
+  }
+  // 方案A: the fetched page excerpt is the strongest content signal we have —
+  // render it last so the model reads title/URL/description first, then the
+  // actual page text that confirms or corrects them.
+  if (input.pageExcerpt) {
+    parts.push(`    正文摘要：${truncate(String(input.pageExcerpt), MAX_EXCERPT)}`);
   }
   return parts.join('\n');
 }
@@ -207,7 +330,20 @@ export function buildTaggingPrompt(
   vocab: Vocabulary,
   options: PromptOptions,
 ): string {
-  const known = selectVocabulary(vocab);
+  // 方案D: collect the hosts of this batch so relevance scoring can boost
+  // tags that match them, keeping the most useful labels inside the budget.
+  const hosts = inputs
+    .map((input) => {
+      try {
+        return new URL(input.url).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean);
+
+  // 方案C: hierarchical rendering so the model sees parent/child granularity.
+  const known = selectVocabularyHierarchical(vocab, VOCAB_LIMIT, hosts);
   const examples = options.examples && options.examples.length > 0 ? options.examples : DEFAULT_EXAMPLES;
 
   const lines: string[] = [
@@ -217,13 +353,24 @@ export function buildTaggingPrompt(
   ];
 
   if (known.length > 0) {
-    lines.push('', '已有标签（括号内为使用次数，优先复用高频标签）：', known.join('、'));
+    lines.push('', '已有标签（括号内为使用次数，优先复用高频标签；「>」表示父子层级，请选择最具体的层级）：');
+    lines.push(...known.map((line) => `- ${line}`));
   } else {
     lines.push('', '该用户还没有任何标签，请建立一套简洁、可复用的基础分类。');
   }
 
   lines.push(renderExamples(examples, options.wantSummary));
   lines.push(renderAntiExamples());
+
+  // 方案E: when a coarse pass has already judged each bookmark's topic, anchor
+  // the fine pass to it so tagging builds on that judgement.
+  if (options.coarseTopics && options.coarseTopics.length === inputs.length) {
+    lines.push('', '初步主题判断（供参考，可修正）：');
+    inputs.forEach((_, index) => {
+      const topic = options.coarseTopics?.[index];
+      if (topic) lines.push(`[${index + 1}] ${topic}`);
+    });
+  }
 
   lines.push('', '待整理书签：');
   inputs.forEach((input, index) => {
@@ -254,6 +401,72 @@ export function buildSummarizationPrompt(input: EnrichInput): string {
     '',
     '仅输出一个 JSON 对象，不要代码块、不要解释。',
   ].join('\n');
+}
+
+/**
+ * Coarse-pass prompt (方案E, first half).
+ *
+ * Asks only for a one-line topic judgement per bookmark — no tags, no summary.
+ * The output is tiny (one short string per bookmark), so this pass is cheap;
+ * its value is giving the fine pass a settled "what is this page about"
+ * judgement to tag against, instead of re-deriving it while also choosing tags.
+ */
+export function buildCoarsePrompt(inputs: EnrichInput[]): string {
+  const lines: string[] = [
+    '你是个人书签归档助手。任务：快速判断每个网页属于什么主题领域。',
+    '只输出主题判断，不要输出标签、摘要或其他内容。',
+    '',
+    '输出格式：仅输出一个 JSON 对象，不要代码块、不要解释。',
+    'schema: {"results":[{"i":1,"topic":"主题领域短语"}]}',
+    '- i: 书签序号，从 1 开始，与输入顺序一致。',
+    '- topic: 一个简短的主题领域短语，如「前端框架」「机器学习论文」「设计灵感」「运维工具」。',
+    '',
+    '待判断书签：',
+  ];
+  inputs.forEach((input, index) => {
+    lines.push(renderBookmark(input, index));
+  });
+  lines.push('', '仅输出一个 JSON 对象，不要代码块、不要解释。');
+  return lines.join('\n');
+}
+
+/**
+ * Parses the coarse-pass response into per-bookmark topics.
+ *
+ * Returns an array aligned to the batch (null where the model gave no answer),
+ * matching the shape `buildTaggingPrompt` expects for `coarseTopics`.
+ */
+export function parseCoarseResponse(raw: string | null, batchSize: number): Array<string | null> {
+  const topics: Array<string | null> = new Array(batchSize).fill(null);
+  if (!raw) return topics;
+
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end <= start) return topics;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return topics;
+  }
+
+  const results = (parsed as { results?: unknown }).results;
+  if (!Array.isArray(results)) return topics;
+
+  for (const entry of results) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as { i?: unknown; topic?: unknown };
+    const rawIndex = Number(row.i);
+    if (!Number.isFinite(rawIndex)) continue;
+    const index = Math.trunc(rawIndex) - 1;
+    if (index < 0 || index >= batchSize) continue;
+    if (typeof row.topic === 'string' && row.topic.trim()) {
+      topics[index] = row.topic.trim().slice(0, MAX_TOPIC_LENGTH);
+    }
+  }
+
+  return topics;
 }
 
 export interface ParsedTag {

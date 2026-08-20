@@ -36,6 +36,8 @@ const DEFAULTS: AiSettings = {
   enabled: false,
   autoApplyThreshold: 1,
   maxTags: 4,
+  fetchContent: true,
+  twoPass: false,
 };
 
 /**
@@ -73,6 +75,10 @@ function mapSettings(row: Record<string, unknown> | null): AiSettings {
     enabled: false,
     autoApplyThreshold: clamp(row.auto_apply_threshold, 0, 1, 1),
     maxTags: Math.trunc(clamp(row.max_tags, 1, 8, 4)),
+    // `!== 0` mirrors the migration default (fetching on); a missing column
+    // on a pre-migration row still reads as enabled.
+    fetchContent: row.fetch_content !== 0,
+    twoPass: row.two_pass === 1,
   };
 
   // Always recomputed on read, so a stale column value can never mislead.
@@ -115,6 +121,8 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
     merged.autoApplyThreshold = clamp(body.autoApplyThreshold, 0, 1, 1);
   }
   if ('maxTags' in body) merged.maxTags = Math.trunc(clamp(body.maxTags, 1, 8, 4));
+  if ('fetchContent' in body) merged.fetchContent = Boolean(body.fetchContent);
+  if ('twoPass' in body) merged.twoPass = Boolean(body.twoPass);
 
   // `enabled` is deliberately NOT read from the body. It is a status, not a
   // setting; accepting it would reintroduce the drift this handler documents.
@@ -147,6 +155,8 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       'enabled = ?',
       'auto_apply_threshold = ?',
       'max_tags = ?',
+      'fetch_content = ?',
+      'two_pass = ?',
       'updated_at = ?',
     ];
     const params: unknown[] = [
@@ -158,6 +168,8 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       merged.enabled ? 1 : 0,
       merged.autoApplyThreshold,
       merged.maxTags,
+      merged.fetchContent ? 1 : 0,
+      merged.twoPass ? 1 : 0,
       ts,
     ];
     if (apiKey !== undefined) {
@@ -173,8 +185,8 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
       `INSERT INTO ai_settings
          (user_id, provider, base_url, model, api_key_encrypted,
           auto_summarize, auto_tag, enabled,
-          auto_apply_threshold, max_tags, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          auto_apply_threshold, max_tags, fetch_content, two_pass, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         userId,
@@ -187,6 +199,8 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
         merged.enabled ? 1 : 0,
         merged.autoApplyThreshold,
         merged.maxTags,
+        merged.fetchContent ? 1 : 0,
+        merged.twoPass ? 1 : 0,
         ts,
       )
       .run();

@@ -8,6 +8,7 @@ import {
   type FeedbackAction,
 } from '../functions/_lib/ai/feedback';
 import { onRequestGet as overviewHandler } from '../functions/api/ai/overview';
+import { PROMPT_VERSION } from '../functions/_lib/ai/prompt';
 import { createAiDb } from './helpers/aiDb';
 
 /* ------------------------------------------------------------------ *
@@ -211,7 +212,7 @@ describe('GET /ai/overview', () => {
       feedbackTrend: Array<{ date: string }>;
     };
 
-    expect(body.promptVersion).toBe('2026-08-09');
+    expect(body.promptVersion).toBe(PROMPT_VERSION);
     expect(body.feedback.total).toBe(1);
     expect(body.feedback.acceptanceRate).toBeCloseTo(1);
     expect(body.feedback.hitRate).toBeCloseTo(1);

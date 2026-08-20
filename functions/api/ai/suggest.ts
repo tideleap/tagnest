@@ -8,6 +8,7 @@ import {
   loadBookmarkInputs,
   loadConfigRow,
   loadFeedbackProfile,
+  loadFewShotExamples,
   loadVocabulary,
   saveSuggestions,
   suggestForBookmarks,
@@ -56,7 +57,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const vocab = await loadVocabulary(ctx.env, userId);
   const feedback = await loadFeedbackProfile(ctx.env, userId);
-  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback });
+  // 方案B: teach the model the user's own tagging style via their well-tagged
+  // bookmarks instead of a canned example set.
+  const examples = (await loadFewShotExamples(ctx.env, userId)).map((row) => ({
+    title: row.title,
+    url: row.url,
+    description: row.description ?? undefined,
+    tags: row.tags.map((name) => ({ name, reason: '用户已标注' })),
+  }));
+  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback, examples });
 
   await saveSuggestions(ctx.env, userId, null, outcome.results);
 

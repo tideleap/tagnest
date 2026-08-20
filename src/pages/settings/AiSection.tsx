@@ -197,6 +197,26 @@ export function AiSection() {
             ]}
             hint="低于阈值的建议仍然进入确认队列。建议先用一段时间人工确认，确认质量稳定后再调低。"
           />
+
+          <div className="h-px bg-line" />
+
+          <Switch
+            checked={data.fetchContent}
+            onChange={(next) => update.mutate({ fetchContent: next })}
+            label="抓取页面内容辅助分类"
+            hint="整理时读取每个书签的网页正文，让模型基于真实内容而非仅标题分类。抓取失败会自动降级，不影响整理。"
+            disabled={currentProvider === 'none'}
+          />
+
+          <div className="h-px bg-line" />
+
+          <Switch
+            checked={data.twoPass}
+            onChange={(next) => update.mutate({ twoPass: next })}
+            label="两轮精细分类（更高准确率）"
+            hint="先让模型判断每条书签的主题领域，再据此打标签。每批多一次轻量调用，成本略增，适合对准确率要求高的场景。"
+            disabled={currentProvider === 'none'}
+          />
         </div>
       </Card>
 

@@ -415,6 +415,17 @@ export interface AiSettings {
   autoApplyThreshold: number;
   /** Upper bound on tags proposed per bookmark (1-8). */
   maxTags: number;
+  /**
+   * Fetch each bookmark's page and feed a text excerpt to the model.
+   * The biggest accuracy lever; default on. Failed fetches degrade silently.
+   */
+  fetchContent: boolean;
+  /**
+   * Extra coarse-to-fine refinement pass: the model first judges each
+   * bookmark's topic, then tags with that judgement as context. Costs about
+   * one extra (cheap) call per batch; default off.
+   */
+  twoPass: boolean;
 }
 
 /* ------------------------------------------------------------------ *

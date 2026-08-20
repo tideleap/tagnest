@@ -545,10 +545,10 @@ export class MockDb {
       return [...buckets.entries()].map(([d, c]) => ({ d, c }));
     }
 
-    // --- ai: loadVocabulary (tags + usage counts) --------------------
+    // --- ai: loadVocabulary (tags + usage counts + parent_id) --------
     if (
       u.startsWith(
-        'SELECT T.ID AS ID, T.NAME AS NAME, T.ALIASES AS ALIASES, COUNT(B.ID) AS CNT FROM TAGS T LEFT JOIN',
+        'SELECT T.ID AS ID, T.NAME AS NAME, T.ALIASES AS ALIASES, T.PARENT_ID AS PARENT_ID, COUNT(B.ID) AS CNT FROM TAGS T LEFT JOIN',
       )
     ) {
       const userId = params[0] as string;
@@ -558,6 +558,7 @@ export class MockDb {
           id: t.id,
           name: t.name,
           aliases: t.aliases ?? null,
+          parent_id: t.parent_id ?? null,
           cnt: this.bookmark_tags.filter((bt) => {
             if (bt.tag_id !== t.id) return false;
             const b = this.bookmarks.find((x) => x.id === bt.bookmark_id && x.deleted_at == null);

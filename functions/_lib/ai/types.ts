@@ -19,6 +19,10 @@ export interface AiConfig {
   autoApplyThreshold: number;
   /** Per-bookmark ceiling on suggested tags. */
   maxTags: number;
+  /** Fetch each bookmark's page and feed a text excerpt to the model. */
+  fetchContent: boolean;
+  /** Extra coarse-to-fine refinement pass (costs ~1 extra call per batch). */
+  twoPass: boolean;
 }
 
 /**
@@ -37,6 +41,13 @@ export interface EnrichInput {
   url: string;
   title: string;
   description?: string | null;
+  /**
+   * Short text excerpt of the page body, fetched before the model call
+   * (see `enrich.ts`). Present only when content fetching is enabled and the
+   * fetch succeeded — the pipeline must treat it as optional enrichment, never
+   * as a requirement, because plenty of pages refuse to be fetched.
+   */
+  pageExcerpt?: string | null;
 }
 
 /** Which engine produced a candidate. Surfaced in the UI and used for scoring. */
@@ -92,6 +103,12 @@ export interface VocabEntry {
   aliases: string[];
   /** How many bookmarks carry it — the tie-breaker when two tags match. */
   count: number;
+  /**
+   * Parent tag id, when the user has nested this tag. Used only to render the
+   * vocabulary hierarchically in the prompt (so the model picks the right
+   * granularity); normalisation itself stays parent-agnostic.
+   */
+  parentId?: string | null;
 }
 
 /** The user's existing tag system, indexed for fast normalisation. */

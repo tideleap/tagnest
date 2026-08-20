@@ -1,5 +1,13 @@
 import { domainFallbackTag } from './domain-fallback';
-import { BATCH_SIZE, buildTaggingPrompt, parseTaggingResponse } from './prompt';
+import { enrichInputsWithContent } from './enrich';
+import {
+  BATCH_SIZE,
+  buildCoarsePrompt,
+  buildTaggingPrompt,
+  parseCoarseResponse,
+  parseTaggingResponse,
+  type Example,
+} from './prompt';
 import { callProvider, isFatal, isRetryable } from './providers';
 import { resolveCandidates } from './taxonomy';
 import {
@@ -61,6 +69,11 @@ export interface SuggestOptions {
   local: LocalConfig;
   feedback?: FeedbackProfile | null;
   fetchImpl?: typeof fetch;
+  /**
+   * Few-shot examples drawn from the user's own well-tagged bookmarks (方案B).
+   * When omitted or empty the prompt falls back to its built-in defaults.
+   */
+  examples?: Example[];
 }
 
 /** One retry on a transient provider failure; more would stall a batch job. */
@@ -98,12 +111,41 @@ export async function suggestForBookmarks(
   const wantModel = Boolean(config && (config.autoTag || config.autoSummarize));
 
   if (wantModel && config) {
-    for (let start = 0; start < inputs.length; start += BATCH_SIZE) {
-      const slice = inputs.slice(start, start + BATCH_SIZE);
+    // 方案A: fetch page content so the model classifies real text, not just a
+    // title. Runs once for the whole input set (bounded concurrency, hard
+    // timeouts); failures leave the input untouched and the pipeline proceeds.
+    const enriched = config.fetchContent
+      ? await enrichInputsWithContent(inputs, options.fetchImpl)
+      : inputs;
+
+    for (let start = 0; start < enriched.length; start += BATCH_SIZE) {
+      const slice = enriched.slice(start, start + BATCH_SIZE);
+
+      // 方案E: optional coarse pass. One cheap call per batch produces a topic
+      // judgement that anchors the fine pass, improving tag granularity.
+      let coarseTopics: Array<string | null> | undefined;
+      if (config.twoPass) {
+        const coarsePrompt = buildCoarsePrompt(slice);
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+          const outcome = await callProvider(config, coarsePrompt, options.fetchImpl);
+          if (outcome.ok) {
+            coarseTopics = parseCoarseResponse(outcome.text, slice.length);
+            break;
+          }
+          if (isFatal(outcome.error)) {
+            fatal = true;
+            break;
+          }
+          if (!isRetryable(outcome.error) || attempt === MAX_ATTEMPTS) break;
+        }
+        if (fatal) break;
+      }
 
       const prompt = buildTaggingPrompt(slice, vocab, {
         maxTags: local.maxTags,
         wantSummary: config.autoSummarize,
+        coarseTopics,
+        examples: options.examples,
       });
 
       let text: string | null = null;
