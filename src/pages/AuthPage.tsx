@@ -152,7 +152,7 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
             <span className="atelier-wordmark text-2xl text-ink">TagNest</span>
           </div>
 
-          <div className="atelier-glass anim-atelier-enter rounded-[1.5rem] p-7 shadow-modal sm:p-8">
+          <div className="atelier-glass anim-atelier-enter rounded-2xl p-7 shadow-modal sm:p-8">
             <p className="atelier-eyebrow mb-3">{isSignUp ? '创建账户' : '欢迎回来'}</p>
             <h2 className="atelier-display atelier-display--3 text-ink">
               {isSignUp ? '开启你的书签巢' : '登录以继续'}

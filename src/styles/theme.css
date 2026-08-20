@@ -52,6 +52,24 @@
   --text-5xl: 3.75rem;       /* 60 — landing presence (rare)        */
   --text-5xl--line-height: 1.05;
 
+  /* ---- Semantic type scale (UI Design System v2) -------------------
+   * Single-source-of-truth aliases for the six intended tiers. Pages
+   * adopt these instead of ad-hoc text-* sizes so headings stay on one
+   * consistent ladder: display > h1 > h2 > h3 > body > caption.
+   */
+  --text-display: 1.75rem;        /* 28 — empty-state / hero (rare)   */
+  --text-display--line-height: 2rem;
+  --text-h1: 1.375rem;           /* 22 — page title (one per page)   */
+  --text-h1--line-height: 1.8rem;
+  --text-h2: 1.0625rem;          /* 17 — section title               */
+  --text-h2--line-height: 1.5rem;
+  --text-h3: 0.9375rem;          /* 15 — card title                  */
+  --text-h3--line-height: 1.3125rem;
+  --text-body: 0.9375rem;        /* 15 — default body copy           */
+  --text-body--line-height: 1.4rem;
+  --text-caption: 0.75rem;       /* 12 — caption / count / tag       */
+  --text-caption--line-height: 1.05rem;
+
   /* ---- Radius: four steps ------------------------------------------
    * `sm` stays tight: it sits on tiny controls (16px checkboxes, chips,
    * icon thumbs) where a big corner reads as a blob. md/lg soften the
@@ -77,6 +95,15 @@
   --shadow-modal:
     0 8px 14px -6px rgb(16 14 10 / 0.08), 0 32px 64px -16px rgb(16 14 10 / 0.22);
   --shadow-glow: 0 8px 26px -8px color-mix(in oklab, var(--p-brand) 38%, transparent);
+
+  /* ---- Elevation (UI Design System v2): three-tier ladder ----------
+   * Additive aliases over the existing four-step set above. `xs` is the
+   * resting card edge, `sm` the hover lift, `lg` reserved for modal /
+   * drawer / popover. Prefer these over `shadow-float` (heavy two-layer).
+   */
+  --shadow-xs: 0 1px 2px 0 rgb(16 14 10 / 0.06);
+  --shadow-sm: 0 2px 8px -2px rgb(16 14 10 / 0.10);
+  --shadow-lg: 0 12px 32px -12px rgb(16 14 10 / 0.20);
 
   /* ---- Motion ------------------------------------------------------ */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);

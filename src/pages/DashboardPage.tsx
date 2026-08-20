@@ -36,7 +36,7 @@ function Hero({
   failed?: boolean;
 }) {
   return (
-    <section className="atelier-edge relative overflow-hidden rounded-[1.6rem] border border-line bg-surface/70 p-7 shadow-float backdrop-blur-sm sm:p-10">
+    <section className="atelier-edge relative overflow-hidden rounded-2xl border border-line bg-surface/70 p-7 shadow-float backdrop-blur-sm sm:p-10">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-soft/60 blur-[80px]" />
         <div className="absolute -bottom-24 left-1/4 h-60 w-60 rounded-full bg-brand-accent/10 blur-[70px]" />

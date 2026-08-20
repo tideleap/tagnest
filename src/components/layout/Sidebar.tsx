@@ -354,7 +354,7 @@ export function Sidebar() {
       <aside
         className={cx(
           'glass fixed inset-y-0 left-0 z-30 hidden flex-col md:flex',
-          'm-3 mb-3 rounded-[1.4rem] shadow-float',
+          'm-3 mb-3 rounded-xl shadow-float',
           'transition-[width] duration-200',
           collapsed ? 'w-16' : 'w-16 lg:w-64',
         )}

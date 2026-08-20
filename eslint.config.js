@@ -1,6 +1,10 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
+import noMagicTokens from './tools/eslint/no-magic-tokens.js';
+
+/** Local, project-specific rules that enforce the UI Design System contract. */
+const tagnest = { rules: { 'no-magic-tokens': noMagicTokens } };
 
 export default tseslint.config(
   {
@@ -38,7 +42,7 @@ export default tseslint.config(
   },
   {
     files: ['**/*.{ts,tsx}'],
-    plugins: { 'react-hooks': reactHooks },
+    plugins: { 'react-hooks': reactHooks, tagnest },
     languageOptions: {
       parserOptions: {
         ecmaFeatures: { jsx: true },
@@ -54,6 +58,9 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
+      // UI Design System v2 gate — warn only for now; tighten to 'error' once
+      // the existing backlog has been cleared in later stages.
+      'tagnest/no-magic-tokens': 'warn',
     },
   },
   {
