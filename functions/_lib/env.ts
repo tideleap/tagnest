@@ -43,6 +43,12 @@ export interface Env {
    */
   SHARE_CACHE?: KVNamespace;
   /**
+   * Optional per-URL cache of AI tagging results (P1-2). Absent in local dev
+   * and on deployments that skip the binding; the engine degrades to always
+   * calling the model. Keyed by URL + prompt version + model.
+   */
+  AI_CACHE?: KVNamespace;
+  /**
    * R2 bucket holding generated website snapshots. Absent in local dev and on
    * deployments that skip the binding; the snapshot pipeline degrades to a
    * plain (no-snapshot) bookmark when it is missing.

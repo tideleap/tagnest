@@ -120,6 +120,16 @@ describe('buildTaggingPrompt — modernisation', () => {
     expect(prompt).toContain('前端');
     expect(prompt).toContain('后端');
   });
+
+  it('injects the classification-protection rules (P2-3)', () => {
+    const prompt = buildTaggingPrompt([input], vocab, { maxTags: 4, wantSummary: false });
+    // Same company/project/business-system pages must stay together.
+    expect(prompt).toContain('同一公司');
+    // Respect existing taxonomy semantics; do not invent near-duplicates.
+    expect(prompt).toContain('近义新标签');
+    // Unify variant spellings onto the existing tag.
+    expect(prompt).toContain('统一到已有标签');
+  });
 });
 
 describe('buildSummarizationPrompt — dedicated summary prompt', () => {

@@ -10,6 +10,7 @@ import {
   loadFeedbackProfile,
   loadFewShotExamples,
   loadVocabulary,
+  makeKvTagCache,
   saveSuggestions,
   suggestForBookmarks,
   toApiSuggestion,
@@ -32,7 +33,7 @@ const MAX_INLINE = 20;
  */
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
-  const body = await readJson<{ bookmarkIds?: unknown }>(ctx.request);
+  const body = await readJson<{ bookmarkIds?: unknown; synthesizeTree?: unknown }>(ctx.request);
 
   const requested = Array.isArray(body.bookmarkIds)
     ? [...new Set(body.bookmarkIds.map(String))].filter(Boolean).slice(0, MAX_INLINE)
@@ -65,7 +66,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     description: row.description ?? undefined,
     tags: row.tags.map((name) => ({ name, reason: '用户已标注' })),
   }));
-  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback, examples });
+  const outcome = await suggestForBookmarks(inputs, {
+    vocab,
+    config,
+    local,
+    feedback,
+    examples,
+    synthesizeTree: body.synthesizeTree === true,
+    tagCache: ctx.env.AI_CACHE ? makeKvTagCache(ctx.env.AI_CACHE) : undefined,
+  });
 
   await saveSuggestions(ctx.env, userId, null, outcome.results);
 

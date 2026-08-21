@@ -21,6 +21,13 @@ migrations_dir = "migrations"
 binding = "SHARE_CACHE"
 id = "e0090e3806074150badd3bf531b4fdb6"
 
+# Per-URL cache of AI tagging results (P1-2). Keyed by URL + prompt version +
+# model, so a prompt revision or model switch invalidates automatically. The
+# engine degrades to "always call the model" when this binding is absent.
+[[kv_namespaces]]
+binding = "AI_CACHE"
+id = "23407e65600b4830bb2e23f9f2879322"
+
 # Website snapshots ("website preview image") live in R2. The bucket must be
 # created before deploy. Use the existing bucket created in the Cloudflare
 # dashboard (APAC region).

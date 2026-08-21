@@ -8,6 +8,7 @@ import {
   autoApply,
   aggregateTopics,
   applyTagHierarchy,
+  countJobNewTags,
   getJob,
   loadAiConfig,
   loadBookmarkInputs,
@@ -15,7 +16,9 @@ import {
   loadFeedbackProfile,
   loadFewShotExamples,
   loadVocabulary,
+  makeKvTagCache,
   saveSuggestions,
+  shouldWarnRebalance,
   suggestForBookmarks,
   toApiJob,
   toLocalConfig,
@@ -68,6 +71,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       done: true,
       suggested: 0,
       autoApplied: 0,
+      rebalanceWarning: false,
       uncovered: 0,
       engine: 'none',
       modelError: null,
@@ -108,7 +112,14 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     tags: row.tags.map((name) => ({ name, reason: '用户已标注' })),
   }));
 
-  const outcome = await suggestForBookmarks(inputs, { vocab, config, local, feedback, examples });
+  const outcome = await suggestForBookmarks(inputs, {
+    vocab,
+    config,
+    local,
+    feedback,
+    examples,
+    tagCache: ctx.env.AI_CACHE ? makeKvTagCache(ctx.env.AI_CACHE) : undefined,
+  });
 
   const written = await saveSuggestions(ctx.env, userId, jobId, outcome.results);
   const autoApplied = await autoApply(ctx.env, userId, local.autoApplyThreshold, jobId);
@@ -158,11 +169,31 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   });
 
   const updated = await getJob(ctx.env, userId, jobId);
+
+  // P2-2: on a successful finish, measure how much NEW taxonomy this run
+  // introduced relative to what already existed. A large share means the
+  // incremental pass drifted, so the UI suggests a full re-classify.
+  let rebalanceWarning = false;
+  if (finished && !failed) {
+    try {
+      const { newTags, existingTags } = await countJobNewTags(ctx.env, userId, jobId);
+      rebalanceWarning = shouldWarnRebalance(newTags, existingTags);
+    } catch (e) {
+      // A warning is advisory; never let its computation fail the run.
+      log.error('ai.job.rebalance', {
+        userId,
+        jobId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   const result: AiJobRunResult = {
     job: toApiJob(updated ?? job),
     done: finished || failed,
     suggested: written,
     autoApplied,
+    rebalanceWarning,
     uncovered: outcome.uncovered,
     engine: outcome.engine,
     modelError: outcome.modelError,

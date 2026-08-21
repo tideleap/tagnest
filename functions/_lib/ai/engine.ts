@@ -8,8 +8,10 @@ import {
   parseTaggingResponse,
   type Example,
 } from './prompt';
-import { callProvider, isFatal, isRetryable } from './providers';
+import { callProvider, isFatal, isRetryable, withRetry } from './providers';
 import { resolveCandidates } from './taxonomy';
+import { attachParentTags, synthesizeTaxonomy, type TaxonomyNode } from './taxonomy-tree';
+import { cacheKeyFor, type TagCache, type TagCacheEntry } from './url-cache';
 import {
   sameHostBoost,
   scoreTagCandidate,
@@ -60,6 +62,12 @@ export interface SuggestOutcome {
   fatal: boolean;
   /** Number of bookmarks that received only the domain fallback (no model tag). */
   uncovered: number;
+  /**
+   * The consistent hierarchy synthesized from the batch's tag frequencies (P0-1),
+   * when `synthesizeTree` was enabled and enough signal existed. Undefined when
+   * synthesis was off or produced nothing — never an error to omit it.
+   */
+  suggestedTaxonomy?: TaxonomyNode[];
 }
 
 export interface SuggestOptions {
@@ -74,10 +82,124 @@ export interface SuggestOptions {
    * When omitted or empty the prompt falls back to its built-in defaults.
    */
   examples?: Example[];
+  /**
+   * P0-1: synthesize a consistent classification tree from the batch's tag
+   * frequencies and attach each tag's parent category (opt-in, default off so
+   * existing behaviour is unchanged until explicitly enabled).
+   */
+  synthesizeTree?: boolean;
+  /**
+   * P1-2: per-URL result cache. When present, URLs the model has already tagged
+   * (same prompt version + model) are served from cache and skip the model
+   * entirely; fresh results are written back. Absent ⇒ always call the model.
+   */
+  tagCache?: TagCache;
 }
 
-/** One retry on a transient provider failure; more would stall a batch job. */
-const MAX_ATTEMPTS = 2;
+/**
+ * How deep the precise-compensation recursion may go when the model returns a
+ * partial batch. Depth 1 means: one re-run of the missing bookmarks; if those
+ * still come back incomplete we stop and let the per-bookmark fallback cover the
+ * rest. Bounding it keeps call counts predictable and avoids an exponential
+ * re-send on a consistently failing model.
+ */
+const COMPENSATE_DEPTH = 1;
+
+/**
+ * Calls the model for one tagging batch, retrying transient failures, then — if the
+ * response parses to nothing — fires a single "strict JSON only" repair turn
+ * before giving up. This recovers the common malformed-but-meaningful responses
+ * (prose preamble, markdown fences, truncated tail) that used to drop the whole
+ * batch to the fallback path.
+ */
+async function callTagWithRetryAndRepair(
+  config: AiConfig,
+  prompt: string,
+  batchSize: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ items: import('./prompt').ParsedItem[]; fatal: boolean; error: string | null }> {
+  const result = await withRetry(
+    () => callProvider(config, prompt, fetchImpl),
+    (outcome) => {
+      if (outcome.ok) return 'ok';
+      if (isFatal(outcome.error)) return 'stop';
+      if (isRetryable(outcome.error)) return 'retry';
+      return 'stop';
+    },
+  );
+
+  if (!result.ok) {
+    // Stop without further retries: the error is fatal or not worth retrying.
+    return { items: [], fatal: isFatal(result.error), error: result.error?.message ?? '模型调用失败' };
+  }
+
+  // Successful response: parse it, and if it yields nothing, fire one strict-JSON
+  // repair turn before giving up (recovers prose/fenced/truncated responses).
+  let items = parseTaggingResponse(result.text, batchSize);
+  if (items.length === 0) {
+    const repairOutcome = await callProvider(
+      config,
+      `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
+      fetchImpl,
+    );
+    if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
+      const repaired = parseTaggingResponse(repairOutcome.text, batchSize);
+      if (repaired.length > 0) items = repaired;
+    }
+  }
+  return { items, fatal: false, error: null };
+}
+
+/**
+ * Tags a group of bookmarks (a subset of one batch) and guarantees completeness
+ * via precise compensation: if the model returns fewer items than requested, the
+ * missing bookmarks are re-sent alone (recursively, up to COMPENSATE_DEPTH) so
+ * they receive a real tag instead of silently falling back. This is the direct
+ * fix for "分类不够全面" — a truncated or partial response no longer drops
+ * bookmarks. When the model is fatally misconfigured the failure propagates so
+ * the job stops and reports why.
+ */
+async function tagGroup(
+  group: BookmarkInput[],
+  localIndices: number[],
+  depth: number,
+  opts: {
+    config: AiConfig;
+    vocab: Vocabulary;
+    local: LocalConfig;
+    wantSummary: boolean;
+    coarseTopics?: Array<string | null>;
+    examples?: Example[];
+    fetchImpl?: typeof fetch;
+  },
+): Promise<{ items: Map<number, import('./prompt').ParsedItem>; fatal: boolean; error: string | null }> {
+  const out = new Map<number, import('./prompt').ParsedItem>();
+  if (group.length === 0) return { items: out, fatal: false, error: null };
+
+  const prompt = buildTaggingPrompt(group, opts.vocab, {
+    maxTags: opts.local.maxTags,
+    wantSummary: opts.wantSummary,
+    coarseTopics: opts.coarseTopics,
+    examples: opts.examples,
+  });
+
+  const { items, fatal, error } = await callTagWithRetryAndRepair(opts.config, prompt, group.length, opts.fetchImpl);
+  if (fatal) return { items: out, fatal: true, error };
+
+  for (const item of items) {
+    const li = localIndices[item.index];
+    if (li !== undefined) out.set(li, item);
+  }
+
+  const missing = localIndices.filter((li) => !out.has(li));
+  if (missing.length > 0 && missing.length < localIndices.length && depth < COMPENSATE_DEPTH) {
+    const missingInputs = missing.map((li) => group[localIndices.indexOf(li)]);
+    const sub = await tagGroup(missingInputs, missing, depth + 1, opts);
+    if (sub.fatal) return { items: out, fatal: true, error: sub.error };
+    for (const [li, item] of sub.items) out.set(li, item);
+  }
+  return { items: out, fatal: false, error: null };
+}
 
 /**
  * Produces suggestions for a set of bookmarks.
@@ -107,6 +229,8 @@ export async function suggestForBookmarks(
   let modelError: string | null = null;
   let modelContributed = false;
   let fatal = false;
+  /** P0-1 synthesized hierarchy, when synthesis ran and produced a tree. */
+  let suggestedTaxonomy: TaxonomyNode[] | undefined;
 
   const wantModel = Boolean(config && (config.autoTag || config.autoSummarize));
 
@@ -118,78 +242,135 @@ export async function suggestForBookmarks(
       ? await enrichInputsWithContent(inputs, options.fetchImpl)
       : inputs;
 
-    for (let start = 0; start < enriched.length; start += BATCH_SIZE) {
-      const slice = enriched.slice(start, start + BATCH_SIZE);
+    // Shared applier: writes one parsed item (fresh model output or cache hit)
+    // into the per-bookmark maps the normalisation pass reads from.
+    const applyItem = (globalIndex: number, item: TagCacheEntry) => {
+      if (config.autoTag && item.tags.length > 0) {
+        modelContributed = true;
+        modelTags.set(
+          globalIndex,
+          item.tags.map((tag) => ({
+            name: tag.name,
+            confidence: tag.confidence,
+            source: 'model' as const,
+            reason: tag.reason,
+          })),
+        );
+      }
+      if (config.autoSummarize && item.summary) {
+        modelContributed = true;
+        summaries.set(globalIndex, item.summary);
+      }
+      // Topic + review-flag are per-bookmark attributes; capture them once
+      // regardless of how many tags the model proposed.
+      if (item.topic) topics.set(globalIndex, item.topic);
+      if (item.needsReview) needsReviewFlags.set(globalIndex, true);
+    };
+
+    // P1-2: serve cache hits directly; only uncached URLs go to the model.
+    // Keys fold in prompt version + model, so a prompt bump invalidates
+    // automatically. Lookups run in parallel — one round trip, not N.
+    const cache = options.tagCache;
+    const pending: Array<{ input: BookmarkInput; globalIndex: number; key: string }> = [];
+    if (cache) {
+      const keys = await Promise.all(enriched.map((input) => cacheKeyFor(input.url, config.model)));
+      const hits = await Promise.all(keys.map((key) => cache.get(key)));
+      enriched.forEach((input, index) => {
+        const hit = hits[index];
+        if (hit) applyItem(index, hit);
+        else pending.push({ input, globalIndex: index, key: keys[index] });
+      });
+    } else {
+      enriched.forEach((input, index) => pending.push({ input, globalIndex: index, key: '' }));
+    }
+
+    for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+      const slice = pending.slice(start, start + BATCH_SIZE);
+      const sliceInputs = slice.map((p) => p.input);
 
       // 方案E: optional coarse pass. One cheap call per batch produces a topic
       // judgement that anchors the fine pass, improving tag granularity.
       let coarseTopics: Array<string | null> | undefined;
       if (config.twoPass) {
-        const coarsePrompt = buildCoarsePrompt(slice);
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-          const outcome = await callProvider(config, coarsePrompt, options.fetchImpl);
-          if (outcome.ok) {
-            coarseTopics = parseCoarseResponse(outcome.text, slice.length);
-            break;
-          }
-          if (isFatal(outcome.error)) {
-            fatal = true;
-            break;
-          }
-          if (!isRetryable(outcome.error) || attempt === MAX_ATTEMPTS) break;
+        const coarsePrompt = buildCoarsePrompt(sliceInputs);
+        const outcome = await withRetry(
+          () => callProvider(config, coarsePrompt, options.fetchImpl),
+          (o) => {
+            if (o.ok) return 'ok';
+            if (isFatal(o.error)) return 'stop';
+            if (isRetryable(o.error)) return 'retry';
+            return 'stop';
+          },
+        );
+        if (outcome.ok) {
+          coarseTopics = parseCoarseResponse(outcome.text, sliceInputs.length);
+        } else if (isFatal(outcome.error)) {
+          fatal = true;
+          modelError = outcome.error.message;
         }
         if (fatal) break;
       }
 
-      const prompt = buildTaggingPrompt(slice, vocab, {
-        maxTags: local.maxTags,
-        wantSummary: config.autoSummarize,
-        coarseTopics,
-        examples: options.examples,
-      });
-
-      let text: string | null = null;
-
-      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-        const outcome = await callProvider(config, prompt, options.fetchImpl);
-        if (outcome.ok) {
-          text = outcome.text;
-          modelError = null;
-          break;
-        }
-        modelError = outcome.error.message;
-        if (isFatal(outcome.error)) {
-          fatal = true;
-          break;
-        }
-        if (!isRetryable(outcome.error) || attempt === MAX_ATTEMPTS) break;
+      // 方案E 两轮：若开启两轮分类，先用粗分结果锚定本轮打标。
+      const groupResult = await tagGroup(
+        sliceInputs,
+        sliceInputs.map((_, k) => k),
+        0,
+        {
+          config,
+          vocab,
+          local,
+          wantSummary: config.autoSummarize,
+          coarseTopics,
+          examples: options.examples,
+          fetchImpl: options.fetchImpl,
+        },
+      );
+      if (groupResult.fatal) {
+        fatal = true;
+        if (groupResult.error) modelError = groupResult.error;
+        break;
       }
 
-      if (fatal) break;
-      if (!text) continue;
+      for (const [localIdx, item] of groupResult.items) {
+        const globalIndex = slice[localIdx].globalIndex;
+        applyItem(globalIndex, item);
+        // P1-2 write-back: remember this URL's result so a re-analysis of the
+        // same page skips the model. Empty results are NOT cached — a quiet
+        // model this time should not poison the next run.
+        if (cache && (item.tags.length > 0 || item.summary)) {
+          await cache.put(slice[localIdx].key, {
+            tags: item.tags,
+            summary: item.summary,
+            topic: item.topic,
+            needsReview: item.needsReview,
+          });
+        }
+      }
+    }
 
-      for (const item of parseTaggingResponse(text, slice.length)) {
-        const globalIndex = start + item.index;
-        if (config.autoTag && item.tags.length > 0) {
-          modelContributed = true;
-          modelTags.set(
-            globalIndex,
-            item.tags.map((tag) => ({
-              name: tag.name,
-              confidence: tag.confidence,
-              source: 'model' as const,
-              reason: tag.reason,
-            })),
-          );
+    // P0-1: synthesise a consistent hierarchy from the batch's tag frequencies
+    // and attach each tag's parent category, so independent per-bookmark tags
+    // stop fragmenting into a flat pile ("补父标签").
+    if (options.synthesizeTree) {
+      const tagCounts = new Map<string, number>();
+      for (const cands of modelTags.values()) {
+        for (const cand of cands) {
+          tagCounts.set(cand.name, (tagCounts.get(cand.name) ?? 0) + 1);
         }
-        if (config.autoSummarize && item.summary) {
-          modelContributed = true;
-          summaries.set(globalIndex, item.summary);
+      }
+      if (tagCounts.size >= 8) {
+        const counts = [...tagCounts.entries()].map(([name, count]) => ({ name, count }));
+        const synth = await synthesizeTaxonomy(counts, config, options.fetchImpl);
+        if (synth.fatal) {
+          fatal = true;
+          if (synth.error) modelError = synth.error;
+        } else if (synth.tree.length > 0) {
+          suggestedTaxonomy = synth.tree;
+          for (const [index, cands] of modelTags) {
+            modelTags.set(index, attachParentTags(cands, synth.tree));
+          }
         }
-        // Topic + review-flag are per-bookmark attributes; capture them once
-        // regardless of how many tags the model proposed.
-        if (item.topic) topics.set(globalIndex, item.topic);
-        if (item.needsReview) needsReviewFlags.set(globalIndex, true);
       }
     }
   } else if (!config) {
@@ -259,7 +440,7 @@ export async function suggestForBookmarks(
   if (modelContributed) engine = 'model';
   else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal, uncovered };
+  return { results, engine, modelError, fatal, uncovered, suggestedTaxonomy };
 }
 
 /**

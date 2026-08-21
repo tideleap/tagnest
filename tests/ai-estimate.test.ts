@@ -152,6 +152,39 @@ describe('estimateJob — store level', () => {
     expect(est.bookmarks).toBe(2);
     expect(est.capped).toBe(false);
   });
+
+  it('forecasts call count, retry ceiling and duration (single pass)', async () => {
+    const { env } = aiEnv({ bookmarks: makeBookmarks(25) });
+    const est = await estimateJob(env, 'u1', 'untagged');
+    const batches = Math.ceil(25 / BATCH_SIZE);
+    // Single pass: one tagging call per batch.
+    expect(est.estimatedCalls).toBe(batches);
+    expect(est.maxModelCalls).toBeGreaterThan(est.estimatedCalls);
+    expect(est.maxModelCalls % est.estimatedCalls).toBe(0);
+    expect(est.estimatedSeconds).toBeGreaterThan(0);
+  });
+
+  it('doubles the call forecast when two-pass is enabled', async () => {
+    const settings = {
+      user_id: 'u1',
+      provider: 'openai',
+      base_url: null,
+      model: 'gpt-4o-mini',
+      api_key_encrypted: 'sk-test',
+      auto_tag: 1,
+      auto_summarize: 0,
+      auto_apply_threshold: 1,
+      heuristics_enabled: 0,
+      max_tags: 4,
+      fetch_content: 1,
+      two_pass: 1,
+    };
+    const { env } = aiEnv({ bookmarks: makeBookmarks(25), ai_settings: [settings] });
+    const est = await estimateJob(env, 'u1', 'untagged');
+    const batches = Math.ceil(25 / BATCH_SIZE);
+    // Two-pass: coarse + fine = 2 calls per batch.
+    expect(est.estimatedCalls).toBe(batches * 2);
+  });
 });
 
 /* ------------------------------------------------------------------ *

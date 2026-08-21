@@ -534,6 +534,19 @@ export interface AiJobEstimate {
   modelReady: boolean;
   /** True when the scope was clipped to the per-run maximum. */
   capped: boolean;
+  /**
+   * Happy-path model call count: batches × (twoPass ? 2 : 1). This is what a
+   * normal run actually spends; `maxModelCalls` is the retry-inflated ceiling.
+   */
+  estimatedCalls: number;
+  /**
+   * Worst-case model call count: estimatedCalls × retry ceiling. A
+   * consistently-failing provider could burn this many attempts before the
+   * engine gives up, so the user sees the upper bound they are authorising.
+   */
+  maxModelCalls: number;
+  /** Rough wall-clock seconds for the happy path (calls × per-call latency). */
+  estimatedSeconds: number;
 }
 
 /** Result of one chunk of a run, so the UI can show live progress. */
@@ -545,6 +558,12 @@ export interface AiJobRunResult {
   suggested: number;
   /** Applied without review because they cleared the threshold. */
   autoApplied: number;
+  /**
+   * P2-2: true when the run introduced a large share of NEW tags relative to
+   * the existing taxonomy (≥30%), signalling the incremental pass has drifted
+   * and a full re-classification would produce a more consistent tree.
+   */
+  rebalanceWarning: boolean;
   /** Bookmarks in this chunk that received only the domain fallback (no model tag). */
   uncovered: number;
   engine: AiEngineKind;

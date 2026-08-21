@@ -124,6 +124,13 @@ const MIGRATION_PROBES = {
   // 0022 creates feeds (IF NOT EXISTS). Probe the table.
   '0022_feeds.sql':
     `SELECT COUNT(*) AS present FROM sqlite_master WHERE type='table' AND name='feeds'`,
+  // 0023 adds ai_settings.fetch_content + ai_settings.two_pass (ALTER, non-
+  // idempotent). Both columns were applied via a direct `wrangler d1 execute
+  // --file` that never wrote _d1_migrations, so probe fetch_content as the
+  // "already applied" marker instead of re-ADDing (which would throw
+  // "duplicate column name: fetch_content").
+  '0023_ai_enhancements.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('ai_settings') WHERE name='fetch_content'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

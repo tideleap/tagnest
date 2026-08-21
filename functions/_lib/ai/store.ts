@@ -685,6 +685,41 @@ export async function countPending(env: Env, userId: string): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+/**
+ * P2-2 — imbalance signal for an incremental run.
+ *
+ * Counts the DISTINCT new tags this job proposed (tag_id NULL = not resolved to
+ * an existing tag) and the size of the user's pre-existing taxonomy. The caller
+ * feeds both into `shouldWarnRebalance` to decide whether the run drifted far
+ * enough to merit a "consider a full re-classify" hint.
+ *
+ * New tags are counted across all of the job's suggestions (not just pending),
+ * because accepted ones are exactly the ones that will land in the taxonomy.
+ */
+export async function countJobNewTags(
+  env: Env,
+  userId: string,
+  jobId: string,
+): Promise<{ newTags: number; existingTags: number }> {
+  const newRow = await env.DB.prepare(
+    `SELECT COUNT(DISTINCT tag_name COLLATE NOCASE) AS n FROM tag_suggestions
+      WHERE user_id = ? AND job_id = ? AND tag_id IS NULL`,
+  )
+    .bind(userId, jobId)
+    .first<{ n: number }>();
+
+  const existingRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM tags WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ n: number }>();
+
+  return {
+    newTags: Number(newRow?.n ?? 0),
+    existingTags: Number(existingRow?.n ?? 0),
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Undo
  * ------------------------------------------------------------------ */

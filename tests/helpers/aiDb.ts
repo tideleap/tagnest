@@ -106,6 +106,9 @@ export interface SettingsRow {
   auto_apply_threshold: number;
   heuristics_enabled: number;
   max_tags: number;
+  /** Migration 0023 columns; absent reads as the migration defaults (1 / 0). */
+  fetch_content?: number;
+  two_pass?: number;
 }
 
 export interface AiDbState {

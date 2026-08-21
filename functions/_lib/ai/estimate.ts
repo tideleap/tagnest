@@ -1,7 +1,7 @@
 import type { Env } from '../env';
 import type { AiJobEstimate } from '../../../shared/types';
-import { BATCH_SIZE, buildTaggingPrompt } from './prompt';
-import { MAX_OUTPUT_TOKENS } from './providers';
+import { BATCH_SIZE, buildCoarsePrompt, buildTaggingPrompt } from './prompt';
+import { MAX_OUTPUT_TOKENS, RETRY_MAX_ATTEMPTS } from './providers';
 import { isModelReady, loadConfigRow, loadVocabulary } from './config';
 import { MAX_JOB_ITEMS, RUN_CHUNK, loadBookmarkInputs, resolveScope } from './store';
 import type { JobScope } from './store';
@@ -64,6 +64,13 @@ export function representativeOutput(
 }
 
 /**
+ * Assumed wall-clock seconds per model call, for the happy-path time forecast.
+ * A 10-bookmark batch typically answers in 3–8s; 8s errs toward overestimating
+ * the wait (the safe direction for setting expectations).
+ */
+const SECONDS_PER_CALL = 8;
+
+/**
  * Forecasts one run's shape and token consumption.
  *
  * Pure computation over the resolved scope plus one measured sample prompt —
@@ -102,12 +109,27 @@ export async function estimateJob(
     });
     estimatedInputTokens = tokensFromChars(prompt.length) * batches;
 
+    // Two-pass adds one cheap coarse call per batch; measure its prompt too so
+    // the input forecast covers it instead of silently omitting it.
+    if (row.twoPass) {
+      estimatedInputTokens += tokensFromChars(buildCoarsePrompt(inputs).length) * batches;
+    }
+
     const perBatchOutput = Math.min(
       tokensFromChars(representativeOutput(inputs.length, row.maxTags, row.autoSummarize).length),
       MAX_OUTPUT_TOKENS,
     );
     estimatedOutputTokens = perBatchOutput * batches;
   }
+
+  // Happy-path call count: one tagging call per batch, plus one coarse call per
+  // batch when two-pass is on. The worst case multiplies by the retry ceiling —
+  // a consistently-failing provider could burn that many attempts before the
+  // engine gives up, so the user should see the upper bound they are authorising.
+  const callsPerBatch = row.twoPass ? 2 : 1;
+  const estimatedCalls = batches * callsPerBatch;
+  const maxModelCalls = estimatedCalls * RETRY_MAX_ATTEMPTS;
+  const estimatedSeconds = estimatedCalls * SECONDS_PER_CALL;
 
   return {
     target,
@@ -120,5 +142,8 @@ export async function estimateJob(
     // resolveScope caps untagged/all at MAX_JOB_ITEMS; hitting the ceiling
     // exactly means more bookmarks exist than one run can cover.
     capped: target !== 'ids' && bookmarks >= MAX_JOB_ITEMS,
+    estimatedCalls,
+    maxModelCalls,
+    estimatedSeconds,
   };
 }

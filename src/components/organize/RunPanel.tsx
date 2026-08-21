@@ -38,6 +38,16 @@ interface Props {
  *  judge quality, big enough to be representative. */
 const TRIAL_SIZE = 20;
 
+/** Renders a seconds count as a short human duration ("约 2 分钟" style). */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} 秒`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+}
+
 const ENGINE_LABEL: Record<AiEngineKind, string> = {
   model: '模型',
   fallback: '域名兜底',
@@ -131,12 +141,16 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
             {estimate.modelReady ? (
               <>
                 <span>
-                  约 <strong className="font-semibold text-ink">{estimate.batches}</strong> 次模型调用
+                  约 <strong className="font-semibold text-ink">{estimate.estimatedCalls}</strong> 次模型调用
+                  {estimate.maxModelCalls > estimate.estimatedCalls && (
+                    <span className="text-ink-faint">（含重试上限 {estimate.maxModelCalls}）</span>
+                  )}
                 </span>
                 <span>
                   输入约 {estimate.estimatedInputTokens.toLocaleString()} tokens · 输出约{' '}
                   {estimate.estimatedOutputTokens.toLocaleString()} tokens
                 </span>
+                <span>预计耗时约 {formatDuration(estimate.estimatedSeconds)}</span>
               </>
             ) : (
               <span>未配置模型，将仅使用域名兜底标签（不消耗 tokens）</span>
@@ -230,6 +244,14 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
       )}
 
       {run.error && <Notice tone="critical">{run.error}</Notice>}
+
+      {/* P2-2: the run introduced a large share of new tags — the incremental
+          pass has drifted, so suggest a full re-classify for a cleaner tree. */}
+      {run.rebalanceWarning && (
+        <Notice tone="caution">
+          本次整理新增标签占比较高（≥30%），分类体系可能已偏离既有结构；建议择机对全库运行一次完整整理，让分类树重新收敛。
+        </Notice>
+      )}
 
       {/* Post-run hierarchy summary. Shows when the server finished the automatic
           一级→二级→三级 grouping along with the tag organization. */}

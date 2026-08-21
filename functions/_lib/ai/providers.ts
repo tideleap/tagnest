@@ -31,15 +31,83 @@ export const DEFAULT_ENDPOINTS: Record<Exclude<AiProvider, 'none' | 'custom'>, s
 export const MAX_OUTPUT_TOKENS = 2048;
 
 /**
+ * Reads an optional numeric override from the environment, tolerating runtimes
+ * where `process` is unavailable (edge deployments). Falls back to `fallback`.
+ */
+function envNumber(name: string, fallback: number): number {
+  try {
+    const raw = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[name];
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Model request deadline.
  *
  * Must stay *shorter* than the client's chunk deadline (90s in
  * `useOrganizeRun`) so the server fails first and returns a useful error
  * instead of the client aborting mid-flight and showing a generic timeout.
  * 25s is generous for a 10-bookmark batch while keeping total chunk time
- * (2 batches + D1 writes) well under a minute.
+ * (2 batches + D1 writes) well under a minute. Override with `TN_AI_TIMEOUT_MS`.
  */
-const REQUEST_TIMEOUT_MS = 25_000;
+export const REQUEST_TIMEOUT_MS = envNumber('TN_AI_TIMEOUT_MS', 25_000);
+
+/**
+ * Maximum provider attempts for one logical call (override `TN_AI_MAX_RETRIES`).
+ * Mirrors the reference project's default of 5; exponential backoff is applied
+ * between attempts by `withRetry`.
+ */
+export const RETRY_MAX_ATTEMPTS = envNumber('TN_AI_MAX_RETRIES', 5);
+
+const BACKOFF_BASE_MS = 1_500;
+const BACKOFF_FACTOR = 2;
+const BACKOFF_MAX_MS = 30_000;
+
+/**
+ * Exponential backoff delay (ms) before the n-th retry (n>=1): 1.5s · 2^(n-1),
+ * capped at 30s — matches the reference project's schedule. Returns 0 for n<=0.
+ */
+export function backoffDelayMs(retryIndex: number): number {
+  if (retryIndex <= 0) return 0;
+  const raw = BACKOFF_BASE_MS * Math.pow(BACKOFF_FACTOR, retryIndex - 1);
+  return Math.min(raw, BACKOFF_MAX_MS);
+}
+
+/** Promise-based delay; setTimeout is available in Node and Workers. */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export type RetryVerdict = 'ok' | 'retry' | 'stop';
+
+/**
+ * Runs `attempt` up to `maxAttempts` times with exponential backoff between
+ * retryable failures. `classify` returns:
+ *  - 'ok'   → return the result immediately (success).
+ *  - 'stop' → return the result immediately, no further attempts.
+ *  - 'retry'→ wait (backoff) and retry if attempts remain.
+ *
+ * Centralises the retry/backoff policy so the tagging and tree-synthesis paths
+ * share one configurable implementation instead of three copies.
+ */
+export async function withRetry<T>(
+  attempt: (n: number) => Promise<T>,
+  classify: (result: T) => RetryVerdict,
+  opts: { maxAttempts?: number } = {},
+): Promise<T> {
+  const maxAttempts = opts.maxAttempts ?? RETRY_MAX_ATTEMPTS;
+  let last: T | undefined;
+  for (let n = 1; n <= maxAttempts; n += 1) {
+    last = await attempt(n);
+    const verdict = classify(last);
+    if (verdict === 'ok' || verdict === 'stop') return last;
+    if (n < maxAttempts) await sleep(backoffDelayMs(n));
+  }
+  return last as T;
+}
 
 export interface ProviderRequest {
   url: string;

@@ -4,6 +4,7 @@ import { loadAiConfig, loadConfigRow, loadVocabulary, toLocalConfig } from './co
 import { suggestForBookmarks } from './engine';
 import { saveSuggestions } from './store';
 import { loadFeedbackProfile } from './feedback';
+import { makeKvTagCache } from './url-cache';
 import type { EnrichInput } from './types';
 
 /**
@@ -34,6 +35,8 @@ export * from './grouping-apply';
 export * from './prompt';
 export * from './providers';
 export * from './engine';
+export * from './taxonomy-tree';
+export * from './url-cache';
 export * from './store';
 export * from './feedback';
 export * from './aliases';
@@ -85,6 +88,7 @@ export async function enrichBookmark(
       config,
       local,
       feedback,
+      tagCache: env.AI_CACHE ? makeKvTagCache(env.AI_CACHE) : undefined,
     });
 
     const result = outcome.results[0];

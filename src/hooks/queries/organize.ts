@@ -227,6 +227,11 @@ export interface RunState {
    * Present once the run has settled successfully.
    */
   autoGrouped: AutoGroupResult | null;
+  /**
+   * P2-2: the run introduced a large share of new tags relative to the existing
+   * taxonomy — a hint that a full re-classify would produce a cleaner tree.
+   */
+  rebalanceWarning: boolean;
 }
 
 const IDLE: RunState = {
@@ -239,6 +244,7 @@ const IDLE: RunState = {
   error: null,
   topics: [],
   autoGrouped: null,
+  rebalanceWarning: false,
 };
 
 /**
@@ -363,6 +369,8 @@ export function useOrganizeRun() {
         error: result.job.status === 'failed' ? result.job.error : null,
         topics: mergeTopicCounts(s.topics, result.topics),
         autoGrouped: result.autoGrouped ?? s.autoGrouped,
+        // Only the final chunk computes it; once true, keep it true.
+        rebalanceWarning: s.rebalanceWarning || result.rebalanceWarning,
       }));
 
         if (result.done) break;

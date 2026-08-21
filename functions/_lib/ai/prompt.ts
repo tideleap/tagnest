@@ -49,7 +49,7 @@ export const MAX_REASON_LENGTH = 24;
  * comparison be more than a guess. It is a plain date tag, not a semver, so the
  * value reads as "the prompt that shipped on this day" in logs and dashboards.
  */
-export const PROMPT_VERSION = '2026-08-20';
+export const PROMPT_VERSION = '2026-08-21';
 
 export interface PromptOptions {
   maxTags: number;
@@ -221,6 +221,11 @@ function basePreamble(): string {
     '- 不要把文章标题整句当作标签。',
     '- 用中文，专有名词保留原文（React、Python、Docker、LLM）。',
     '- 每个标签 ≤ 24 字；理由 ≤ 24 字；摘要 ≤ 200 字；主题短语 ≤ 40 字。',
+    '',
+    '分类保护规则（P2-3）：',
+    '- 同一公司、同一项目或同一业务系统的页面应归到同一分类下，不要拆散。',
+    '- 尊重用户已有分类的语义：已有标签能覆盖时，不要另建近义新标签。',
+    '- 同一主题的不同表述（如「前端 / Frontend / 前端开发」）应统一到已有标签的写法。',
   ].join('\n');
 }
 
@@ -440,18 +445,14 @@ export function parseCoarseResponse(raw: string | null, batchSize: number): Arra
   const topics: Array<string | null> = new Array(batchSize).fill(null);
   if (!raw) return topics;
 
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end <= start) return topics;
+  const parsed = extractJsonValue(raw);
+  if (parsed === null) return topics;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return topics;
-  }
-
-  const results = (parsed as { results?: unknown }).results;
+  // Accept either the documented {results:[...]} shape or a bare array-root
+  // ([{...},{...}]) — some models emit the latter and the old parser dropped it.
+  const results = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { results?: unknown }).results;
   if (!Array.isArray(results)) return topics;
 
   for (const entry of results) {
@@ -511,28 +512,110 @@ function parseTag(raw: unknown): ParsedTag | null {
 }
 
 /**
+ * Slices the first balanced JSON value (object or array root) out of arbitrary
+ * model output.
+ *
+ * Walks the string tracking string/escape state so brackets inside a string
+ * value (e.g. a URL with `{`) are not mistaken for structure. Returns null when
+ * no balanced value is found.
+ */
+function sliceBalancedJson(text: string): string | null {
+  const start = text.search(/[[{]/);
+  if (start < 0) return null;
+  const open = text[start];
+  const close = open === '[' ? ']' : '}';
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      continue;
+    }
+    if (ch === open) depth += 1;
+    else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Extracts a JSON value (object or array root) from arbitrary model output.
+ *
+ * Tolerates the failure modes that silently dropped a whole batch under the old
+ * `indexOf('{')` approach:
+ *  - **array-root** responses (`[{…},{…}]`) — the old code sliced `{…},{…}`
+ *    without the surrounding brackets and parsed as `[]`.
+ *  - markdown fences (` ```json … ``` `) and pre/post prose.
+ *  - full-width brackets (`［］｛｝`) and full-width colon (`：`) some Chinese
+ *    models emit.
+ *  - trailing commas before `}` / `]` (soft repair).
+ *
+ * Returns `null` when nothing usable is present; callers degrade gracefully.
+ */
+export function extractJsonValue(raw: string | null): unknown {
+  if (!raw) return null;
+  const normalized = String(raw)
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u00A0\u3000\u200B]/g, ' ')
+    .replace(/［/g, '[')
+    .replace(/］/g, ']')
+    .replace(/｛/g, '{')
+    .replace(/｝/g, '}')
+    .replace(/：/g, ':')
+    .trim();
+  if (!normalized) return null;
+
+  const candidates: string[] = [];
+  // Fenced blocks first — the most explicit intent.
+  for (const m of normalized.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)```/g)) {
+    if (m[1]?.trim()) candidates.push(m[1].trim());
+  }
+  // Then the whole string with any leading prose stripped up to the first bracket.
+  candidates.push(normalized.replace(/^[\s\S]*?(?=[{[])/, ''));
+
+  for (const candidate of candidates) {
+    const balanced = sliceBalancedJson(candidate);
+    if (!balanced) continue;
+    const repaired = balanced.replace(/,(\s*[}\]])/g, '$1');
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return null;
+}
+
+/**
  * Parses a batch response.
  *
  * Models wrap JSON in fences and prepend apologies despite instructions, so we
- * take the outermost balanced object rather than trusting the whole string.
- * Anything malformed degrades to "no suggestions for that bookmark" — never an
- * exception, because one bad response must not fail a 500-bookmark job.
+ * pull the first balanced JSON value (object or array root) rather than trusting
+ * the whole string. Anything malformed degrades to "no suggestions for that
+ * bookmark" — never an exception, because one bad response must not fail a
+ * 500-bookmark job.
  */
 export function parseTaggingResponse(raw: string | null, batchSize: number): ParsedItem[] {
   if (!raw) return [];
 
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end <= start) return [];
+  const parsed = extractJsonValue(raw);
+  if (parsed === null) return [];
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return [];
-  }
-
-  const results = (parsed as { results?: unknown }).results;
+  // Accept either the documented {results:[...]} shape or a bare array-root
+  // ([{...},{...}]) — some models emit the latter and the old parser dropped it.
+  const results = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { results?: unknown }).results;
   if (!Array.isArray(results)) return [];
 
   const out: ParsedItem[] = [];
@@ -587,16 +670,8 @@ export function parseSummarizationResponse(raw: string | null): {
 } {
   if (!raw) return { summary: null, topic: null };
 
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end <= start) return { summary: null, topic: null };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return { summary: null, topic: null };
-  }
+  const parsed = extractJsonValue(raw);
+  if (parsed === null) return { summary: null, topic: null };
 
   if (!parsed || typeof parsed !== 'object') return { summary: null, topic: null };
   const row = parsed as { summary?: unknown; topic?: unknown };
