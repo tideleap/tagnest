@@ -1,0 +1,52 @@
+/* CategorySync P2 build page — extends sync.css tokens. */
+
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width 0.2s ease;
+}
+
+.warn-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 9px;
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sample-group {
+  margin-top: 8px;
+}
+.sample-group .sample-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.sample-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sample-list li {
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  word-break: break-all;
+}
+.sample-list .path {
+  color: var(--muted);
+}

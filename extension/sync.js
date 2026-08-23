@@ -8,6 +8,7 @@
 
 import { loadConfig, isConfigured } from './bg/config.js';
 import { loadSyncState } from './bg/reconcile.js';
+import { clear, el } from './dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,8 +24,12 @@ const els = {
   conflicts: $('conflicts'),
   conflictCount: $('conflictCount'),
   conflictList: $('conflictList'),
+  categoryConflicts: $('categoryConflicts'),
+  categoryConflictCount: $('categoryConflictCount'),
+  categoryConflictList: $('categoryConflictList'),
   rollbackPanel: $('rollbackPanel'),
   rollbackBtn: $('rollbackBtn'),
+  openCategoryBuild: $('openCategoryBuild'),
   openReconcile: $('openReconcile'),
   openOptions: $('openOptions'),
 };
@@ -53,10 +58,7 @@ async function reflectStatus() {
 
   const state = await loadSyncState().catch(() => ({ lastSyncedAt: '' }));
   if (state.lastSyncedAt) {
-    els.dirHint.insertAdjacentHTML(
-      'beforeend',
-      ` 上次同步：${new Date(state.lastSyncedAt).toLocaleString()}`,
-    );
+    els.dirHint.append(document.createTextNode(` 上次同步：${new Date(state.lastSyncedAt).toLocaleString()}`));
   }
 }
 
@@ -82,6 +84,7 @@ els.direction.addEventListener('click', (e) => {
 els.startSync.addEventListener('click', async () => {
   els.result.hidden = true;
   els.conflicts.hidden = true;
+  els.categoryConflicts.hidden = true;
   els.rollbackPanel.hidden = true;
   els.progress.hidden = false;
   els.progressText.textContent = '同步中…';
@@ -125,44 +128,68 @@ els.startSync.addEventListener('click', async () => {
 function renderError(message) {
   els.result.hidden = false;
   els.result.className = 'result err';
-  els.result.innerHTML = `<h2 class="head">同步未完成</h2><div class="err">${escapeHtml(message)}</div>`;
+  clear(els.result);
+  els.result.append(el('h2', 'head', '同步未完成'));
+  els.result.append(el('div', 'err', message));
 }
 
 function renderResult(resp) {
   const p = resp.pushed || { applied: 0, failed: 0, errors: [] };
-  const a = resp.applied || { created: 0, updated: 0, removed: 0 };
+  const a = resp.applied || { created: 0, updated: 0, removed: 0, moved: 0 };
+  const cs = resp.categoryStats || { pushed: 0, appliedMoves: 0, appliedCreates: 0, conflicts: 0 };
   els.result.hidden = false;
   els.result.className = 'result ok';
-  let html = `<h2 class="head">同步完成（${direction === 'two-way' ? '双向' : '仅上传'}）</h2>`;
-  html += `<div class="row"><span>浏览器书签</span><b>${resp.browserCount}</b></div>`;
-  html += `<div class="row"><span>TagNest 变更</span><b>${resp.tnCount}</b></div>`;
-  html += `<div class="row"><span>已上传 / 失败</span><b>${p.applied} / ${p.failed}</b></div>`;
+  clear(els.result);
+  const addRow = (label, value) => {
+    const row = el('div', 'row');
+    row.append(el('span', null, label));
+    row.append(el('b', null, String(value)));
+    els.result.append(row);
+  };
+  els.result.append(
+    el('h2', 'head', `同步完成（${direction === 'two-way' ? '双向' : '仅上传'}）`),
+  );
+  addRow('浏览器书签', resp.browserCount);
+  addRow('TagNest 变更', resp.tnCount);
+  addRow('已上传 / 失败', `${p.applied} / ${p.failed}`);
   if (direction === 'two-way') {
-    html += `<div class="row"><span>写回浏览器（建/改/删）</span><b>${a.created} / ${a.updated} / ${a.removed}</b></div>`;
+    addRow('写回浏览器（建/改/删）', `${a.created} / ${a.updated} / ${a.removed}`);
+  }
+  // 分类同步统计（CS-P3-5）
+  addRow('分类上行（本地文件夹 → 云端）', cs.pushed);
+  if (direction === 'two-way') {
+    addRow('分类写回（云端 → 本地文件夹移动）', a.moved || 0);
+    addRow('新建书签带分类落位', cs.appliedCreates);
   }
   if (p.failed > 0 && Array.isArray(p.errors)) {
-    html += `<div class="err">失败明细：${escapeHtml(
-      p.errors
-        .slice(0, 5)
-        .map((e) => `#${e.index} ${e.code}`)
-        .join('，'),
-    )}</div>`;
+    const errText = `失败明细：${p.errors
+      .slice(0, 5)
+      .map((e) => `#${e.index} ${e.code}`)
+      .join('，')}`;
+    els.result.append(el('div', 'err', errText));
   }
-  els.result.innerHTML = html;
 
   const conflicts = Array.isArray(resp.conflictDetails) ? resp.conflictDetails : [];
-  if (conflicts.length) {
+  const categoryConflicts = conflicts.filter((c) => c.reason === 'category_conflict');
+  const generalConflicts = conflicts.filter((c) => c.reason !== 'category_conflict');
+
+  if (generalConflicts.length) {
     els.conflicts.hidden = false;
-    els.conflictCount.textContent = String(conflicts.length);
-    renderConflicts(conflicts);
+    els.conflictCount.textContent = String(generalConflicts.length);
+    renderConflicts(generalConflicts);
   }
-  if (direction === 'two-way' && (a.created || a.updated || a.removed)) {
+  if (categoryConflicts.length) {
+    els.categoryConflicts.hidden = false;
+    els.categoryConflictCount.textContent = String(categoryConflicts.length);
+    renderCategoryConflicts(categoryConflicts);
+  }
+  if (direction === 'two-way' && (a.created || a.updated || a.removed || a.moved)) {
     els.rollbackPanel.hidden = false;
   }
 }
 
 function renderConflicts(conflicts) {
-  els.conflictList.innerHTML = '';
+  clear(els.conflictList);
   for (const c of conflicts) {
     const li = document.createElement('li');
 
@@ -225,6 +252,110 @@ async function applyTagNestVersion(c, li, keepBtn, applyBtn) {
   }
 }
 
+// --- Category conflict resolution (C4-4) ------------------------------------
+// The local manual move already won upward (pushed). "保留本地文件夹" is a
+// no-op acknowledgement; "采用云端分类" moves the managed bookmark into the
+// cloud's category folder chain (creating folders as needed).
+
+function renderCategoryConflicts(conflicts) {
+  clear(els.categoryConflictList);
+  for (const c of conflicts) {
+    const li = document.createElement('li');
+
+    const key = document.createElement('div');
+    key.className = 'key';
+    key.textContent = c.urlKey;
+
+    const reason = document.createElement('div');
+    reason.className = 'reason';
+    const local = Array.isArray(c.localPath) && c.localPath.length ? c.localPath.join(' > ') : '（未分类）';
+    const cloud = Array.isArray(c.cloudPath) && c.cloudPath.length ? c.cloudPath.join(' > ') : '（未分类）';
+    reason.textContent = `本地文件夹：${local} ｜ 云端分类：${cloud}`;
+
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+
+    const keepBtn = document.createElement('button');
+    keepBtn.className = 'btn btn-secondary';
+    keepBtn.textContent = '保留本地文件夹';
+    keepBtn.addEventListener('click', () => {
+      li.style.opacity = '0.5';
+      keepBtn.disabled = true;
+      applyBtn.disabled = true;
+      keepBtn.textContent = '已保留本地';
+    });
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'btn btn-primary';
+    applyBtn.textContent = '采用云端分类';
+    applyBtn.addEventListener('click', () => applyCloudCategory(c, li, keepBtn, applyBtn));
+
+    acts.append(keepBtn, applyBtn);
+    li.append(key, reason, acts);
+    els.categoryConflictList.append(li);
+  }
+}
+
+/** Ensure a nested folder chain under `rootId`; returns the deepest id. */
+async function ensureFolderChain(rootId, path) {
+  let parentId = rootId;
+  for (const seg of path || []) {
+    const children = await chrome.bookmarks.getChildren(parentId).catch(() => []);
+    const existing = (children || []).find((n) => n.url === undefined && n.title === seg);
+    if (existing) {
+      parentId = existing.id;
+    } else {
+      const created = await chrome.bookmarks.create({ parentId, title: seg });
+      parentId = created.id;
+    }
+  }
+  return parentId;
+}
+
+/** Find the first bookmark node under `root` whose url matches `url`. */
+async function findBookmarkByUrl(root, url) {
+  const walk = (node) => {
+    if (node.url === url) return node;
+    for (const child of node.children || []) {
+      const hit = walk(child);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const [full] = await chrome.bookmarks.getSubTree(root.id);
+  return full ? walk(full) : null;
+}
+
+async function applyCloudCategory(c, li, keepBtn, applyBtn) {
+  const tn = c.tn;
+  const cloudPath = Array.isArray(c.cloudPath) ? c.cloudPath : [];
+  if (!tn || !tn.url) {
+    applyBtn.disabled = true;
+    return;
+  }
+  try {
+    const tree = await chrome.bookmarks.getTree();
+    const bar = tree[0] && tree[0].children ? tree[0].children[0] : null;
+    const folder =
+      (bar.children || []).find((f) => f.url === undefined && f.title === 'TagNest') ||
+      (await chrome.bookmarks.create({ parentId: bar.id, title: 'TagNest' }));
+    const node = await findBookmarkByUrl(folder, tn.url);
+    if (!node) {
+      applyBtn.textContent = '未找到本地书签';
+      applyBtn.disabled = true;
+      return;
+    }
+    const targetId = await ensureFolderChain(folder.id, cloudPath);
+    await chrome.bookmarks.move(node.id, { parentId: targetId });
+    li.style.opacity = '0.5';
+    keepBtn.disabled = true;
+    applyBtn.disabled = true;
+    applyBtn.textContent = '已采用云端分类';
+  } catch {
+    applyBtn.textContent = '移动失败';
+  }
+}
+
 els.rollbackBtn.addEventListener('click', async () => {
   els.rollbackBtn.disabled = true;
   const resp = await new Promise((resolve) => chrome.runtime.sendMessage({ type: 'rollback-sync' }, resolve));
@@ -237,13 +368,8 @@ els.rollbackBtn.addEventListener('click', async () => {
   }
 });
 
+els.openCategoryBuild.addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('category.html') }));
 els.openReconcile.addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('reconcile.html') }));
 els.openOptions.addEventListener('click', () => chrome.runtime.openOptionsPage());
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (ch) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]),
-  );
-}
 
 reflectStatus();

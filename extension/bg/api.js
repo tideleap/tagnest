@@ -166,3 +166,33 @@ export async function syncPush({ baseUrl, apiKey }, changes, signal) {
     signal,
   });
 }
+
+/**
+ * One page of the category writeback feed (CategorySync §5.1 / §7.2).
+ * Returns `{ items: [{bookmarkId, url, title, categoryPath}], nextCursor, total }`
+ * — keyset-paged over bookmark_id; the caller loops until `nextCursor` is null.
+ */
+export async function categoryWritebackPage({ baseUrl, apiKey }, { cursor, signal } = {}) {
+  const qs = cursor ? `?format=writeback&cursor=${encodeURIComponent(cursor)}` : '?format=writeback';
+  return apiFetch(`/api/category/tree${qs}`, { baseUrl, apiKey, method: 'GET', signal });
+}
+
+/**
+ * Walk the whole writeback feed and return `{ items, total }` with every
+ * `{bookmarkId, url, title, categoryPath}` row. This is the single source the
+ * category tree builder consumes — only bookmarks with an accepted primary
+ * category appear (the backend INNER JOINs `bookmark_primary_category`).
+ */
+export async function fetchCategoryWriteback(cfg, signal) {
+  const out = [];
+  let cursor = null;
+  let total = 0;
+  do {
+    const page = await categoryWritebackPage(cfg, { cursor, signal });
+    const items = (page && page.items) || [];
+    for (const it of items) out.push(it);
+    total = typeof page?.total === 'number' ? page.total : out.length;
+    cursor = page && page.nextCursor ? page.nextCursor : null;
+  } while (cursor);
+  return { items: out, total };
+}

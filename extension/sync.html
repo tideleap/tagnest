@@ -47,6 +47,12 @@
         <ul class="conflict-list" id="conflictList"></ul>
       </section>
 
+      <section class="conflicts" id="categoryConflicts" hidden>
+        <h2>分类冲突 <span class="badge-count" id="categoryConflictCount">0</span></h2>
+        <p class="hint">云端 AI 重分类与本地手动移动同时发生。默认保留本地文件夹（已上传）；如需改用云端分类，点击「采用云端分类」。</p>
+        <ul class="conflict-list" id="categoryConflictList"></ul>
+      </section>
+
       <section class="rollback" id="rollbackPanel" hidden>
         <h2>快照恢复</h2>
         <p class="hint">上一次双向同步前已备份受影响的浏览器书签。若同步结果不符合预期，可一键回滚。</p>
@@ -54,6 +60,7 @@
       </section>
 
       <footer class="footer">
+        <a class="link" id="openCategoryBuild" role="button" tabindex="0">构建分类书签栏</a>
         <a class="link" id="openReconcile" role="button" tabindex="0">只读对账</a>
         <a class="link" id="openOptions" role="button" tabindex="0">设置</a>
       </footer>

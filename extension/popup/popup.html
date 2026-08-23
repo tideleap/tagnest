@@ -21,6 +21,24 @@
         <span class="text" id="statusText"></span>
       </div>
 
+      <div class="mode-badge" id="modeBadge" hidden></div>
+
+      <!-- CS-P4-2 (C5-4): sync status — last sync, pending upload, coverage -->
+      <div class="sync-status" id="syncStatus" hidden>
+        <div class="sync-row">
+          <span class="sync-label">最近同步</span>
+          <span class="sync-value" id="lastSyncText">—</span>
+        </div>
+        <div class="sync-row">
+          <span class="sync-label">待上行</span>
+          <span class="sync-value" id="pendingUploadText">—</span>
+        </div>
+        <div class="sync-row">
+          <span class="sync-label">分类覆盖率</span>
+          <span class="sync-value" id="coverageText">—</span>
+        </div>
+      </div>
+
       <div class="actions">
         <button class="btn btn-primary" id="savePage" type="button">
           <span class="glyph">＋</span><span>收藏当前页</span>
@@ -33,6 +51,9 @@
         </button>
         <button class="btn btn-secondary" id="openTwoWaySync" type="button">
           <span class="glyph">⇄</span><span>双向同步</span>
+        </button>
+        <button class="btn btn-secondary" id="openCategoryBuild" type="button">
+          <span class="glyph">▤</span><span>构建分类书签栏</span>
         </button>
       </div>
 

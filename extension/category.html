@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TagNest 构建分类书签栏</title>
+    <link rel="stylesheet" href="sync.css" />
+    <link rel="stylesheet" href="category.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <img class="mark" src="../icons/icon48.png" alt="" width="28" height="28" />
+        <div>
+          <h1>构建分类书签栏</h1>
+          <div class="sub" id="tagline">把云端分类树镜像到书签栏</div>
+        </div>
+      </header>
+
+      <div class="status" id="status" hidden>
+        <span class="dot"></span>
+        <span class="text" id="statusText"></span>
+      </div>
+
+      <section class="panel" id="introPanel">
+        <p class="hint" style="margin-top: 0">
+          按你在 TagNest 里确认的主分类，在书签栏创建分类文件夹并放置书签副本。
+          只写入托管范围内部，你原有的其他书签不受影响；执行前会记录本次改动，可随时一键撤销。
+        </p>
+        <div class="actions">
+          <button class="btn btn-primary" id="previewBtn" type="button">加载预览</button>
+        </div>
+      </section>
+
+      <div class="progress" id="progress" hidden><span class="spinner"></span><span id="progressText">准备中…</span></div>
+
+      <section class="panel" id="previewPanel" hidden>
+        <div class="field-label">预览（尚未写入任何内容）</div>
+        <div class="result" id="previewStats"></div>
+        <div id="previewSamples"></div>
+        <div class="warn-note" id="rebuildNote" hidden>
+          未找到托管文件夹「TagNest」，确认后将重新创建。
+        </div>
+        <div class="actions" style="margin-top: 10px">
+          <button class="btn btn-primary" id="confirmBuildBtn" type="button">确认构建</button>
+          <button class="btn btn-secondary" id="cancelBtn" type="button">取消</button>
+        </div>
+      </section>
+
+      <section class="panel" id="buildProgressPanel" hidden>
+        <div class="field-label">构建中…</div>
+        <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+        <p class="hint" id="buildProgressText">0 / 0</p>
+      </section>
+
+      <div class="result" id="result" hidden></div>
+
+      <section class="rollback" id="rollbackPanel" hidden>
+        <h2>快照恢复</h2>
+        <p class="hint" id="rollbackHint">本次构建前已记录改动明细。若结果不符合预期，可一键撤销本次构建。</p>
+        <button class="btn btn-secondary" id="rollbackBtn" type="button">恢复构建前状态</button>
+      </section>
+
+      <footer class="footer">
+        <a class="link" id="openSync" role="button" tabindex="0">双向同步</a>
+        <a class="link" id="openOptions" role="button" tabindex="0">设置</a>
+      </footer>
+    </div>
+
+    <script type="module" src="category.js"></script>
+  </body>
+</html>

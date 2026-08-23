@@ -1,12 +1,18 @@
 // TagNest popup interaction logic.
 import { loadConfig, isConfigured } from '../bg/config.js';
 import { loadExtTheme, applyExtTheme } from '../bg/theme.js';
+import { clear, el } from '../dom.js';
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
   status: $('status'),
   statusText: $('statusText'),
+  modeBadge: $('modeBadge'),
+  syncStatus: $('syncStatus'),
+  lastSyncText: $('lastSyncText'),
+  pendingUploadText: $('pendingUploadText'),
+  coverageText: $('coverageText'),
   savePage: $('savePage'),
   captureWindow: $('captureWindow'),
   noteInput: $('noteInput'),
@@ -14,19 +20,22 @@ const els = {
   openOptions: $('openOptions'),
   openSync: $('openSync'),
   openTwoWaySync: $('openTwoWaySync'),
+  openCategoryBuild: $('openCategoryBuild'),
   shortcutHint: $('shortcutHint'),
 };
 
 function showResult(kind, title, fine) {
   els.result.className = `result ${kind}`;
   els.result.hidden = false;
-  els.result.innerHTML = `<div class="badge">${title}</div>${fine ? `<div class="fine">${fine}</div>` : ''}`;
+  clear(els.result);
+  els.result.append(el('div', 'badge', title));
+  if (fine) els.result.append(el('div', 'fine', fine));
 }
 
 function clearResult() {
   els.result.hidden = true;
   els.result.className = 'result';
-  els.result.innerHTML = '';
+  clear(els.result);
 }
 
 async function reflectStatus() {
@@ -40,6 +49,18 @@ async function reflectStatus() {
     els.status.className = 'status warn';
     els.statusText.textContent = '尚未配置服务器与密钥';
   }
+  // P6-A: surface the current category placement mode in the popup.
+  if (els.modeBadge) {
+    if (cfg && cfg.promoteToBar) {
+      els.modeBadge.hidden = false;
+      els.modeBadge.textContent = '分类位置：整个书签栏（提升模式）';
+      els.modeBadge.className = 'mode-badge promote';
+    } else {
+      els.modeBadge.hidden = false;
+      els.modeBadge.textContent = '分类位置：TagNest 子文件夹';
+      els.modeBadge.className = 'mode-badge';
+    }
+  }
 }
 
 function baseHost(url) {
@@ -48,6 +69,31 @@ function baseHost(url) {
   } catch {
     return url;
   }
+}
+
+// CS-P4-2 (C5-4): show last sync time, pending upload count and cloud
+// category coverage. The background worker computes everything; the popup
+// only renders. Missing fields (null) render as a dash.
+async function reflectSyncStatus() {
+  const resp = await new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'sync-status' }, resolve);
+  });
+  if (!resp || !resp.ok) return;
+  els.syncStatus.hidden = false;
+
+  els.lastSyncText.textContent = resp.lastSyncedAt ? formatSyncTime(resp.lastSyncedAt) : '尚未同步';
+  els.pendingUploadText.textContent =
+    resp.pendingUpload === null || resp.pendingUpload === undefined ? '—' : `${resp.pendingUpload} 条`;
+  els.coverageText.textContent = resp.coverage
+    ? `${resp.coverage.percent}%（${resp.coverage.categorized}/${resp.coverage.bookmarks}）`
+    : '—';
+}
+
+function formatSyncTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function setBusy(which, busy) {
@@ -147,6 +193,11 @@ els.openTwoWaySync.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('sync.html') });
 });
 
+// Open the category build page (CategorySync P2) in its own tab.
+els.openCategoryBuild.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('category.html') });
+});
+
 // Apply the chosen theme (from extension settings; system -> OS). Follow live
 // changes so opening the popup after changing settings reflects instantly.
 (async () => {
@@ -160,3 +211,4 @@ chrome.storage?.onChanged?.addListener((changes, area) => {
 });
 
 reflectStatus();
+reflectSyncStatus();
