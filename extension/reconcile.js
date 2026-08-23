@@ -2,6 +2,7 @@
 import { loadConfig, isConfigured } from './bg/config.js';
 import { reconcile } from './bg/reconcile.js';
 import { loadExtTheme, applyExtTheme } from './bg/theme.js';
+import { clear, el } from './dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,31 +30,35 @@ function showStatus(kind, text) {
 function showResult(kind, title, fine) {
   els.result.hidden = false;
   els.result.className = `result ${kind}`;
-  els.result.innerHTML = `<div class="badge">${title}</div>${fine ? `<div class="fine">${fine}</div>` : ''}`;
+  clear(els.result);
+  els.result.append(el('div', 'badge', title));
+  if (fine) els.result.append(el('div', 'fine', fine));
 }
 function clearResult() {
   els.result.hidden = true;
   els.result.className = 'result';
-  els.result.innerHTML = '';
-}
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
-  );
+  clear(els.result);
 }
 function renderItem(item, sub) {
-  const title = esc(item.title || item.url || '(无标题)');
-  const url = esc(item.url || '');
-  return `<li class="item"><div class="item-title">${title}</div>${
-    url ? `<div class="item-url">${url}</div>` : ''
-  }<div class="item-sub">${sub}</div></li>`;
+  const li = el('li', 'item');
+  li.append(el('div', 'item-title', item.title || item.url || '(无标题)'));
+  if (item.url) li.append(el('div', 'item-url', item.url));
+  li.append(el('div', 'item-sub', sub));
+  return li;
 }
 function renderList(container, heading, items, render) {
-  container.innerHTML = `<h2>${heading} <span class="count">${items.length}</span></h2>${
-    items.length
-      ? `<ul class="bmlist">${items.map(render).join('')}</ul>`
-      : '<p class="empty">无</p>'
-  }`;
+  clear(container);
+  const h2 = el('h2');
+  h2.append(document.createTextNode(`${heading} `));
+  h2.append(el('span', 'count', String(items.length)));
+  container.append(h2);
+  if (items.length) {
+    const ul = el('ul', 'bmlist');
+    for (const it of items) ul.append(render(it));
+    container.append(ul);
+  } else {
+    container.append(el('p', 'empty', '无'));
+  }
 }
 
 async function runReconcile() {
@@ -66,27 +71,35 @@ async function runReconcile() {
 
     els.status.hidden = true;
     els.summary.hidden = false;
-    els.summary.innerHTML = `
-      <div class="stat"><b>${res.browserCount}</b><span>浏览器书签</span></div>
-      <div class="stat"><b>${res.tnCount}</b><span>TagNest 书签</span></div>
-      <div class="stat pos"><b>${res.counts.both}</b><span>已同步</span></div>
-      <div class="stat up"><b>${res.counts.onlyInBrowser}</b><span>仅浏览器（可上行）</span></div>
-      <div class="stat down"><b>${res.counts.onlyInTagNest}</b><span>仅 TagNest（可下行）</span></div>`;
+    clear(els.summary);
+    const stat = (cls, value, label) => {
+      const d = el('div', cls ? `stat ${cls}` : 'stat');
+      d.append(el('b', null, String(value)));
+      d.append(el('span', null, label));
+      return d;
+    };
+    els.summary.append(
+      stat('', res.browserCount, '浏览器书签'),
+      stat('', res.tnCount, 'TagNest 书签'),
+      stat('pos', res.counts.both, '已同步'),
+      stat('up', res.counts.onlyInBrowser, '仅浏览器（可上行）'),
+      stat('down', res.counts.onlyInTagNest, '仅 TagNest（可下行）'),
+    );
 
     els.lists.hidden = false;
     renderList(
       els.onlyInBrowser,
       '仅浏览器（可上行）',
       res.onlyInBrowser,
-      (it) => renderItem(it, `key: ${esc(it.urlKey)}`),
+      (it) => renderItem(it, `key: ${it.urlKey}`),
     );
     renderList(
       els.onlyInTagNest,
       '仅 TagNest（可下行）',
       res.onlyInTagNest,
-      (it) => renderItem(it, `key: ${esc(it.urlKey)}`),
+      (it) => renderItem(it, `key: ${it.urlKey}`),
     );
-    renderList(els.both, '已同步', res.both, (it) => renderItem(it.browser, `key: ${esc(it.urlKey)}`));
+    renderList(els.both, '已同步', res.both, (it) => renderItem(it.browser, `key: ${it.urlKey}`));
 
     els.refreshBtn.hidden = false;
     showResult('ok', '对账完成', '本视图只读，暂不改写浏览器书签。');

@@ -33,6 +33,8 @@ export interface BookmarkRow {
   deleted_at: string | null;
   ai_summary: string | null;
   created_at: string;
+  /** Bumped by category placement writes so sync-pull sees the change (C5-2). */
+  updated_at?: string;
 }
 
 export interface BookmarkTagRow {
@@ -59,6 +61,8 @@ export interface SuggestionRow {
   needs_review?: number;
   /** Confidence was lifted by the user's feedback history. */
   feedback_boosted?: number;
+  /** 'tag' | 'category' — migration 0024; absent reads as 'tag'. */
+  kind?: string;
   status: 'pending' | 'accepted' | 'rejected';
   decided_at: string | null;
   created_at: string;
@@ -95,6 +99,17 @@ export interface JobRow {
   prompt_version: string | null;
 }
 
+export interface PrimaryCategoryRow {
+  bookmark_id: string;
+  tag_id: string;
+  confidence: number | null;
+  source: string;
+  job_id: string | null;
+  status: string;
+  decided_at: string | null;
+  updated_at: string;
+}
+
 export interface SettingsRow {
   user_id: string;
   provider: string;
@@ -119,6 +134,7 @@ export interface AiDbState {
   ai_feedback: FeedbackRow[];
   ai_jobs: JobRow[];
   ai_settings: SettingsRow[];
+  bookmark_primary_category: PrimaryCategoryRow[];
 }
 
 export interface AiDb {
@@ -148,6 +164,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     ai_feedback: seed?.ai_feedback ?? [],
     ai_jobs: seed?.ai_jobs ?? [],
     ai_settings: seed?.ai_settings ?? [],
+    bookmark_primary_category: seed?.bookmark_primary_category ?? [],
   };
 
   function prepare(sql: string) {
@@ -186,6 +203,39 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
 
   /** Pure SELECTs. Returns rows already shaped as the caller expects. */
   function getRows(sql: string, rawSql: string, params: unknown[]) {
+    // loadCategoryWritebackPage total — MUST precede the generic countPending
+    // branch below, which also starts with `SELECT COUNT`. Distinguished by the
+    // `FROM BOOKMARK_PRIMARY_CATEGORY` source table.
+    if (sql.startsWith('SELECT COUNT(*) AS N FROM BOOKMARK_PRIMARY_CATEGORY')) {
+      const userId = String(params[0]);
+      const n = state.bookmark_primary_category.filter((p) => {
+        if (p.status !== 'accepted') return false;
+        const b = state.bookmarks.find((x) => x.id === p.bookmark_id);
+        return Boolean(b && b.user_id === userId && b.deleted_at === null);
+      }).length;
+      return [{ n }];
+    }
+
+    // loadCategoryWritebackPage: one page of placements joined to bookmarks,
+    // keyset over bookmark_id (`bpc.bookmark_id > ?`), limit+1 rows.
+    if (sql.startsWith('SELECT BPC.BOOKMARK_ID AS BOOKMARK_ID, BPC.TAG_ID AS TAG_ID')) {
+      const userId = String(params[0]);
+      const cursor = String(params[1]);
+      const limit = Number(params[2]);
+      return state.bookmark_primary_category
+        .filter((p) => {
+          if (p.status !== 'accepted' || p.bookmark_id <= cursor) return false;
+          const b = state.bookmarks.find((x) => x.id === p.bookmark_id);
+          return Boolean(b && b.user_id === userId && b.deleted_at === null);
+        })
+        .sort((a, b) => (a.bookmark_id < b.bookmark_id ? -1 : 1))
+        .slice(0, limit)
+        .map((p) => {
+          const b = state.bookmarks.find((x) => x.id === p.bookmark_id);
+          return { bookmark_id: p.bookmark_id, tag_id: p.tag_id, url: b?.url ?? '', title: b?.title ?? '' };
+        });
+    }
+
     // countPending — must be checked before the listPendingSuggestions branch,
     // which shares the "FROM TAG_SUGGESTIONS S JOIN BOOKMARKS B" signature.
     if (sql.startsWith('SELECT COUNT')) {
@@ -254,8 +304,16 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     if (sql.startsWith('SELECT ID FROM BOOKMARKS') && sql.includes('ID IN')) {
       const userId = String(params[0]);
       const ids = params.slice(1).map(String);
-      return state.bookmarks
-        .filter((b) => b.user_id === userId && b.deleted_at === null && ids.includes(b.id))
+      let rows = state.bookmarks.filter(
+        (b) => b.user_id === userId && b.deleted_at === null && ids.includes(b.id),
+      );
+      // resolveCategorizeScope(ids): skip browser_folder placements unless included.
+      if (sql.includes("BPC.SOURCE = 'BROWSER_FOLDER'")) {
+        rows = rows.filter(
+          (b) => !state.bookmark_primary_category.some((p) => p.bookmark_id === b.id && p.source === 'browser_folder'),
+        );
+      }
+      return rows
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
         .map((b) => ({ id: b.id }));
     }
@@ -270,6 +328,17 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       // silently drop every normally-tagged bookmark from an `all`/explicit scope.
       if (sql.includes('NOT EXISTS (SELECT 1 FROM BOOKMARK_TAGS BT WHERE')) {
         rows = rows.filter((b) => !state.bookmark_tags.some((bt) => bt.bookmark_id === b.id));
+      }
+      // resolveCategorizeScope: skip bookmarks holding a browser_folder placement.
+      if (sql.includes("BPC.SOURCE = 'BROWSER_FOLDER'")) {
+        rows = rows.filter(
+          (b) => !state.bookmark_primary_category.some((p) => p.bookmark_id === b.id && p.source === 'browser_folder'),
+        );
+      }
+      // resolveCategorizeScope `untagged`: skip bookmarks that already have a
+      // primary category. This exact clause (no `AND BPC.SOURCE`) is unique to it.
+      if (sql.includes('NOT EXISTS (SELECT 1 FROM BOOKMARK_PRIMARY_CATEGORY BPC WHERE BPC.BOOKMARK_ID = B.ID)')) {
+        rows = rows.filter((b) => !state.bookmark_primary_category.some((p) => p.bookmark_id === b.id));
       }
       return rows.map((b) => ({ id: b.id }));
     }
@@ -311,11 +380,21 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       sql.includes('JOIN BOOKMARKS B') &&
       sql.includes('FEEDBACK_BOOSTED')
     ) {
-      const userId = String(params[0]);
       const jobClause = sql.includes('S.JOB_ID = ?');
-      const jobId = jobClause ? String(params[1]) : null;
+      const kindClause = sql.includes('S.KIND = ?');
+      // Param order mirrors the clause order: userId, [jobId], [kind], limit.
+      let idx = 1;
+      const userId = String(params[0]);
+      const jobId = jobClause ? String(params[idx++]) : null;
+      const kind = kindClause ? String(params[idx++]) : null;
       const rows = state.tag_suggestions
-        .filter((s) => s.user_id === userId && s.status === 'pending' && (!jobClause || s.job_id === jobId))
+        .filter(
+          (s) =>
+            s.user_id === userId &&
+            s.status === 'pending' &&
+            (!jobClause || s.job_id === jobId) &&
+            (!kindClause || (s.kind ?? 'tag') === kind),
+        )
           .map((s) => {
           const b = state.bookmarks.find((x) => x.id === s.bookmark_id);
           return {
@@ -325,6 +404,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
             bookmark_url: b?.url ?? '',
             tag_name: s.tag_name,
             tag_id: s.tag_id,
+            kind: s.kind ?? 'tag',
             confidence: s.confidence,
             source: s.source,
             reason: s.reason,
@@ -404,8 +484,15 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     if (sql.startsWith('SELECT S.ID, S.BOOKMARK_ID, S.TAG_NAME, S.TAG_ID, S.CONFIDENCE, S.SOURCE')) {
       const userId = String(params[0]);
       const ids = params.slice(1).map(String);
+      const kind = sql.includes("S.KIND = 'CATEGORY'") ? 'category' : 'tag';
       return state.tag_suggestions
-        .filter((s) => s.user_id === userId && s.status === 'pending' && ids.includes(s.id))
+        .filter(
+          (s) =>
+            s.user_id === userId &&
+            s.status === 'pending' &&
+            (s.kind ?? 'tag') === kind &&
+            ids.includes(s.id),
+        )
         .map((s) => {
           const b = state.bookmarks.find((x) => x.id === s.bookmark_id);
           return {
@@ -415,6 +502,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
             tag_id: s.tag_id,
             confidence: s.confidence,
             source: s.source,
+            job_id: s.job_id,
             bookmark_url: b?.url ?? '',
             bookmark_title: b?.title ?? '',
           };
@@ -425,14 +513,41 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const userId = String(params[0]);
       const jobId = String(params[1]);
       const threshold = Number(params[2]);
+      const kind = sql.includes("KIND = 'CATEGORY'") ? 'category' : 'tag';
       return state.tag_suggestions
         .filter(
           (s) =>
             s.user_id === userId &&
             s.job_id === jobId &&
             s.status === 'pending' &&
+            (s.kind ?? 'tag') === kind &&
             s.confidence >= threshold,
         )
+        .map((s) => ({ id: s.id }));
+    }
+
+    // apply.ts bulk id resolution: pending ids for one (kind, job_id|bookmark_id).
+    // Params: userId, kind, value, limit. `KIND = ?` (bound) distinguishes it
+    // from the autoApply query above, which carries a literal kind + threshold.
+    if (
+      sql.startsWith('SELECT ID FROM TAG_SUGGESTIONS') &&
+      sql.includes("STATUS = 'PENDING'") &&
+      sql.includes('KIND = ?')
+    ) {
+      const userId = String(params[0]);
+      const kind = String(params[1]);
+      const value = String(params[2]);
+      const byJob = sql.includes('JOB_ID = ?');
+      return state.tag_suggestions
+        .filter(
+          (s) =>
+            s.user_id === userId &&
+            s.status === 'pending' &&
+            (s.kind ?? 'tag') === kind &&
+            (byJob ? s.job_id === value : s.bookmark_id === value),
+        )
+        .sort((a, b) => b.confidence - a.confidence)
+        .slice(0, Number(params[3] ?? 500))
         .map((s) => ({ id: s.id }));
     }
 
@@ -443,6 +558,84 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return state.tags
         .filter((t) => t.user_id === userId && names.includes(t.name.toLowerCase()))
         .map((t) => ({ id: t.id, name: t.name }));
+    }
+
+    // ---- CategorySync P1 (category tree / placement queries) ----
+
+    // assignPrimaryCategory: target tag ownership check.
+    if (sql.startsWith('SELECT ID, NAME FROM TAGS WHERE ID = ?') && sql.includes('LIMIT 1')) {
+      const tagId = String(params[0]);
+      const userId = String(params[1]);
+      const t = state.tags.find((x) => x.id === tagId && x.user_id === userId);
+      return t ? [{ id: t.id, name: t.name }] : [];
+    }
+
+    // ensureCategoryPath: existing node under a specific parent.
+    if (sql.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND PARENT_ID = ? AND NAME = ?')) {
+      const userId = String(params[0]);
+      const parentId = String(params[1]);
+      const name = String(params[2]).toLowerCase();
+      const t = state.tags.find(
+        (x) => x.user_id === userId && x.parent_id === parentId && x.name.toLowerCase() === name,
+      );
+      return t ? [{ id: t.id }] : [];
+    }
+
+    // ensureCategoryPath: existing root node (parent_id IS NULL).
+    if (sql.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND PARENT_ID IS NULL AND NAME = ?')) {
+      const userId = String(params[0]);
+      const name = String(params[1]).toLowerCase();
+      const t = state.tags.find(
+        (x) => x.user_id === userId && x.parent_id === null && x.name.toLowerCase() === name,
+      );
+      return t ? [{ id: t.id }] : [];
+    }
+
+    // loadCategoryTree: full tag listing for one user.
+    if (sql.startsWith('SELECT ID, NAME, PARENT_ID FROM TAGS WHERE USER_ID = ?')) {
+      const userId = String(params[0]);
+      return state.tags
+        .filter((t) => t.user_id === userId)
+        .map((t) => ({ id: t.id, name: t.name, parent_id: t.parent_id }));
+    }
+
+    // loadCategoryTree: per-node placement counts.
+    if (sql.startsWith('SELECT BPC.TAG_ID AS TAG_ID, COUNT(*) AS C FROM BOOKMARK_PRIMARY_CATEGORY')) {
+      const userId = String(params[0]);
+      const counts = new Map<string, number>();
+      for (const p of state.bookmark_primary_category) {
+        if (p.status !== 'accepted') continue;
+        const b = state.bookmarks.find((x) => x.id === p.bookmark_id);
+        if (!b || b.user_id !== userId || b.deleted_at !== null) continue;
+        counts.set(p.tag_id, (counts.get(p.tag_id) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([tag_id, c]) => ({ tag_id, c }));
+    }
+
+    // deriveCategoryPaths: batch placement lookup for a page of bookmarks.
+    // Must precede the single-bookmark `SELECT TAG_ID` branch below.
+    if (sql.startsWith('SELECT BOOKMARK_ID, TAG_ID FROM BOOKMARK_PRIMARY_CATEGORY')) {
+      const ids = params.map(String);
+      return state.bookmark_primary_category
+        .filter((p) => p.status === 'accepted' && ids.includes(p.bookmark_id))
+        .map((p) => ({ bookmark_id: p.bookmark_id, tag_id: p.tag_id }));
+    }
+
+    // deriveCategoryPath: the bookmark's accepted placement.
+    if (sql.startsWith('SELECT TAG_ID FROM BOOKMARK_PRIMARY_CATEGORY')) {
+      const bookmarkId = String(params[0]);
+      const p = state.bookmark_primary_category.find(
+        (x) => x.bookmark_id === bookmarkId && x.status === 'accepted',
+      );
+      return p ? [{ tag_id: p.tag_id }] : [];
+    }
+
+    // deriveCategoryPath: one step of the parent_id walk.
+    if (sql.startsWith('SELECT NAME, PARENT_ID FROM TAGS WHERE ID = ?')) {
+      const tagId = String(params[0]);
+      const userId = String(params[1]);
+      const t = state.tags.find((x) => x.id === tagId && x.user_id === userId);
+      return t ? [{ name: t.name, parent_id: t.parent_id }] : [];
     }
 
     return [];
@@ -524,24 +717,31 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return before - state.bookmark_tags.length;
     }
 
-    // undoJob step 2 — flip the job's accepted suggestions back to pending,
-    // unless a newer pending proposal for the same (bookmark, tag) exists.
+    // undoJob / undoCategorizeJob step 2 — flip the job's accepted suggestions
+    // back to pending. The tagging variant (kind='tag') skips rows a newer
+    // pending proposal already supersedes; the category variant (kind='category',
+    // no NOT EXISTS clause) restores every accepted row unconditionally.
     // Literal 'pending' in the SET distinguishes it from markDecided's
     // parameterised `SET STATUS = ?`.
     if (sql.startsWith("UPDATE TAG_SUGGESTIONS SET STATUS = 'PENDING', DECIDED_AT = NULL")) {
       const userId = String(params[0]);
       const jobId = String(params[1]);
+      const kind = sql.includes("KIND = 'CATEGORY'") ? 'category' : 'tag';
+      const checkSuperseded = kind === 'tag';
       let changes = 0;
       for (const s of state.tag_suggestions) {
         if (s.user_id !== userId || s.job_id !== jobId || s.status !== 'accepted') continue;
-        const blocked = state.tag_suggestions.some(
-          (s2) =>
-            s2.id !== s.id &&
-            s2.bookmark_id === s.bookmark_id &&
-            s2.tag_name.toLowerCase() === s.tag_name.toLowerCase() &&
-            s2.status === 'pending',
-        );
-        if (blocked) continue;
+        if ((s.kind ?? 'tag') !== kind) continue;
+        if (checkSuperseded) {
+          const blocked = state.tag_suggestions.some(
+            (s2) =>
+              s2.id !== s.id &&
+              s2.bookmark_id === s.bookmark_id &&
+              s2.tag_name.toLowerCase() === s.tag_name.toLowerCase() &&
+              s2.status === 'pending',
+          );
+          if (blocked) continue;
+        }
         s.status = 'pending';
         s.decided_at = null;
         changes += 1;
@@ -573,30 +773,50 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return before - state.tag_suggestions.length;
     }
 
-    // saveSuggestions: DELETE pending for a bookmark
+    // saveSuggestions / saveCategorySuggestions: DELETE pending for a bookmark,
+    // scoped by kind so a tagging run never wipes category proposals (and vice versa).
     if (sql.startsWith('DELETE FROM TAG_SUGGESTIONS') && sql.includes('STATUS =')) {
       const bookmarkId = String(params[0]);
       const userId = String(params[1]);
+      const kind = sql.includes("KIND = 'CATEGORY'") ? 'category' : 'tag';
       const before = state.tag_suggestions.length;
       state.tag_suggestions = state.tag_suggestions.filter(
-        (s) => !(s.bookmark_id === bookmarkId && s.user_id === userId && s.status === 'pending'),
+        (s) =>
+          !(
+            s.bookmark_id === bookmarkId &&
+            s.user_id === userId &&
+            (s.kind ?? 'tag') === kind &&
+            s.status === 'pending'
+          ),
       );
       return before - state.tag_suggestions.length;
     }
 
-    // saveSuggestions: INSERT ... SELECT ... WHERE NOT EXISTS (...)
+    // saveSuggestions / saveCategorySuggestions: INSERT ... SELECT ... WHERE NOT EXISTS (...)
     if (sql.startsWith('INSERT INTO TAG_SUGGESTIONS') && sql.includes('WHERE NOT EXISTS')) {
+      const isCategory = sql.includes("'CATEGORY', 'PENDING'");
+      const kind = isCategory ? 'category' : 'tag';
       const bookmarkId = String(params[2]);
       const tagName = String(params[4]);
       const tagId = params[5] == null ? null : String(params[5]);
-      // Guard 1: bookmark already carries this tag.
-      if (tagId && state.bookmark_tags.some((bt) => bt.bookmark_id === bookmarkId && bt.tag_id === tagId)) {
+      if (isCategory) {
+        // Guard 1: bookmark already placed exactly on this category node.
+        // (SQL `bpc.tag_id = ?` never matches NULL, so a null tagId passes through.)
+        if (
+          tagId &&
+          state.bookmark_primary_category.some((p) => p.bookmark_id === bookmarkId && p.tag_id === tagId)
+        ) {
+          return 0;
+        }
+      } else if (tagId && state.bookmark_tags.some((bt) => bt.bookmark_id === bookmarkId && bt.tag_id === tagId)) {
+        // Guard 1: bookmark already carries this tag.
         return 0;
       }
-      // Guard 2: a rejected suggestion with the same name already exists.
+      // Guard 2: a rejected suggestion of the SAME KIND with this name already exists.
       const alreadyRejected = state.tag_suggestions.some(
         (s) =>
           s.bookmark_id === bookmarkId &&
+          (s.kind ?? 'tag') === kind &&
           s.status === 'rejected' &&
           s.tag_name.toLowerCase() === tagName.toLowerCase(),
       );
@@ -614,6 +834,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         topic: (params[9] as string | null) ?? null,
         needs_review: params[10] == null ? 0 : Number(params[10]),
         feedback_boosted: params[11] == null ? 0 : Number(params[11]),
+        kind,
         status: 'pending',
         decided_at: null,
         created_at: String(params[12]),
@@ -651,6 +872,23 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return 0;
     }
 
+    // bumpBookmarksUpdatedAt — category placement writes bump updated_at so the
+    // change enters the sync-pull incremental stream (C5-2). Params:
+    // [ts, userId, ...bookmarkIds].
+    if (sql.startsWith('UPDATE BOOKMARKS SET UPDATED_AT = ? WHERE USER_ID = ? AND ID IN')) {
+      const ts = String(params[0]);
+      const userId = String(params[1]);
+      const ids = params.slice(2).map(String);
+      let changes = 0;
+      for (const b of state.bookmarks) {
+        if (b.user_id === userId && ids.includes(b.id)) {
+          b.updated_at = ts;
+          changes += 1;
+        }
+      }
+      return changes;
+    }
+
     // decideSuggestions reject / accept mark (markDecided binds status first)
     if (sql.startsWith('UPDATE TAG_SUGGESTIONS SET STATUS =')) {
       const status = String(params[0]) as SuggestionRow['status'];
@@ -667,16 +905,19 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return changes;
     }
 
-    // ensureTags insert
+    // ensureTags insert (parent_id literal NULL, binds id/user/name/color/ts)
+    // vs ensureCategoryPath insert (parent_id BOUND, binds id/user/name/color/parent/ts).
+    // The NULL literal in the VALUES clause keeps the two shapes distinct.
     if (sql.startsWith('INSERT INTO TAGS')) {
+      const hasParentParam = !sql.includes('NULL, 0,');
       state.tags.push({
         id: String(params[0]),
         user_id: String(params[1]),
         name: String(params[2]),
         color_index: Number(params[3]),
-        parent_id: null,
-        sort_order: Number(params[5]),
-        created_at: String(params[6]),
+        parent_id: hasParentParam && params[4] != null ? String(params[4]) : null,
+        sort_order: 0,
+        created_at: String(hasParentParam ? params[5] : params[4]),
       });
       return 1;
     }
@@ -701,6 +942,59 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         return 1;
       }
       return 0;
+    }
+
+    // decideCategorySuggestions / assignPrimaryCategory: single-placement upsert.
+    // The 'ai' variant binds (bookmark_id, tag_id, confidence, job_id, decided_at,
+    // updated_at); the 'manual' variant binds (bookmark_id, tag_id, ts, ts) with
+    // NULL literals for confidence and job_id. ON CONFLICT(bookmark_id) DO UPDATE
+    // means a re-placement overwrites the prior row in place.
+    if (sql.startsWith('INSERT INTO BOOKMARK_PRIMARY_CATEGORY')) {
+      const bookmarkId = String(params[0]);
+      const tagId = String(params[1]);
+      const isManual = sql.includes("'MANUAL'");
+      const confidence = isManual ? null : Number(params[2]);
+      const source = isManual ? 'manual' : 'ai';
+      const jobId = isManual ? null : params[3] == null ? null : String(params[3]);
+      const decidedAt = isManual ? String(params[2]) : String(params[4]);
+      const updatedAt = isManual ? String(params[3]) : String(params[5]);
+      const existing = state.bookmark_primary_category.find((p) => p.bookmark_id === bookmarkId);
+      if (existing) {
+        existing.tag_id = tagId;
+        existing.confidence = confidence;
+        existing.source = source;
+        existing.job_id = jobId;
+        existing.status = 'accepted';
+        existing.decided_at = decidedAt;
+        existing.updated_at = updatedAt;
+      } else {
+        state.bookmark_primary_category.push({
+          bookmark_id: bookmarkId,
+          tag_id: tagId,
+          confidence,
+          source,
+          job_id: jobId,
+          status: 'accepted',
+          decided_at: decidedAt,
+          updated_at: updatedAt,
+        });
+      }
+      return 1;
+    }
+
+    // undoCategorizeJob step 1 — delete the source='ai' placements this job
+    // wrote, scoped to the owning user via the EXISTS subquery. Manual and
+    // browser-folder placements are never touched.
+    if (sql.startsWith('DELETE FROM BOOKMARK_PRIMARY_CATEGORY')) {
+      const jobId = String(params[0]);
+      const userId = String(params[1]);
+      const before = state.bookmark_primary_category.length;
+      state.bookmark_primary_category = state.bookmark_primary_category.filter((p) => {
+        if (p.source !== 'ai' || p.job_id !== jobId) return true;
+        const b = state.bookmarks.find((x) => x.id === p.bookmark_id);
+        return !(b && b.user_id === userId);
+      });
+      return before - state.bookmark_primary_category.length;
     }
 
     return 0;

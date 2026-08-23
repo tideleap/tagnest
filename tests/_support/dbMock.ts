@@ -58,8 +58,10 @@ export class MockDb {
   collection_bookmarks: MockRow[] = [];
   bookmarks: MockRow[] = [];
   bookmark_tags: MockRow[] = [];
+  bookmark_primary_category: MockRow[] = [];
   tags: MockRow[] = [];
   tag_suggestions: MockRow[] = [];
+  ai_feedback: MockRow[] = [];
   ai_settings: MockRow[] = [];
   private_vault: MockRow[] = [];
   shares: MockRow[] = [];
@@ -526,6 +528,38 @@ export class MockDb {
           title: b.title ?? '',
           description: b.description ?? null,
         }));
+    }
+
+    // --- GET /api/stats (CS-P4-2): one-pass conditional aggregates ---------
+    if (u.startsWith('SELECT SUM(CASE WHEN DELETED_AT IS NULL THEN 1 ELSE 0 END) AS BOOKMARKS')) {
+      const since = params[0] as string;
+      const userId = params[1] as string;
+      const live = this.bookmarks.filter(
+        (b) =>
+          b.user_id === userId &&
+          b.is_private !== 1 &&
+          !this.hasPrivateTag(b.id, userId),
+      );
+      const notDeleted = live.filter((b) => b.deleted_at == null);
+      return [
+        {
+          bookmarks: notDeleted.length,
+          favorites: notDeleted.filter((b) => b.is_favorite === 1).length,
+          archived: notDeleted.filter((b) => b.is_archived === 1).length,
+          trashed: live.filter((b) => b.deleted_at != null).length,
+          recent: notDeleted.filter((b) => String(b.created_at) >= since).length,
+          untagged: notDeleted.filter(
+            (b) => !this.bookmark_tags.some((bt) => bt.bookmark_id === b.id),
+          ).length,
+          categorized: notDeleted.filter((b) =>
+            this.bookmark_primary_category.some((bpc) => bpc.bookmark_id === b.id),
+          ).length,
+        },
+      ];
+    }
+    if (u.startsWith('SELECT COUNT(*) AS C FROM TAGS WHERE USER_ID = ?')) {
+      const userId = params[0] as string;
+      return [{ c: this.tags.filter((t) => t.user_id === userId).length }];
     }
 
     // --- stats trend (A3 report page): per-day additions --------------
@@ -1379,6 +1413,124 @@ export class MockDb {
           updated_at: b.updated_at,
           deleted_at: b.deleted_at ?? null,
         }));
+    }
+
+    // --- category: tag-tree load for deriveCategoryPaths (C4-1) -----
+    // One row per tag the user owns; the caller walks parent_id in memory.
+    if (u.startsWith('SELECT ID, NAME, PARENT_ID FROM TAGS WHERE USER_ID = ?')) {
+      const userId = params[0] as string;
+      return this.tags
+        .filter((t) => t.user_id === userId)
+        .map((t) => ({ id: t.id, name: t.name, parent_id: t.parent_id ?? null }));
+    }
+
+    // --- category: batch placement lookup for deriveCategoryPaths ----
+    // `SELECT bookmark_id, tag_id FROM bookmark_primary_category
+    //   WHERE status = 'accepted' AND bookmark_id IN (...)`.
+    if (u.startsWith('SELECT BOOKMARK_ID, TAG_ID FROM BOOKMARK_PRIMARY_CATEGORY')) {
+      const ids = params.map(String);
+      return this.bookmark_primary_category
+        .filter((p) => p.status === 'accepted' && ids.includes(String(p.bookmark_id)))
+        .map((p) => ({ bookmark_id: p.bookmark_id, tag_id: p.tag_id }));
+    }
+
+    // --- bookmarks: category-write updated_at bump (C5-2) -----------
+    // `UPDATE bookmarks SET updated_at = ? WHERE user_id = ? AND id IN (...)`.
+    // Distinct from the generic field-write branch below (which requires
+    // `ID = ? AND USER_ID = ?`), so order does not matter, but keep it here
+    // next to the other bookmark mutations for readability.
+    if (u.startsWith('UPDATE BOOKMARKS SET UPDATED_AT = ? WHERE USER_ID = ? AND ID IN')) {
+      const ts = params[0] as string;
+      const userId = params[1] as string;
+      const ids = params.slice(2).map(String);
+      let changes = 0;
+      for (const b of this.bookmarks) {
+        if (b.user_id === userId && ids.includes(String(b.id))) {
+          b.updated_at = ts;
+          changes += 1;
+        }
+      }
+      this.lastChanges = changes;
+      return [];
+    }
+
+    // --- category: ensureCategoryPath existing-node lookup (C4-3) ---
+    // Child variant: `... AND parent_id = ? AND name = ? COLLATE NOCASE LIMIT 1`.
+    if (u.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND PARENT_ID = ? AND NAME = ?')) {
+      const userId = params[0] as string;
+      const parentId = params[1] as string;
+      const name = String(params[2]).toLowerCase();
+      const t = this.tags.find(
+        (x) => x.user_id === userId && x.parent_id === parentId && String(x.name).toLowerCase() === name,
+      );
+      return t ? [{ id: t.id }] : [];
+    }
+    // Root variant: `... AND parent_id IS NULL AND name = ? COLLATE NOCASE LIMIT 1`.
+    if (u.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND PARENT_ID IS NULL AND NAME = ?')) {
+      const userId = params[0] as string;
+      const name = String(params[1]).toLowerCase();
+      const t = this.tags.find(
+        (x) => x.user_id === userId && (x.parent_id ?? null) === null && String(x.name).toLowerCase() === name,
+      );
+      return t ? [{ id: t.id }] : [];
+    }
+
+    // --- category: primary-placement upsert (C4-3 / assign) ---------
+    // Three source variants share the statement shape; the literal in the SQL
+    // tells them apart. Bind orders:
+    //   browser_folder / manual: [bookmark_id, tag_id, decided_at, updated_at]
+    //   ai: [bookmark_id, tag_id, confidence, job_id, decided_at, updated_at]
+    if (u.startsWith('INSERT INTO BOOKMARK_PRIMARY_CATEGORY')) {
+      const isAi = u.includes("'AI'");
+      const source = isAi ? 'ai' : u.includes("'MANUAL'") ? 'manual' : 'browser_folder';
+      const bookmark_id = String(params[0]);
+      const tag_id = String(params[1]);
+      const confidence = isAi ? Number(params[2]) : null;
+      const job_id = isAi ? ((params[3] as string | null) ?? null) : null;
+      const decided_at = String(isAi ? params[4] : params[2]);
+      const updated_at = String(isAi ? params[5] : params[3]);
+      const existing = this.bookmark_primary_category.find((p) => p.bookmark_id === bookmark_id);
+      if (existing) {
+        existing.tag_id = tag_id;
+        existing.confidence = confidence;
+        existing.source = source;
+        existing.job_id = job_id;
+        existing.status = 'accepted';
+        existing.decided_at = decided_at;
+        existing.updated_at = updated_at;
+      } else {
+        this.bookmark_primary_category.push({
+          bookmark_id,
+          tag_id,
+          confidence,
+          source,
+          job_id,
+          status: 'accepted',
+          decided_at,
+          updated_at,
+        });
+      }
+      return [];
+    }
+
+    // --- ai_feedback: recordFeedback insert (C4-3 feedback loop) ----
+    if (u.startsWith('INSERT INTO AI_FEEDBACK')) {
+      const [id, user_id, bookmark_id, tag_name, action, final_tag_id, source, confidence, domain, context, created_at] =
+        params as unknown[];
+      this.ai_feedback.push({
+        id,
+        user_id,
+        bookmark_id,
+        tag_name,
+        action,
+        final_tag_id: final_tag_id ?? null,
+        source: source ?? null,
+        confidence: confidence ?? null,
+        domain: domain ?? null,
+        context: context ?? null,
+        created_at,
+      });
+      return [];
     }
 
     // --- bookmarks: generic insert (createPrivateBookmark) -----------

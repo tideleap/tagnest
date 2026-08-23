@@ -3,11 +3,11 @@
   "name": "TagNest 一键收纳",
   "version": "0.1.0",
   "description": "一键收藏当前页或整个窗口到你的 TagNest 书签库，并自动归档到标签页组。",
-  "default_locale": null,
-  "permissions": ["activeTab", "tabs", "storage", "scripting"],
+  "permissions": ["activeTab", "tabs", "storage", "scripting", "alarms"],
   "optional_permissions": ["bookmarks"],
   "background": {
     "service_worker": "bg/service-worker.js",
+    "scripts": ["bg/service-worker.js"],
     "type": "module"
   },
   "action": {
@@ -40,5 +40,10 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tagnest@ddxz6780.xyz"
+    }
   }
 }

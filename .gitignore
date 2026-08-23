@@ -3,6 +3,7 @@
 node_modules/
 dist/
 dist_*/
+dist-ext/
 .wrangler/
 .dev.vars
 .env

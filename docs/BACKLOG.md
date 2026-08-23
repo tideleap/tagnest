@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 60 条（其中 2 条为跨文档别名），独立需求 58 项：✅ done 55 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
+> 登记 95 条（其中 2 条为跨文档别名），独立需求 93 项：✅ done 90 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -184,6 +184,41 @@ npm run backlog:write   # 重新生成下方状态表
 | `B-10` | 嵌套标签（父级选择 + 子树过滤，扁平兼容） | P2 | ✅ done | 3/3 |  |
 | `B-11` | RSS 订阅与自动拉取收藏 | P1 | ✅ done | 3/3 |  |
 | `B-12` | 浏览器书签双向同步（变更日志 + 冲突双保留，Phase A+Phase B） | P0 | ✅ done | 5/5 |  |
+| `CS-P1-1` | 迁移 0024：单一主分类表 + 建议队列 kind 列 | P1 | ✅ done | 3/3 |  |
+| `CS-P1-2` | 分类提示词与解析器（C1-1 单一主分类输出 / C1-2 基于内容分类） | P1 | ✅ done | 3/3 |  |
+| `CS-P1-3` | engine 分类模式（C1-4 批处理 / C1-5 置信度分流 / C1-7 未分类统计） | P1 | ✅ done | 2/2 |  |
+| `CS-P1-4` | 主分类持久化与分类树（C1-3 树约束 / 分类建议落库 / 路径推导） | P1 | ✅ done | 2/2 |  |
+| `CS-P1-5` | /api/category/* 端点 + jobs kind 分流（tree/assign + categorize 任务） | P1 | ✅ done | 4/4 |  |
+| `CS-P1-6` | 前端分类视图与审阅（C2-1 主分类唯一归属 / C2-2 分类审阅 / C2-5 未分类入口） | P1 | ✅ done | 2/2 |  |
+| `CS-P2-1` | 扩展 writeback 拉取 + 纯函数树规划器（C3-1 建树 / C3-2 预览 / C3-5 增量 diff） | P1 | ✅ done | 4/4 |  |
+| `CS-P2-2` | 回写编排层：逐操作备份 / 分批≤50 执行 / 一键撤销（C3-3/C3-4/C3-6；P6-A 以逐操作备份替代整树快照，保障提升模式安全） | P1 | ✅ done | 2/2 |  |
+| `CS-P2-3` | 消息协议：category-preview / category-build / category-rollback + 分批进度广播 | P1 | ✅ done | 2/2 |  |
+| `CS-P2-4` | 构建分类书签栏页面（预览→确认→进度→撤销）+ popup 入口 | P1 | ✅ done | 2/2 |  |
+| `CS-P2-5` | C3-7 托管外零写入回归测试 + P2 质量门槛 | P1 | ✅ done | 1/1 |  |
+| `CS-P3-1` | sync-pull 携带 categoryPath（批量推导）+ 分类写入 bump updated_at | P1 | ✅ done | 2/2 |  |
+| `CS-P3-2` | sync-push 接受 categoryPath（解析/创建/落库/反馈/容错） | P1 | ✅ done | 2/2 |  |
+| `CS-P3-3` | flatten 保留托管文件夹内路径（folderPath） | P1 | ✅ done | 2/2 |  |
+| `CS-P3-4` | planSync 分类维度（快照/上行/移动/冲突三路合并） | P1 | ✅ done | 2/2 |  |
+| `CS-P3-5` | runSync 分类放置 + applyingRemote 回环抑制 + 同步页分类统计 | P1 | ✅ done | 2/2 |  |
+| `CS-P3-6` | P3 质量门槛（全量测试 + 构建） | P1 | ✅ done | 1/1 |  |
+| `CS-P4-1` | 定时自动同步（alarms + 方向跟随上次选择 + 设置开关） | P1 | ✅ done | 3/3 |  |
+| `CS-P4-2` | 同步状态可见（stats 分类计数 + popup 覆盖率/最近同步/待上行） | P1 | ✅ done | 3/3 |  |
+| `CS-P4-3` | 首次配对向导（options 三步引导：配置→测试→从云端建树） | P1 | ✅ done | 2/2 |  |
+| `CS-P5-1` | 新书签自动分类（enrichBookmark 挂 categorize，高置信度自动落库） | P1 | ✅ done | 2/2 |  |
+| `CS-P5-2` | categorize 轨道补齐 rebalanceWarning（新分类节点 ≥30% 提醒） | P1 | ✅ done | 1/1 |  |
+| `CS-P5-3` | 拖拽重分类（CategoryView 拖到分类节点改主分类 + 反馈） | P1 | ✅ done | 2/2 |  |
+| `CS-P45-Q` | P4/P5 质量门槛（全量测试 + 构建） | P1 | ✅ done | 2/2 |  |
+| `CS-P6-A1` | 提升为整个书签栏：新增 promoteToBar 总开关（默认关，保留 TagNest 子文件夹为默认） | P2 | ✅ done | 1/1 |  |
+| `CS-P6-A2` | 提升模式管理根感知：reconcile 以书签栏根为管理根，逐操作备份 + 外科式回滚（绝不 removeTree 整栏） | P2 | ✅ done | 2/2 |  |
+| `CS-P6-A3` | 同步 folderPath 归因经 ownedFolderIds 限制（C4-2 安全：提升模式下不把用户整栏书签误当分类上行） | P2 | ✅ done | 1/1 |  |
+| `CS-P6-A4` | 提升模式 UI：options 开关 + category 目标位置提示 + popup 模式徽标 | P2 | ✅ done | 2/2 |  |
+| `CS-P6-A5` | 提升模式单测：构建/回滚外科安全 + flatten 限制 + preview mode 字段 | P2 | ✅ done | 1/1 |  |
+| `CS-P6-A6` | P6-A 质量门槛全绿（规划器 promote 断言 + 全量后端/前端/构建） | P2 | ✅ done | 2/2 | 后端 990 测试全绿、前端 106 全绿、typecheck 通过、vite build 成功；lint 仅 src/pages 有 32 条与 P6 无关的预存告警。 |
+| `CS-P6-B1` | Firefox 支持：manifest 增加 browser_specific_settings.gecko.id，移除无效 default_locale:null | P2 | ✅ done | 2/2 |  |
+| `CS-P6-B2` | 跨浏览器 API 兼容核对：仅引用 FF MV3 支持的 chrome.* 命名空间，无需 browser/chrome shim | P2 | ✅ done | 1/1 |  |
+| `CS-P6-B3` | manifest 校验测试（门禁）：无 default_locale:null / 含 gecko.id / background module / 仅 FF 支持权限 | P2 | ✅ done | 1/1 |  |
+| `CS-P6-B4` | 打包双浏览器产物：Firefox .xpi（web-ext build，0 error）+ Chrome .zip；manifest 双声明 scripts+service_worker | P2 | ✅ done | 5/5 |  |
+| `CS-P6-B5` | innerHTML 安全化：共享 dom.js（el/clear/escapeHtml）+ 消除全部 UNSAFE_VAR_ASSIGNMENT + DOM 安全护栏测试 | P2 | ✅ done | 6/6 |  |
 
 **当前执行队列**：空 —— 所有需求已进入终态。
 

@@ -905,8 +905,7 @@
           "pattern": "类别私密"
         }
       ]
-    }
-  ,
+    },
     {
       "id": "B-1",
       "title": "前端组件测试基建（Vitest + Testing Library 组件回归网）",
@@ -914,8 +913,14 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "src/test/setup.ts" },
-        { "type": "file", "path": "vitest.ui.config.ts" }
+        {
+          "type": "file",
+          "path": "src/test/setup.ts"
+        },
+        {
+          "type": "file",
+          "path": "vitest.ui.config.ts"
+        }
       ]
     },
     {
@@ -925,7 +930,10 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "src/components/ui/RemoteImage.tsx" }
+        {
+          "type": "file",
+          "path": "src/components/ui/RemoteImage.tsx"
+        }
       ]
     },
     {
@@ -935,7 +943,10 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "src/pages/settings/AppearanceSection.tsx" }
+        {
+          "type": "file",
+          "path": "src/pages/settings/AppearanceSection.tsx"
+        }
       ]
     },
     {
@@ -945,7 +956,10 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "scripts/check-theme-consistency.mjs" }
+        {
+          "type": "file",
+          "path": "scripts/check-theme-consistency.mjs"
+        }
       ]
     },
     {
@@ -955,9 +969,18 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "functions/_lib/collections.ts" },
-        { "type": "file", "path": "functions/api/collections/index.ts" },
-        { "type": "test", "name": "collections" }
+        {
+          "type": "file",
+          "path": "functions/_lib/collections.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/collections/index.ts"
+        },
+        {
+          "type": "test",
+          "name": "collections"
+        }
       ]
     },
     {
@@ -967,9 +990,18 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "functions/_lib/similarity.ts" },
-        { "type": "file", "path": "functions/api/bookmarks/[id]/similar.ts" },
-        { "type": "test", "name": "similar-bookmarks" }
+        {
+          "type": "file",
+          "path": "functions/_lib/similarity.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/bookmarks/[id]/similar.ts"
+        },
+        {
+          "type": "test",
+          "name": "similar-bookmarks"
+        }
       ]
     },
     {
@@ -979,9 +1011,18 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "src/components/tags/buildTagTree.ts" },
-        { "type": "file", "path": "functions/api/tags/[id].ts" },
-        { "type": "test", "name": "tags" }
+        {
+          "type": "file",
+          "path": "src/components/tags/buildTagTree.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/tags/[id].ts"
+        },
+        {
+          "type": "test",
+          "name": "tags"
+        }
       ]
     },
     {
@@ -991,9 +1032,18 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "functions/_lib/feed.ts" },
-        { "type": "file", "path": "functions/api/feeds/index.ts" },
-        { "type": "test", "name": "feed" }
+        {
+          "type": "file",
+          "path": "functions/_lib/feed.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/feeds/index.ts"
+        },
+        {
+          "type": "test",
+          "name": "feed"
+        }
       ]
     },
     {
@@ -1003,11 +1053,517 @@
       "priority": "P0",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "functions/api/bookmarks/sync-pull.ts" },
-        { "type": "file", "path": "functions/api/bookmarks/sync-push.ts" },
-        { "type": "file", "path": "extension/bg/sync-engine.js" },
-        { "type": "test", "name": "sync-pull" },
-        { "type": "test", "name": "sync-push" }
+        {
+          "type": "file",
+          "path": "functions/api/bookmarks/sync-pull.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/bookmarks/sync-push.ts"
+        },
+        {
+          "type": "file",
+          "path": "extension/bg/sync-engine.js"
+        },
+        {
+          "type": "test",
+          "name": "sync-pull"
+        },
+        {
+          "type": "test",
+          "name": "sync-push"
+        }
+      ]
+    },
+    {
+      "id": "CS-P1-1",
+      "title": "迁移 0024：单一主分类表 + 建议队列 kind 列",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §4 / P1",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "migrations/0024_primary_category.sql"
+        },
+        {
+          "type": "grep",
+          "path": "migrations/0024_primary_category.sql",
+          "pattern": "bookmark_primary_category"
+        },
+        {
+          "type": "grep",
+          "path": "migrations/0024_primary_category.sql",
+          "pattern": "kind TEXT NOT NULL DEFAULT 'tag'"
+        }
+      ]
+    },
+    {
+      "id": "CS-P1-2",
+      "title": "分类提示词与解析器（C1-1 单一主分类输出 / C1-2 基于内容分类）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C1-1/C1-2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/prompt.ts",
+          "pattern": "buildCategorizePrompt"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/prompt.ts",
+          "pattern": "parseCategorizeResponse"
+        },
+        {
+          "type": "test",
+          "name": "categorize-prompt"
+        }
+      ]
+    },
+    {
+      "id": "CS-P1-3",
+      "title": "engine 分类模式（C1-4 批处理 / C1-5 置信度分流 / C1-7 未分类统计）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C1-4/C1-5/C1-7",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "categorizeBookmarks"
+        },
+        {
+          "type": "test",
+          "name": "categorize-engine"
+        }
+      ]
+    },
+    {
+      "id": "CS-P1-4",
+      "title": "主分类持久化与分类树（C1-3 树约束 / 分类建议落库 / 路径推导）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C1-3 / §4",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/store.ts",
+          "pattern": "bookmark_primary_category"
+        },
+        {
+          "type": "test",
+          "name": "category-store"
+        }
+      ]
+    },
+    {
+      "id": "CS-P1-5",
+      "title": "/api/category/* 端点 + jobs kind 分流（tree/assign + categorize 任务）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §5.1 / C1-4",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/api/category/tree.ts"
+        },
+        {
+          "type": "file",
+          "path": "functions/api/category/assign.ts"
+        },
+        {
+          "type": "grep",
+          "path": "functions/api/ai/jobs/index.ts",
+          "pattern": "categorize"
+        },
+        {
+          "type": "test",
+          "name": "category-api"
+        }
+      ]
+    },
+    {
+      "id": "CS-P1-6",
+      "title": "前端分类视图与审阅（C2-1 主分类唯一归属 / C2-2 分类审阅 / C2-5 未分类入口）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C2-1/C2-2/C2-5",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/lib/categoryGroups.ts",
+          "pattern": "primaryCategory"
+        },
+        {
+          "type": "grep",
+          "path": "src/pages/OrganizePage.tsx",
+          "pattern": "categorize"
+        }
+      ]
+    },
+    {
+      "id": "CS-P2-1",
+      "title": "扩展 writeback 拉取 + 纯函数树规划器（C3-1 建树 / C3-2 预览 / C3-5 增量 diff）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C3-1/C3-2/C3-5 / §6",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "extension/bg/api.js",
+          "pattern": "format=writeback"
+        },
+        {
+          "type": "file",
+          "path": "extension/bg/category-tree.js"
+        },
+        {
+          "type": "grep",
+          "path": "extension/bg/category-tree.js",
+          "pattern": "planCategoryBuild"
+        },
+        {
+          "type": "test",
+          "name": "category-tree"
+        }
+      ]
+    },
+    {
+      "id": "CS-P2-2",
+      "title": "回写编排层：逐操作备份 / 分批≤50 执行 / 一键撤销（C3-3/C3-4/C3-6；P6-A 以逐操作备份替代整树快照，保障提升模式安全）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C3-3/C3-4/C3-6 / §8.2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "extension/bg/reconcile.js",
+          "pattern": "rollbackCategoryBuild"
+        },
+        {
+          "type": "grep",
+          "path": "extension/bg/reconcile.js",
+          "pattern": "tagnestCategoryOpBackup"
+        }
+      ]
+    },
+    {
+      "id": "CS-P2-3",
+      "title": "消息协议：category-preview / category-build / category-rollback + 分批进度广播",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §6 / C3-2/C3-6",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "extension/bg/service-worker.js",
+          "pattern": "category-build"
+        },
+        {
+          "type": "grep",
+          "path": "extension/bg/service-worker.js",
+          "pattern": "category-preview"
+        }
+      ]
+    },
+    {
+      "id": "CS-P2-4",
+      "title": "构建分类书签栏页面（预览→确认→进度→撤销）+ popup 入口",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §7.1⑤⑥ / §6 popup",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "extension/category.html"
+        },
+        {
+          "type": "grep",
+          "path": "extension/popup/popup.html",
+          "pattern": "构建分类书签栏"
+        }
+      ]
+    },
+    {
+      "id": "CS-P2-5",
+      "title": "C3-7 托管外零写入回归测试 + P2 质量门槛",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C3-7 / §9 P2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "tests/category-tree.test.ts",
+          "pattern": "outsideManaged|托管外"
+        }
+      ]
+    },
+    {
+      "id": "CS-P3-1",
+      "title": "sync-pull 携带 categoryPath（批量推导）+ 分类写入 bump updated_at",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C4-1 / §5.2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "functions/api/bookmarks/sync-pull.ts", "pattern": "categoryPath" },
+        { "type": "grep", "path": "tests/sync-pull.test.ts", "pattern": "categoryPath" }
+      ]
+    },
+    {
+      "id": "CS-P3-2",
+      "title": "sync-push 接受 categoryPath（解析/创建/落库/反馈/容错）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C4-3 / §5.2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "functions/api/bookmarks/sync-push.ts", "pattern": "categoryPath" },
+        { "type": "grep", "path": "tests/sync-push.test.ts", "pattern": "categoryPath" }
+      ]
+    },
+    {
+      "id": "CS-P3-3",
+      "title": "flatten 保留托管文件夹内路径（folderPath）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C4-2 / §6",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/bg/sync-diff.js", "pattern": "folderPath" },
+        { "type": "grep", "path": "tests/sync-diff.test.ts", "pattern": "folderPath" }
+      ]
+    },
+    {
+      "id": "CS-P3-4",
+      "title": "planSync 分类维度（快照/上行/移动/冲突三路合并）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C4-4 / §6",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/bg/sync-engine.js", "pattern": "categoryPath" },
+        { "type": "grep", "path": "tests/sync-engine.test.ts", "pattern": "categoryPath" }
+      ]
+    },
+    {
+      "id": "CS-P3-5",
+      "title": "runSync 分类放置 + applyingRemote 回环抑制 + 同步页分类统计",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C4-6 / §6 / C5-2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/bg/reconcile.js", "pattern": "applyingRemote" },
+        { "type": "grep", "path": "extension/sync.html", "pattern": "分类" }
+      ]
+    },
+    {
+      "id": "CS-P3-6",
+      "title": "P3 质量门槛（全量测试 + 构建）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P3",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "tests/sync-orchestrate.test.ts", "pattern": "categoryPath|分类" }
+      ]
+    },
+    {
+      "id": "CS-P4-1",
+      "title": "定时自动同步（alarms + 方向跟随上次选择 + 设置开关）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C5-5 / §10-2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/manifest.json", "pattern": "alarms" },
+        { "type": "grep", "path": "extension/bg/service-worker.js", "pattern": "chrome\\.alarms" },
+        { "type": "grep", "path": "tests/sync-orchestrate.test.ts", "pattern": "autoSync" }
+      ]
+    },
+    {
+      "id": "CS-P4-2",
+      "title": "同步状态可见（stats 分类计数 + popup 覆盖率/最近同步/待上行）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C5-4",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "functions/api/stats.ts", "pattern": "categorized" },
+        { "type": "grep", "path": "extension/popup/popup.html", "pattern": "覆盖率" },
+        { "type": "grep", "path": "extension/popup/popup.js", "pattern": "sync-status" }
+      ]
+    },
+    {
+      "id": "CS-P4-3",
+      "title": "首次配对向导（options 三步引导：配置→测试→从云端建树）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C5-1 / §7.2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/options/options.html", "pattern": "配对|引导" },
+        { "type": "grep", "path": "extension/options/options.js", "pattern": "wizard|step-" }
+      ]
+    },
+    {
+      "id": "CS-P5-1",
+      "title": "新书签自动分类（enrichBookmark 挂 categorize，高置信度自动落库）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C6-1",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "functions/_lib/ai/index.ts", "pattern": "categorize" },
+        { "type": "test", "name": "enrich-categorize" }
+      ]
+    },
+    {
+      "id": "CS-P5-2",
+      "title": "categorize 轨道补齐 rebalanceWarning（新分类节点 ≥30% 提醒）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C6-2",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "functions/api/ai/jobs/[id]/run.ts", "pattern": "kind === 'categorize'[\\s\\S]{0,4000}shouldWarnRebalance" }
+      ]
+    },
+    {
+      "id": "CS-P5-3",
+      "title": "拖拽重分类（CategoryView 拖到分类节点改主分类 + 反馈）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C2-3",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "src/components/library/CategoryView.tsx", "pattern": "onDrop" },
+        { "type": "grep", "path": "src/components/library/CategoryView.tsx", "pattern": "useAssignCategory" }
+      ]
+    },
+    {
+      "id": "CS-P45-Q",
+      "title": "P4/P5 质量门槛（全量测试 + 构建）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P4/P5",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "tests/stats.test.ts", "pattern": "categorized" },
+        { "type": "grep", "path": "tests/enrich-categorize.test.ts", "pattern": "categorize" }
+      ]
+    },
+    {
+      "id": "CS-P6-A1",
+      "title": "提升为整个书签栏：新增 promoteToBar 总开关（默认关，保留 TagNest 子文件夹为默认）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/bg/config.js", "pattern": "promoteToBar: false" }
+      ]
+    },
+    {
+      "id": "CS-P6-A2",
+      "title": "提升模式管理根感知：reconcile 以书签栏根为管理根，逐操作备份 + 外科式回滚（绝不 removeTree 整栏）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/bg/reconcile.js", "pattern": "getManagedFolderNode" },
+        { "type": "grep", "path": "extension/bg/reconcile.js", "pattern": "CATEGORY_OP_BACKUP_KEY" }
+      ]
+    },
+    {
+      "id": "CS-P6-A3",
+      "title": "同步 folderPath 归因经 ownedFolderIds 限制（C4-2 安全：提升模式下不把用户整栏书签误当分类上行）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/bg/sync-diff.js", "pattern": "ownedFolderIds" }
+      ]
+    },
+    {
+      "id": "CS-P6-A4",
+      "title": "提升模式 UI：options 开关 + category 目标位置提示 + popup 模式徽标",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/options/options.html", "pattern": "promoteToBar" },
+        { "type": "grep", "path": "extension/popup/popup.js", "pattern": "modeBadge" }
+      ]
+    },
+    {
+      "id": "CS-P6-A5",
+      "title": "提升模式单测：构建/回滚外科安全 + flatten 限制 + preview mode 字段",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "test", "name": "category-build-promote" }
+      ]
+    },
+    {
+      "id": "CS-P6-A6",
+      "title": "P6-A 质量门槛全绿（规划器 promote 断言 + 全量后端/前端/构建）",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
+      "priority": "P2",
+      "status": "done",
+      "note": "后端 990 测试全绿、前端 106 全绿、typecheck 通过、vite build 成功；lint 仅 src/pages 有 32 条与 P6 无关的预存告警。",
+      "evidence": [
+        { "type": "test", "name": "category-tree" },
+        { "type": "file", "path": "dist/index.html" }
+      ]
+    },
+    {
+      "id": "CS-P6-B1",
+      "title": "Firefox 支持：manifest 增加 browser_specific_settings.gecko.id，移除无效 default_locale:null",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-B",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/manifest.json", "pattern": "gecko" },
+        { "type": "nogrep", "path": "extension/manifest.json", "pattern": "default_locale" }
+      ]
+    },
+    {
+      "id": "CS-P6-B2",
+      "title": "跨浏览器 API 兼容核对：仅引用 FF MV3 支持的 chrome.* 命名空间，无需 browser/chrome shim",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-B",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "test", "name": "manifest" }
+      ]
+    },
+    {
+      "id": "CS-P6-B3",
+      "title": "manifest 校验测试（门禁）：无 default_locale:null / 含 gecko.id / background module / 仅 FF 支持权限",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-B",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "test", "name": "manifest" }
+      ]
+    },
+    {
+      "id": "CS-P6-B4",
+      "title": "打包双浏览器产物：Firefox .xpi（web-ext build，0 error）+ Chrome .zip；manifest 双声明 scripts+service_worker",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-B / P6 收尾",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "grep", "path": "extension/manifest.json", "pattern": "\"scripts\"" },
+        { "type": "grep", "path": "extension/manifest.json", "pattern": "gecko" },
+        { "type": "file", "path": "dist-ext/TagNest-Firefox-0.1.0.xpi" },
+        { "type": "file", "path": "dist-ext/TagNest-Chrome-0.1.0.zip" },
+        { "type": "test", "name": "manifest" }
+      ]
+    },
+    {
+      "id": "CS-P6-B5",
+      "title": "innerHTML 安全化：共享 dom.js（el/clear/escapeHtml）+ 消除全部 UNSAFE_VAR_ASSIGNMENT + DOM 安全护栏测试",
+      "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-B / AMO 审查合规",
+      "priority": "P2",
+      "status": "done",
+      "evidence": [
+        { "type": "file", "path": "extension/dom.js" },
+        { "type": "grep", "path": "extension/sync.js", "pattern": "from './dom.js'" },
+        { "type": "grep", "path": "extension/category.js", "pattern": "from './dom.js'" },
+        { "type": "grep", "path": "extension/reconcile.js", "pattern": "from './dom.js'" },
+        { "type": "grep", "path": "extension/popup/popup.js", "pattern": "from '../dom.js'" },
+        { "type": "test", "name": "extension-dom-safety" }
       ]
     }
   ]
