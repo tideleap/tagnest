@@ -169,3 +169,126 @@ describe('POST /api/bookmarks/sync-push', () => {
     );
   });
 });
+
+describe('POST /api/bookmarks/sync-push — categoryPath (C4-3)', () => {
+  it('creates the folder chain and writes a browser_folder placement', async () => {
+    const res = await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['开发技术', '前端开发'] },
+      ]),
+    );
+    const body = await res.json();
+    expect(body.applied).toBe(1);
+    expect(body.failed).toBe(0);
+
+    // Both folder levels materialised as a parent_id chain.
+    const root = db.tags.find((t) => t.user_id === USER && t.name === '开发技术');
+    const leaf = db.tags.find((t) => t.user_id === USER && t.name === '前端开发');
+    expect(root).toBeTruthy();
+    expect(leaf).toBeTruthy();
+    expect(root!.parent_id ?? null).toBeNull();
+    expect(leaf!.parent_id).toBe(root!.id);
+
+    // The bookmark's single placement points at the leaf, source=browser_folder.
+    const bm = db.bookmarks.find((b) => b.url === 'https://a.com/x')!;
+    const placement = db.bookmark_primary_category.find((p) => p.bookmark_id === bm.id);
+    expect(placement).toBeTruthy();
+    expect(placement!.tag_id).toBe(leaf!.id);
+    expect(placement!.source).toBe('browser_folder');
+    expect(placement!.status).toBe('accepted');
+  });
+
+  it('reuses an existing folder path case-insensitively instead of duplicating', async () => {
+    db.tags.push({
+      id: 't_root', user_id: USER, name: '开发技术', color_index: 0,
+      parent_id: null, sort_order: 0, is_private: 0, created_at: '2024-01-01T00:00:00Z',
+    });
+    const res = await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['开发技术'] },
+      ]),
+    );
+    expect((await res.json()).applied).toBe(1);
+    // No duplicate root created.
+    expect(db.tags.filter((t) => t.user_id === USER && String(t.name).toLowerCase() === '开发技术')).toHaveLength(1);
+    const bm = db.bookmarks.find((b) => b.url === 'https://a.com/x')!;
+    expect(db.bookmark_primary_category.find((p) => p.bookmark_id === bm.id)!.tag_id).toBe('t_root');
+  });
+
+  it('bumps updated_at so the placement reaches other browsers (C5-2)', async () => {
+    seedBm(db, 'b1', USER, 'a.com/x', 'A', '2024-01-01T00:00:00Z');
+    await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['工作'] },
+      ]),
+    );
+    const row = db.bookmarks.find((b) => b.id === 'b1')!;
+    expect(row.updated_at > '2024-01-01T00:00:00Z').toBe(true);
+  });
+
+  it('records a modified feedback event keyed by the full path', async () => {
+    await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['开发技术', '前端开发'] },
+      ]),
+    );
+    expect(db.ai_feedback).toHaveLength(1);
+    const fb = db.ai_feedback[0];
+    expect(fb.action).toBe('modified');
+    expect(fb.source).toBe('browser_folder');
+    expect(fb.tag_name).toBe('开发技术 > 前端开发');
+    expect(fb.domain).toBe('a.com');
+  });
+
+  it('overwrites a prior placement when the folder moves', async () => {
+    await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['旧分类'] },
+      ]),
+    );
+    await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['新分类'] },
+      ]),
+    );
+    const bm = db.bookmarks.find((b) => b.url === 'https://a.com/x')!;
+    const placements = db.bookmark_primary_category.filter((p) => p.bookmark_id === bm.id);
+    // Still exactly one placement — the move replaced it in place.
+    expect(placements).toHaveLength(1);
+    const newLeaf = db.tags.find((t) => t.user_id === USER && t.name === '新分类');
+    expect(placements[0].tag_id).toBe(newLeaf!.id);
+  });
+
+  it('leaves placement untouched when categoryPath is absent or null', async () => {
+    await pushChanges(postCtx(env, USER, [{ op: 'upsert', url: 'https://a.com/x', title: 'A' }]));
+    await pushChanges(postCtx(env, USER, [{ op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: null }]));
+    expect(db.bookmark_primary_category).toHaveLength(0);
+  });
+
+  it('rejects an over-deep categoryPath without aborting other changes', async () => {
+    const deep = Array.from({ length: 9 }, (_, i) => `L${i}`);
+    const res = await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/deep', title: 'D', categoryPath: deep },
+        { op: 'upsert', url: 'https://a.com/ok', title: 'Ok' },
+      ]),
+    );
+    const body = await res.json();
+    expect(body.applied).toBe(1);
+    expect(body.failed).toBe(1);
+    expect(body.errors[0].code).toBe('invalid_category_path');
+    expect(body.errors[0].index).toBe(0);
+  });
+
+  it('rejects a categoryPath with empty or non-string segments', async () => {
+    const res = await pushChanges(
+      postCtx(env, USER, [
+        { op: 'upsert', url: 'https://a.com/x', title: 'A', categoryPath: ['ok', '  '] },
+      ]),
+    );
+    const body = await res.json();
+    expect(body.failed).toBe(1);
+    expect(body.errors[0].code).toBe('invalid_category_path');
+    expect(db.bookmark_primary_category).toHaveLength(0);
+  });
+});

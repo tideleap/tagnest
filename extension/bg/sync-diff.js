@@ -82,23 +82,57 @@ export function urlKey(input) {
  * Flatten a chrome.bookmarks tree into a flat list of URL nodes. Folders
  * (nodes without `.url`) are descended; each leaf carries its id, url, title,
  * parent folder id, and creation time (epoch ms).
+ *
+ * When `managedFolderId` is given (C4-2), every leaf also carries
+ * `folderPath`: for bookmarks INSIDE the managed folder's subtree, the array
+ * of folder titles between the managed root and the bookmark (root children
+ * get `[]`, deeper nesting accumulates, e.g. `['开发技术', '前端开发']`) —
+ * directly comparable to the cloud's derived `categoryPath`. Bookmarks outside
+ * the managed subtree get `folderPath: null`, which sync treats as "no
+ * category information" rather than "uncategorised". The managed root's own
+ * title is never part of the path (it mirrors the whole taxonomy, not a
+ * category). Without `managedFolderId` every leaf reads `null`, keeping the
+ * pre-P3 shape for callers that do not care about folders.
  */
-export function flattenBrowserBookmarks(nodes) {
+export function flattenBrowserBookmarks(nodes, managedFolderId = null, ownedFolderIds = null) {
   const out = [];
-  const walk = (node) => {
+  const walk = (node, pathInsideManaged, insideOwned) => {
     if (!node) return;
+    const isManagedRoot = managedFolderId != null && node.id === managedFolderId;
+    // When `ownedFolderIds` is null (TagNest mode) every node inside the
+    // managed root counts as owned — original behaviour. In promote mode
+    // (P6-A) only nodes within an owned category folder are attributed a
+    // folderPath: a user's other top-level folders must never be pushed up as
+    // categories (C4-2 safety).
+    const nowOwned = ownedFolderIds == null ? true : insideOwned || ownedFolderIds.has(node.id);
     if (node.url) {
+      const inManaged = pathInsideManaged !== null && nowOwned;
       out.push({
         id: node.id,
         url: node.url,
         title: node.title || '',
         parentId: node.parentId ?? null,
         dateAdded: node.dateAdded ?? null,
+        folderPath: inManaged ? [...pathInsideManaged] : null,
       });
     }
-    if (Array.isArray(node.children)) node.children.forEach(walk);
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        let childPath;
+        if (isManagedRoot) {
+          // Children of the managed root start a managed path (depth 0).
+          childPath = [];
+        } else if (pathInsideManaged !== null && !node.url) {
+          // A folder inside the managed subtree extends the path.
+          childPath = [...pathInsideManaged, node.title || ''];
+        } else {
+          childPath = null;
+        }
+        walk(child, childPath, nowOwned);
+      }
+    }
   };
-  (Array.isArray(nodes) ? nodes : [nodes]).forEach(walk);
+  (Array.isArray(nodes) ? nodes : [nodes]).forEach((n) => walk(n, null, false));
   return out;
 }
 

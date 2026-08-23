@@ -45,6 +45,99 @@ describe('flattenBrowserBookmarks', () => {
     expect(flat).toHaveLength(2);
     expect(flat.map((n) => n.id).sort()).toEqual(['2', '4']);
   });
+
+  it('reads folderPath null for every leaf when no managed folder is given', () => {
+    const tree = [
+      {
+        id: '1',
+        title: 'root',
+        children: [{ id: '2', title: 'A', url: 'https://a.com' }],
+      },
+    ];
+    const flat = flattenBrowserBookmarks(tree);
+    expect(flat[0].folderPath).toBeNull();
+  });
+});
+
+describe('flattenBrowserBookmarks — managed-folder folderPath (C4-2)', () => {
+  // Browser bar
+  //   ├─ loose (outside managed)
+  //   └─ TagNest 分类 (managed root, id 'm')
+  //        ├─ direct          → folderPath []
+  //        └─ 开发技术         → folder
+  //             └─ nested     → folderPath ['开发技术']
+  //                  └─ deep  → folderPath ['开发技术', '前端开发']
+  const tree = [
+    {
+      id: 'bar',
+      title: '书签栏',
+      children: [
+        { id: 'loose', title: 'Loose', url: 'https://loose.example.com' },
+        {
+          id: 'm',
+          title: 'TagNest 分类',
+          children: [
+            { id: 'direct', title: 'Direct', url: 'https://direct.example.com' },
+            {
+              id: 'dev',
+              title: '开发技术',
+              children: [
+                { id: 'nested', title: 'Nested', url: 'https://nested.example.com' },
+                {
+                  id: 'fe',
+                  title: '前端开发',
+                  children: [{ id: 'deep', title: 'Deep', url: 'https://deep.example.com' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  it('assigns the folder path relative to the managed root, root children get []', () => {
+    const flat = flattenBrowserBookmarks(tree, 'm');
+    const byId = new Map(flat.map((n) => [n.id, n]));
+    expect(byId.get('direct')!.folderPath).toEqual([]);
+    expect(byId.get('nested')!.folderPath).toEqual(['开发技术']);
+    expect(byId.get('deep')!.folderPath).toEqual(['开发技术', '前端开发']);
+  });
+
+  it('reads folderPath null for bookmarks outside the managed subtree', () => {
+    const flat = flattenBrowserBookmarks(tree, 'm');
+    const loose = flat.find((n) => n.id === 'loose')!;
+    expect(loose.folderPath).toBeNull();
+  });
+
+  it('never includes the managed root title itself in the path', () => {
+    const flat = flattenBrowserBookmarks(tree, 'm');
+    for (const n of flat) {
+      if (n.folderPath !== null) {
+        expect(n.folderPath).not.toContain('TagNest 分类');
+      }
+    }
+  });
+
+  it('works when the managed folder is nested inside other folders', () => {
+    // Managed root buried one level deeper — paths still start below it.
+    const nestedTree = [
+      {
+        id: 'outer',
+        title: 'outer',
+        children: [
+          {
+            id: 'm',
+            title: 'TagNest 分类',
+            children: [{ id: 'x', title: 'X', url: 'https://x.example.com' }],
+          },
+        ],
+      },
+    ];
+    const flat = flattenBrowserBookmarks(nestedTree, 'm');
+    expect(flat).toHaveLength(1);
+    expect(flat[0].folderPath).toEqual([]);
+  });
 });
 
 describe('diffByKey', () => {

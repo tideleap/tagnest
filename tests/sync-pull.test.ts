@@ -52,6 +52,20 @@ function linkTag(db: MockDb, bookmarkId: string, tagId: string) {
   db.bookmark_tags.push({ bookmark_id: bookmarkId, tag_id: tagId });
 }
 
+/** Seeds an accepted primary-category placement (C4-1 categoryPath source). */
+function seedPlacement(db: MockDb, bookmarkId: string, tagId: string) {
+  db.bookmark_primary_category.push({
+    bookmark_id: bookmarkId,
+    tag_id: tagId,
+    confidence: 0.9,
+    source: 'ai',
+    job_id: 'j1',
+    status: 'accepted',
+    decided_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  });
+}
+
 function getCtx(env: Env, userId: string, query: Record<string, string> = {}) {
   const qs = new URLSearchParams(query).toString();
   return {
@@ -150,6 +164,52 @@ describe('GET /api/bookmarks/sync-pull', () => {
     } while (cursor);
 
     expect(seen.sort()).toEqual(['b1', 'b2', 'b3', 'b4', 'b5']);
+  });
+
+  it('derives categoryPath from the accepted placement, walking parent_id upward (C4-1)', async () => {
+    seedBm(db, 'b1', USER, 'a.com/x', 'Alpha', '2024-01-01T00:00:01Z');
+    seedBm(db, 'b2', USER, 'a.com/y', 'Beta', '2024-01-01T00:00:02Z');
+    // 开发技术 > 前端开发 > React — a three-level chain.
+    seedTag(db, 't1', USER, '开发技术');
+    seedTag(db, 't2', USER, '前端开发');
+    db.tags.find((t) => t.id === 't2')!.parent_id = 't1';
+    seedTag(db, 't3', USER, 'React');
+    db.tags.find((t) => t.id === 't3')!.parent_id = 't2';
+    seedPlacement(db, 'b1', 't3');
+    // b2 has no placement → categoryPath stays null.
+
+    const body = await (await pullChanges(getCtx(env, USER))).json();
+    const b1 = body.items.find((i: any) => i.id === 'b1');
+    const b2 = body.items.find((i: any) => i.id === 'b2');
+    expect(b1.categoryPath).toEqual(['开发技术', '前端开发', 'React']);
+    expect(b2.categoryPath).toBeNull();
+  });
+
+  it('reports categoryPath null for soft-deleted rows (placement is moot)', async () => {
+    seedBm(db, 'gone', USER, 'a.com/g', 'G', '2024-02-01T00:00:00Z', { deleted_at: '2024-02-01T00:00:00Z' });
+    seedTag(db, 't1', USER, '开发技术');
+    seedPlacement(db, 'gone', 't1');
+
+    const body = await (await pullChanges(getCtx(env, USER))).json();
+    expect(body.items[0].categoryPath).toBeNull();
+  });
+
+  it('ignores non-accepted placements when deriving categoryPath', async () => {
+    seedBm(db, 'b1', USER, 'a.com/x', 'Alpha', '2024-01-01T00:00:01Z');
+    seedTag(db, 't1', USER, '开发技术');
+    db.bookmark_primary_category.push({
+      bookmark_id: 'b1',
+      tag_id: 't1',
+      confidence: 0.9,
+      source: 'ai',
+      job_id: 'j1',
+      status: 'pending', // not accepted → must not surface
+      decided_at: null,
+      updated_at: '2024-01-01T00:00:00Z',
+    });
+
+    const body = await (await pullChanges(getCtx(env, USER))).json();
+    expect(body.items[0].categoryPath).toBeNull();
   });
 
   it('sets the no-store cache header (per-account data must not be cached)', async () => {
