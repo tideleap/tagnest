@@ -8,6 +8,15 @@ const KEY = 'tagnestConfig.v0';
 const DEFAULTS = {
   baseUrl: 'https://tagnest.pages.dev',
   apiKey: '',
+  // C5-5: periodic auto sync. Enabled by default (user decision); the interval
+  // is minutes. Direction follows the user's last manual choice (persisted by
+  // runSync as `lastDirection`), defaulting to 'upload' — the safest mode.
+  autoSync: true,
+  autoSyncMinutes: 5,
+  // P6-A: "promote to bar" — when true, the category build mirrors the cloud
+  // tree at the bookmarks-bar root instead of inside a "TagNest" subfolder.
+  // Opt-in and OFF by default: the managed subfolder stays the safe default.
+  promoteToBar: false,
 };
 
 export async function loadConfig() {

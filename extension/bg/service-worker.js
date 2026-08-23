@@ -2,7 +2,84 @@
 import { captureWindow } from './capture-window.js';
 import { ensureBookmark, appendNote } from './api.js';
 import { loadConfig, isConfigured } from './config.js';
-import { runSync, rollbackSync } from './reconcile.js';
+import {
+  runSync,
+  rollbackSync,
+  resolveAutoSync,
+  loadSyncState,
+  getSyncStatus,
+  previewCategoryBuild,
+  runCategoryBuild,
+  rollbackCategoryBuild,
+} from './reconcile.js';
+
+// ---------------------------------------------------------------------------
+// C5-5 — periodic auto sync (chrome.alarms)
+// ---------------------------------------------------------------------------
+//
+// MV3 service workers are ephemeral, so a setInterval would die with the worker.
+// chrome.alarms survives restarts: we (re)arm one named alarm whenever the
+// config or the last manual direction changes, and the alarm handler runs a
+// sync in the direction the user last chose manually (default 'upload').
+
+const AUTO_SYNC_ALARM = 'tagnest-auto-sync';
+
+/** Re-arm (or clear) the auto-sync alarm to match the current config. */
+export async function refreshAutoSyncAlarm() {
+  const cfg = await loadConfig();
+  const state = await loadSyncState().catch(() => ({ lastDirection: 'upload' }));
+  const policy = resolveAutoSync({
+    configured: isConfigured(cfg),
+    autoSync: cfg.autoSync,
+    autoSyncMinutes: cfg.autoSyncMinutes,
+    lastDirection: state.lastDirection,
+  });
+
+  if (!policy.enabled) {
+    await chrome.alarms.clear(AUTO_SYNC_ALARM).catch(() => {});
+    return { armed: false };
+  }
+  await chrome.alarms.create(AUTO_SYNC_ALARM, { periodInMinutes: policy.minutes });
+  return { armed: true, minutes: policy.minutes, direction: policy.direction };
+}
+
+// Arm on install/startup so the schedule survives browser restarts.
+chrome.runtime.onInstalled.addListener(() => {
+  void refreshAutoSyncAlarm();
+});
+chrome.runtime.onStartup.addListener(() => {
+  void refreshAutoSyncAlarm();
+});
+
+// Re-arm whenever the stored config changes (toggle, interval, credentials).
+chrome.storage?.onChanged?.addListener((_changes, area) => {
+  if (area === 'local') void refreshAutoSyncAlarm();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm?.name !== AUTO_SYNC_ALARM) return;
+  void (async () => {
+    const cfg = await loadConfig();
+    if (!isConfigured(cfg)) return;
+    const state = await loadSyncState().catch(() => ({ lastDirection: 'upload' }));
+    const policy = resolveAutoSync({
+      configured: true,
+      autoSync: cfg.autoSync,
+      autoSyncMinutes: cfg.autoSyncMinutes,
+      lastDirection: state.lastDirection,
+    });
+    if (!policy.enabled) return;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 90_000);
+    try {
+      await runSync(cfg, { direction: policy.direction, signal: ac.signal });
+    } catch {
+      // Auto sync is best-effort; a transient failure retries on the next tick.
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+});
 
 // Keyboard shortcuts: Ctrl+Shift+S saves the active tab (selected text becomes
 // the note), Ctrl+Shift+T captures the whole window.
@@ -63,6 +140,84 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         sendResponse(await rollbackSync());
+      } catch (err) {
+        sendResponse({ ok: false, message: err?.message || '恢复失败' });
+      }
+    })();
+    return true;
+  }
+
+  // CS-P4-2 (C5-4) — read-only sync status for the popup: last sync time,
+  // pending upload count, and cloud category coverage. Best-effort: partial
+  // failures come back as null fields, never as an error.
+  if (msg.type === 'sync-status') {
+    (async () => {
+      try {
+        const cfg = await loadConfig();
+        sendResponse({ ok: true, ...(await getSyncStatus(cfg)) });
+      } catch (err) {
+        sendResponse({ ok: false, message: err?.message || '读取同步状态失败' });
+      }
+    })();
+    return true;
+  }
+
+  // CategorySync P2 — managed category tree build (C3). The build page drives
+  // a preview → confirm → build → rollback flow; progress is broadcast to all
+  // extension contexts as `category-build-progress` messages.
+  if (msg.type === 'category-preview') {
+    (async () => {
+      const cfg = await loadConfig();
+      if (!isConfigured(cfg)) {
+        sendResponse({ ok: false, notConfigured: true });
+        return;
+      }
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 90_000);
+      try {
+        sendResponse(await previewCategoryBuild(cfg, ac.signal));
+      } catch (err) {
+        sendResponse({ ok: false, message: err?.message || '预览失败' });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'category-build') {
+    (async () => {
+      const cfg = await loadConfig();
+      if (!isConfigured(cfg)) {
+        sendResponse({ ok: false, notConfigured: true });
+        return;
+      }
+      const ac = new AbortController();
+      // A 1000-bookmark build is chunked ≤50/batch; give it generous headroom.
+      const timer = setTimeout(() => ac.abort(), 300_000);
+      try {
+        const result = await runCategoryBuild(cfg, {
+          signal: ac.signal,
+          onProgress: (p) => {
+            chrome.runtime
+              .sendMessage({ type: 'category-build-progress', ...p })
+              .catch(() => {});
+          },
+        });
+        sendResponse(result);
+      } catch (err) {
+        sendResponse({ ok: false, message: err?.message || '构建失败' });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'category-rollback') {
+    (async () => {
+      try {
+        sendResponse(await rollbackCategoryBuild());
       } catch (err) {
         sendResponse({ ok: false, message: err?.message || '恢复失败' });
       }

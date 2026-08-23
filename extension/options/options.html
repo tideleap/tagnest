@@ -16,6 +16,42 @@
         </div>
       </header>
 
+      <!-- CS-P4-3 (C5-1): first-run pairing wizard — configure → test → build -->
+      <section class="card wizard" id="wizardCard" hidden>
+        <h2 class="wizard-title">首次配对引导</h2>
+        <p class="wizard-sub">新浏览器三步接入：配置 → 测试 → 从云端构建分类书签栏</p>
+        <ol class="wizard-steps">
+          <li class="wizard-step" id="step-1">
+            <span class="wizard-mark" aria-hidden></span>
+            <div class="wizard-body">
+              <p class="wizard-name">填写服务器地址与 API 密钥</p>
+              <p class="wizard-desc">在下方表单填写后保存</p>
+            </div>
+            <button class="btn btn-secondary wizard-btn" id="wizardSaveBtn" type="button">保存并继续</button>
+          </li>
+          <li class="wizard-step" id="step-2">
+            <span class="wizard-mark" aria-hidden></span>
+            <div class="wizard-body">
+              <p class="wizard-name">测试连接</p>
+              <p class="wizard-desc">验证服务器可达、密钥有效</p>
+            </div>
+            <button class="btn btn-secondary wizard-btn" id="wizardTestBtn" type="button">测试连接</button>
+          </li>
+          <li class="wizard-step" id="step-3">
+            <span class="wizard-mark" aria-hidden></span>
+            <div class="wizard-body">
+              <p class="wizard-name">从云端构建分类书签栏</p>
+              <p class="wizard-desc">拉取云端分类树，在书签栏建出「TagNest」托管文件夹</p>
+            </div>
+            <button class="btn btn-primary wizard-btn" id="wizardBuildBtn" type="button">开始构建</button>
+          </li>
+        </ol>
+        <div class="wizard-progress" id="wizardProgress" hidden>
+          <span id="wizardProgressText">准备中…</span>
+        </div>
+        <div class="feedback" id="wizardFeedback" hidden></div>
+      </section>
+
       <div class="card">
         <div class="field">
           <label for="baseUrl">TagNest 服务器地址</label>
@@ -41,6 +77,28 @@
             <option value="system">跟随系统 (system)</option>
           </select>
           <p class="hint">与 TagNest 网站一致的多主题；选择「跟随系统」则随操作系统深浅自动切换。</p>
+        </div>
+
+        <div class="field">
+          <label for="autoSync">自动同步</label>
+          <select id="autoSync" class="theme-select">
+            <option value="on">开启（每 5 分钟）</option>
+            <option value="off">关闭（仅手动）</option>
+          </select>
+          <p class="hint">
+            定时把书签与 TagNest 对齐。同步方向跟随你上次手动选择的方向（默认仅上传）。
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="promoteToBar">分类书签栏位置</label>
+          <select id="promoteToBar" class="theme-select">
+            <option value="off">TagNest 子文件夹（默认，安全）</option>
+            <option value="on">提升到整个书签栏（进阶）</option>
+          </select>
+          <p class="hint warn-hint">
+            选择「提升到整个书签栏」后，分类文件夹会直接建在书签栏顶层（如「开发技术 / 在线工具」），而不是放在 TagNest 文件夹内。回滚仅移除本次构建的自有分类节点，不影响你原有的其他书签；但若书签栏已有同名顶层文件夹，会被复用而非新建。
+          </p>
         </div>
 
         <div class="actions">
