@@ -44,5 +44,6 @@ export function toApiSuggestion(row: SuggestionRow): AiSuggestion {
     createdAt: row.createdAt,
     category: null,
     subcategory: null,
+    kind: row.kind,
   };
 }

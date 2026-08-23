@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildCategoryGroups, UNTAGGED_GROUP_ID } from './categoryGroups';
+import {
+  buildCategoryGroups,
+  buildPrimaryCategoryGroups,
+  UNTAGGED_GROUP_ID,
+} from './categoryGroups';
 import type { Bookmark, Tag } from '@shared/types';
 
 function tag(id: string, name: string, parentId: string | null, colorIndex = 0): Tag {
@@ -137,5 +141,122 @@ describe('buildCategoryGroups', () => {
     expect(groups[0].id).toBe('react');
     expect(groups[0].directItems.map((b) => b.id)).toEqual(['b1']);
     expect(groups[0].children).toHaveLength(0);
+  });
+});
+
+describe('buildPrimaryCategoryGroups (CategorySync C2-1)', () => {
+  it('returns an empty list for no bookmarks', () => {
+    expect(buildPrimaryCategoryGroups([FRONTEND], [], new Map())).toEqual([]);
+  });
+
+  it('places a bookmark under its single primary category path', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND, REACT],
+      [bookmark('b1', [])],
+      new Map([['b1', ['前端', 'React']]]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe('frontend');
+    expect(groups[0].children).toHaveLength(1);
+    expect(groups[0].children[0].id).toBe('react');
+    expect(groups[0].children[0].items.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('appears exactly once even when the bookmark carries many loose tags', () => {
+    // The whole point of C2-1: multi-tag bookmarks must NOT fan out across
+    // groups. Placement comes from the primary-category map only.
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND, DESIGN],
+      [bookmark('b1', [FRONTEND, DESIGN])],
+      new Map([['b1', ['设计']]]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe('design');
+    expect(groups[0].directItems.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('puts a level-1-only path directly under the top-level group', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND, REACT],
+      [bookmark('b1', [])],
+      new Map([['b1', ['前端']]]),
+    );
+    expect(groups[0].id).toBe('frontend');
+    expect(groups[0].directItems.map((b) => b.id)).toEqual(['b1']);
+    expect(groups[0].children).toHaveLength(0);
+  });
+
+  it('collects bookmarks without a placement into the untagged catch-all', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND],
+      [bookmark('b1', []), bookmark('b2', [])],
+      new Map([['b2', ['前端']]]),
+    );
+    const untagged = groups.find((g) => g.id === UNTAGGED_GROUP_ID);
+    expect(untagged).toBeDefined();
+    expect(untagged!.directItems.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('treats a null or empty path as untagged', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND],
+      [bookmark('b1', []), bookmark('b2', [])],
+      new Map<string, string[] | null>([
+        ['b1', null],
+        ['b2', []],
+      ]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe(UNTAGGED_GROUP_ID);
+    expect(groups[0].directItems.map((b) => b.id).sort()).toEqual(['b1', 'b2']);
+  });
+
+  it('keeps bookmarks whose path root no longer exists in a synthetic group', () => {
+    // The placement references a category that was deleted out from under it.
+    // Dropping the bookmark would read as data loss, so it lands in a
+    // path-labelled synthetic group instead.
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND],
+      [bookmark('b1', [])],
+      new Map([['b1', ['已删除分类', '子类']]]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe('__path:已删除分类 > 子类');
+    expect(groups[0].name).toBe('已删除分类 > 子类');
+    expect(groups[0].directItems.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('folds a deeper-than-two path into the level-2 bucket', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND, REACT, HOOKS],
+      [bookmark('b1', [])],
+      new Map([['b1', ['前端', 'React', 'Hooks']]]),
+    );
+    expect(groups[0].children).toHaveLength(1);
+    expect(groups[0].children[0].id).toBe('react');
+    expect(groups[0].children[0].items.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('drops a level-2 name that does not match an existing child into direct items', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [FRONTEND],
+      [bookmark('b1', [])],
+      new Map([['b1', ['前端', '不存在的子类']]]),
+    );
+    expect(groups[0].children).toHaveLength(0);
+    expect(groups[0].directItems.map((b) => b.id)).toEqual(['b1']);
+  });
+
+  it('sorts top-level groups by name and keeps untagged last', () => {
+    const groups = buildPrimaryCategoryGroups(
+      [DESIGN, FRONTEND],
+      [bookmark('b1', []), bookmark('b2', []), bookmark('b3', [])],
+      new Map<string, string[]>([
+        ['b1', ['设计']],
+        ['b2', ['前端']],
+        // b3 untagged
+      ]),
+    );
+    expect(groups.map((g) => g.name)).toEqual(['前端', '设计', '未分类']);
   });
 });

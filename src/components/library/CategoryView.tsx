@@ -1,19 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, FolderTree, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronUp, FolderTree, Sparkles, Wand2 } from 'lucide-react';
 import type { Bookmark, Tag } from '@shared/types';
-import { buildCategoryGroups, UNTAGGED_GROUP_ID, type CategoryGroup } from '@/lib/categoryGroups';
-import { tagColorVars } from '@/components/ui';
+import {
+  buildPrimaryCategoryGroups,
+  UNTAGGED_GROUP_ID,
+  type CategoryGroup,
+} from '@/lib/categoryGroups';
+import { tagColorVars, Button } from '@/components/ui';
 import { BookmarkCard, type BookmarkCardProps } from '@/components/bookmark/BookmarkCard';
 import { cx } from '@/lib/cx';
+import { useAssignCategory, useCategoryWriteback } from '@/hooks/queries/category';
+
+/**
+ * C2-3 — drag-to-reclassify.
+ *
+ * Every card is draggable; dropping one onto a category section (or its level-2
+ * sub-section) re-assigns its PRIMARY category to that tag via `useAssignCategory`.
+ * The bookmark id travels on the native drag payload (`text/plain`), set by
+ * `BookmarkCard` on drag start, so the drop handler never needs a shared state
+ * variable for the id — only `overTagId` for the highlight. Synthetic groups
+ * (deleted-root path labels / the 未分类 catch-all) are not real tags, so they
+ * reject drops.
+ */
 
 /**
  * Two-level category browse view for the Library.
  *
- * Level 1 groups are top-level tags; each group expands into its child-tag
- * sub-sections first and its direct bookmarks after — the same shape the
- * `directory` share theme renders, but built client-side from the live
- * library so every card keeps its full interaction surface (select, edit,
- * favourite, …). Collapse state per group persists to localStorage.
+ * CategorySync (C2-1): this view renders the PRIMARY-category placement, not
+ * the loose tag graph. Every bookmark appears exactly once — under the single
+ * category it was assigned (`bookmark_primary_category`) — instead of under
+ * every tag it carries. Placements are read from the writeback feed
+ * (`/api/category/tree?format=writeback`), the same mapping the browser
+ * extension consumes, so the view and the bookmark bar can never disagree.
+ *
+ * Bookmarks with no placement yet collect in the `__untagged` group, which
+ * doubles as the C2-5 entry point: a "立即整理" button jumps straight to the
+ * categorize organiser. Collapse state per group persists to localStorage.
  */
 
 const STORAGE_KEY = 'tagnest.library.category-collapsed';
@@ -39,7 +62,59 @@ export function CategoryView({
   selectionActive: boolean;
   handlers: CardHandlers;
 }) {
-  const groups = useMemo(() => buildCategoryGroups(tags, bookmarks), [tags, bookmarks]);
+  const navigate = useNavigate();
+  const assignCategory = useAssignCategory();
+  const [overTagId, setOverTagId] = useState<string | null>(null);
+
+  // C2-3: the dragged bookmark id rides the native payload set by BookmarkCard,
+  // so we only track the hovered target tag for highlighting.
+  const handleDragStart = (id: string) => {
+    setOverTagId(null);
+    void id; // id is carried via dataTransfer; no extra state needed.
+  };
+
+  const handleDragOver = (tagId: string, e: React.DragEvent) => {
+    if (tagId === UNTAGGED_GROUP_ID || tagId.startsWith('__path:')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (overTagId !== tagId) setOverTagId(tagId);
+  };
+
+  const handleDrop = (tagId: string, e: React.DragEvent) => {
+    if (  tagId === UNTAGGED_GROUP_ID || tagId.startsWith('__path:')) return;
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    setOverTagId(null);
+    if (id) assignCategory.mutate({ bookmarkIds: [id], tagId });
+  };
+
+  // Primary placements come from the writeback feed. It is keyset-paged, so
+  // pull every page before grouping — a partial map would misfile bookmarks
+  // whose placement lives on a later page as 未分类.
+  const { data: writeback, hasNextPage, isFetchingNextPage, fetchNextPage } = useCategoryWriteback();
+
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const primaryCategoryByBookmark = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const page of writeback?.pages ?? []) {
+      for (const item of page.items) {
+        if (item.categoryPath && item.categoryPath.length > 0) {
+          map.set(item.bookmarkId, item.categoryPath);
+        }
+      }
+    }
+    return map;
+  }, [writeback]);
+
+  const groups = useMemo(
+    () => buildPrimaryCategoryGroups(tags, bookmarks, primaryCategoryByBookmark),
+    [tags, bookmarks, primaryCategoryByBookmark],
+  );
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -68,8 +143,15 @@ export function CategoryView({
         </span>
         <h3 className="atelier-display atelier-display--3 text-ink">还没有可浏览的分类</h3>
         <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-          给书签打上标签后，它们会按一级、二级分类整理在这里。
+          运行一次「精确分类」，书签会按唯一主分类整理在这里。
         </p>
+        <Button
+          variant="primary"
+          iconLeft={<Wand2 size={15} />}
+          onClick={() => navigate('/organize?mode=category')}
+        >
+          立即整理
+        </Button>
       </div>
     );
   }
@@ -87,6 +169,12 @@ export function CategoryView({
           selected={selected}
           selectionActive={selectionActive}
           handlers={handlers}
+          onOrganizeUntagged={() => navigate('/organize?mode=category')}
+          draggable
+          onDragStartCard={handleDragStart}
+          onDragOverTag={handleDragOver}
+          onDropTag={handleDrop}
+          overTagId={overTagId}
         />
       ))}
     </div>
@@ -100,6 +188,12 @@ function CategorySection({
   selected,
   selectionActive,
   handlers,
+  onOrganizeUntagged,
+  draggable,
+  onDragStartCard,
+  onDragOverTag,
+  onDropTag,
+  overTagId,
 }: {
   group: CategoryGroup;
   collapsed: boolean;
@@ -107,15 +201,28 @@ function CategorySection({
   selected: Set<string>;
   selectionActive: boolean;
   handlers: CardHandlers;
+  /** C2-5 — jump to the categorize organiser from the 未分类 group. */
+  onOrganizeUntagged: () => void;
+  draggable: boolean;
+  onDragStartCard: (id: string) => void;
+  onDragOverTag: (tagId: string, e: React.DragEvent) => void;
+  onDropTag: (tagId: string, e: React.DragEvent) => void;
+  overTagId: string | null;
 }) {
   const isUntagged = group.id === UNTAGGED_GROUP_ID;
+  const isDropTarget = overTagId === group.id;
   const totalCount =
     group.directItems.length + group.children.reduce((s, c) => s + c.items.length, 0);
 
   return (
     <section
-      className="rounded-xl border border-line bg-surface/70 backdrop-blur-sm"
+      className={cx(
+        'rounded-xl border bg-surface/70 backdrop-blur-sm transition-colors',
+        isDropTarget ? 'border-brand ring-2 ring-brand/40' : 'border-line',
+      )}
       aria-labelledby={`category-${group.id}`}
+      onDragOver={!isUntagged ? (e) => onDragOverTag(group.id, e) : undefined}
+      onDrop={!isUntagged ? (e) => onDropTag(group.id, e) : undefined}
     >
       {/* Group header — name, colour accent, counts, collapse control. */}
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
@@ -181,25 +288,48 @@ function CategorySection({
               selected={selected}
               selectionActive={selectionActive}
               handlers={handlers}
+              draggable={draggable}
+              onDragStartCard={onDragStartCard}
+              onDragOverTag={onDragOverTag}
+              onDropTag={onDropTag}
+              overTagId={overTagId}
+              tagId={child.id}
             />
           ))}
 
           {/* …then the group's direct bookmarks. */}
           {group.directItems.length > 0 && (
             <SubSection
-              title={isUntagged ? '尚未打标签' : '直接归类'}
+              title={isUntagged ? '尚未分类' : '直接归类'}
               items={group.directItems}
               untagged={isUntagged}
               selected={selected}
               selectionActive={selectionActive}
               handlers={handlers}
+              draggable={draggable}
+              onDragStartCard={onDragStartCard}
+              onDragOverTag={onDragOverTag}
+              onDropTag={onDropTag}
+              overTagId={overTagId}
+              tagId={group.id}
             />
           )}
 
           {isUntagged && (
-            <p className="rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3 text-xs leading-relaxed text-ink-soft">
-              这些书签还没有分类标签。选中它们并打上标签，即可归入对应分组。
-            </p>
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
+              <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
+                这些书签还没有主分类。运行一次「精确分类」，AI
+                会为每条书签指定唯一归属，确认后即写入。
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                iconLeft={<Wand2 size={14} />}
+                onClick={onOrganizeUntagged}
+              >
+                立即整理
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -220,6 +350,12 @@ function SubSection({
   selected,
   selectionActive,
   handlers,
+  draggable,
+  onDragStartCard,
+  onDragOverTag,
+  onDropTag,
+  overTagId,
+  tagId,
 }: {
   title: string;
   colorIndex?: number;
@@ -228,13 +364,43 @@ function SubSection({
   selected: Set<string>;
   selectionActive: boolean;
   handlers: CardHandlers;
+  draggable: boolean;
+  onDragStartCard: (id: string) => void;
+  onDragOverTag: (tagId: string, e: React.DragEvent) => void;
+  onDropTag: (tagId: string, e: React.DragEvent) => void;
+  overTagId: string | null;
+  /** Real tag id this bucket maps to (drop target); absent only for 未分类. */
+  tagId?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasMore = items.length > PER_SECTION_LIMIT;
   const visible = expanded ? items : items.slice(0, PER_SECTION_LIMIT);
+  const isDropTarget = tagId !== undefined && overTagId === tagId;
+
+  // A level-2 bucket is itself a drop target. stopPropagation keeps a drop on a
+  // child bucket from bubbling to the parent section and landing on the parent
+  // tag instead of the child.
+  const childHandlers = tagId
+    ? {
+        onDragOver: (e: React.DragEvent) => {
+          e.stopPropagation();
+          onDragOverTag(tagId, e);
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.stopPropagation();
+          onDropTag(tagId, e);
+        },
+      }
+    : {};
 
   return (
-    <div>
+    <div
+      {...childHandlers}
+      className={cx(
+        'rounded-lg transition-colors',
+        isDropTarget && 'bg-brand-soft/50 ring-1 ring-brand/40',
+      )}
+    >
       <div className="mb-2.5 flex items-center gap-2">
         {!untagged && colorIndex !== undefined && (
           <span
@@ -255,6 +421,8 @@ function SubSection({
               view="grid"
               selected={selected.has(b.id)}
               selectionActive={selectionActive}
+              draggable={draggable}
+              onDragStartCard={onDragStartCard}
               {...handlers}
             />
           </li>

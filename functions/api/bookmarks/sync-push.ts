@@ -3,7 +3,9 @@ import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
 import { newId, nowIso } from '../../_lib/ids';
 import { ensureTags, setBookmarkTags } from '../../_lib/db';
-import { canonicalUrl, titleFallback, urlKey } from '../../_lib/urlkey';
+import { canonicalUrl, hostOf, titleFallback, urlKey } from '../../_lib/urlkey';
+import { ensureCategoryPath } from '../../_lib/ai/store';
+import { recordFeedback } from '../../_lib/ai/feedback';
 
 /**
  * Batch push of local browser-extension changes into TagNest (the hub of the
@@ -24,12 +26,24 @@ import { canonicalUrl, titleFallback, urlKey } from '../../_lib/urlkey';
  * - `delete`: soft-deletes the live row matching `url_key` (a browser deletion
  *   is a soft-delete, never a hard purge). Deleting an already-deleted or
  *   absent row is a no-op success.
+ * - `categoryPath` (C4-3): an upsert may carry the bookmark's folder path
+ *   inside the extension's managed folder. The path is resolved (and created,
+ *   level by level) via `ensureCategoryPath`, then written as the bookmark's
+ *   single primary placement with `source = 'browser_folder'` — the same
+ *   source the writeback builder protects from AI re-placement. A `modified`
+ *   feedback event is recorded so the categoriser learns from hand moves, and
+ *   `bookmarks.updated_at` is bumped so the placement reaches the user's other
+ *   browsers through sync-pull (C5-2). A malformed path is reported in
+ *   `errors` without failing the rest of the change (fields/tags still apply).
  *
  * Response: `{ applied, failed, errors:[{index, code, message}] }`. `applied`
  * plus `failed` equals the number of changes received.
  */
 
 const MAX_CHANGES = 500;
+
+/** Deepest folder nesting a pushed category path may declare. */
+const MAX_CATEGORY_DEPTH = 8;
 
 type Change =
   | {
@@ -39,6 +53,8 @@ type Change =
       description?: string | null;
       note?: string | null;
       tagNames?: string[];
+      /** Folder path inside the managed folder, root first (C4-3). */
+      categoryPath?: string[] | null;
       updatedAt?: string;
     }
   | {
@@ -83,6 +99,33 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       continue;
     }
     const key = urlKey(url);
+
+    // --- categoryPath shape check (C4-3) --------------------------------
+    // Absent / null / [] means "no category information in this change" — the
+    // bookmark's placement is left untouched. A present path must be at most
+    // MAX_CATEGORY_DEPTH non-empty strings; anything else fails this change
+    // outright (like invalid_url) so a buggy spoke cannot silently diverge.
+    let categoryPath: string[] | null = null;
+    if (raw.op === 'upsert') {
+      const rawPath = (raw as Extract<Change, { op: 'upsert' }>).categoryPath;
+      if (rawPath !== undefined && rawPath !== null) {
+        if (
+          !Array.isArray(rawPath) ||
+          rawPath.length > MAX_CATEGORY_DEPTH ||
+          rawPath.some((s) => typeof s !== 'string' || s.trim().length === 0)
+        ) {
+          errors.push({
+            index,
+            code: 'invalid_category_path',
+            message: `categoryPath 必须是不超过 ${MAX_CATEGORY_DEPTH} 层的非空字符串数组`,
+          });
+          continue;
+        }
+        if (rawPath.length > 0) {
+          categoryPath = (rawPath as string[]).map((s) => s.trim());
+        }
+      }
+    }
 
     try {
       if (raw.op === 'delete') {
@@ -166,6 +209,14 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
         await setBookmarkTags(ctx.env, bookmarkId, ids);
       }
 
+      // --- primary category placement (C4-3) ----------------------------
+      // Resolve/create the folder chain, write the single placement with
+      // source='browser_folder', record a feedback event, and bump updated_at
+      // so the move propagates to the user's other browsers (C5-2).
+      if (categoryPath !== null) {
+        await applyBrowserFolderPlacement(ctx.env, userId, bookmarkId, url, title, categoryPath);
+      }
+
       applied += 1;
     } catch (err) {
       errors.push({
@@ -186,4 +237,62 @@ async function deleteByKey(env: Env, userId: string, key: string): Promise<void>
   )
     .bind(nowIso(), nowIso(), userId, key)
     .run();
+}
+
+/**
+ * Writes the browser-folder placement for one pushed bookmark (C4-3).
+ *
+ * `ensureCategoryPath` resolves or creates each level of the folder chain
+ * (case-insensitive reuse under the same parent), then the single
+ * `bookmark_primary_category` row is upserted with `source = 'browser_folder'`
+ * — the source the categoriser's scope resolver protects from AI re-placement.
+ * A `modified` feedback event teaches the loop that the user chose this path,
+ * and `bookmarks.updated_at` is bumped so the placement enters the sync-pull
+ * stream for the user's other browsers (C5-2).
+ */
+async function applyBrowserFolderPlacement(
+  env: Env,
+  userId: string,
+  bookmarkId: string,
+  url: string,
+  title: string,
+  path: string[],
+): Promise<void> {
+  const { leafTagId } = await ensureCategoryPath(env, userId, path);
+  const ts = nowIso();
+
+  await env.DB.prepare(
+    `INSERT INTO bookmark_primary_category
+       (bookmark_id, tag_id, confidence, source, job_id, status, decided_at, updated_at)
+     VALUES (?, ?, NULL, 'browser_folder', NULL, 'accepted', ?, ?)
+     ON CONFLICT (bookmark_id) DO UPDATE SET
+       tag_id = excluded.tag_id,
+       confidence = excluded.confidence,
+       source = excluded.source,
+       job_id = excluded.job_id,
+       status = excluded.status,
+       decided_at = excluded.decided_at,
+       updated_at = excluded.updated_at`,
+  )
+    .bind(bookmarkId, leafTagId, ts, ts)
+    .run();
+
+  // Bump the bookmark so the category change reaches other browsers (C5-2).
+  await env.DB.prepare(
+    `UPDATE bookmarks SET updated_at = ? WHERE id = ? AND user_id = ?`,
+  )
+    .bind(ts, bookmarkId, userId)
+    .run();
+
+  await recordFeedback(env, userId, [
+    {
+      bookmarkId,
+      tagName: path.join(' > '),
+      action: 'modified',
+      source: 'browser_folder',
+      confidence: null,
+      domain: hostOf(url),
+      context: title,
+    },
+  ]);
 }

@@ -19,7 +19,10 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
        SUM(CASE WHEN deleted_at IS NULL AND created_at >= ? THEN 1 ELSE 0 END) AS recent,
        SUM(CASE WHEN deleted_at IS NULL AND NOT EXISTS (
              SELECT 1 FROM bookmark_tags bt WHERE bt.bookmark_id = b.id
-           ) THEN 1 ELSE 0 END) AS untagged
+           ) THEN 1 ELSE 0 END) AS untagged,
+       SUM(CASE WHEN deleted_at IS NULL AND EXISTS (
+             SELECT 1 FROM bookmark_primary_category bpc WHERE bpc.bookmark_id = b.id
+           ) THEN 1 ELSE 0 END) AS categorized
      FROM bookmarks b WHERE b.user_id = ? AND ${PRIVATE_BOOKMARK_CLAUSE}`,
   )
     .bind(since, userId)
@@ -29,14 +32,20 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     .bind(userId)
     .first<{ c: number }>();
 
+  const bookmarks = Number(row?.bookmarks ?? 0);
+  const categorized = Number(row?.categorized ?? 0);
   const stats: Stats = {
-    bookmarks: Number(row?.bookmarks ?? 0),
+    bookmarks,
     tags: Number(tags?.c ?? 0),
     favorites: Number(row?.favorites ?? 0),
     archived: Number(row?.archived ?? 0),
     trashed: Number(row?.trashed ?? 0),
     untagged: Number(row?.untagged ?? 0),
     addedLast7Days: Number(row?.recent ?? 0),
+    // CS-P4-2 (C5-4): category coverage = categorized / bookmarks. The
+    // complement is derived here (not in SQL) so the two always add up.
+    categorized,
+    uncategorized: Math.max(0, bookmarks - categorized),
   };
 
   return json(stats);

@@ -1,7 +1,7 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { badRequest, json, readJson } from '../../../_lib/http';
-import { countPending, decideSuggestions } from '../../../_lib/ai';
+import { countPending, decideCategorySuggestions, decideSuggestions } from '../../../_lib/ai';
 
 /** Ceiling for one accept/reject call. Keeps the D1 batch a sane size. */
 const MAX_DECISIONS = 500;
@@ -17,6 +17,12 @@ const MAX_DECISIONS = 500;
  *   { action, jobId: "..." }       everything from one run — the "looks good,
  *                                  apply it all" button
  *
+ * `kind` (CategorySync migration 0024) selects which queue the decision lands in:
+ *   - 'tag' (default) → `decideSuggestions` writes `bookmark_tags`;
+ *   - 'category'      → `decideCategorySuggestions` writes the single
+ *                       `bookmark_primary_category` placement instead (PRD §5.2).
+ * The review UI filters by kind, so it always knows which one it is applying.
+ *
  * Accepted tags are written with `source = 'ai'` and their confidence, which
  * is what makes AI contribution measurable and "undo the AI's work" possible.
  * A rejection is remembered: `saveSuggestions` will not re-propose the same
@@ -29,6 +35,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     ids?: unknown;
     jobId?: unknown;
     bookmarkId?: unknown;
+    /** 'tag' (default) or 'category' — which queue the decision applies to. */
+    kind?: unknown;
     /** When a single suggestion is renamed before accept (Phase 4 edit). */
     renameTo?: unknown;
   }>(ctx.request);
@@ -36,32 +44,44 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const action = String(body.action ?? '');
   if (action !== 'accept' && action !== 'reject') throw badRequest('操作类型无效');
 
-  // A rename only makes sense on a single accept; cap length to match tags.
-  const renameTo = typeof body.renameTo === 'string' ? body.renameTo.slice(0, 64) : undefined;
+  const kind = body.kind === 'category' ? 'category' : 'tag';
+
+  // A rename only makes sense on a single TAG accept; cap length to match tags.
+  const renameTo =
+    kind === 'tag' && typeof body.renameTo === 'string' ? body.renameTo.slice(0, 64) : undefined;
 
   let ids: string[] = Array.isArray(body.ids)
     ? [...new Set(body.ids.map(String))].filter(Boolean).slice(0, MAX_DECISIONS)
     : [];
 
   // Bulk shapes resolve to ids server-side so the decision logic stays in one
-  // place and ownership is enforced by the same WHERE clause.
+  // place and ownership is enforced by the same WHERE clause. The resolution is
+  // scoped to the requested kind so a "apply the whole run" never mixes queues.
   if (ids.length === 0 && (body.jobId || body.bookmarkId)) {
     const clause = body.jobId ? 'job_id = ?' : 'bookmark_id = ?';
     const value = String(body.jobId ?? body.bookmarkId);
 
     const rows = await ctx.env.DB.prepare(
       `SELECT id FROM tag_suggestions
-        WHERE user_id = ? AND status = 'pending' AND ${clause}
+        WHERE user_id = ? AND status = 'pending' AND kind = ? AND ${clause}
         ORDER BY confidence DESC
         LIMIT ?`,
     )
-      .bind(userId, value, MAX_DECISIONS)
+      .bind(userId, kind, value, MAX_DECISIONS)
       .all<{ id: string }>();
 
     ids = rows.results.map((r) => r.id);
   }
 
-  if (ids.length === 0) throw badRequest('没有可处理的标签建议');
+  if (ids.length === 0) {
+    throw badRequest(kind === 'category' ? '没有可处理的分类建议' : '没有可处理的标签建议');
+  }
+
+  if (kind === 'category') {
+    const outcome = await decideCategorySuggestions(ctx.env, userId, ids, action);
+    const pending = await countPending(ctx.env, userId);
+    return json({ ...outcome, pending });
+  }
 
   // Edit-before-accept is single-suggestion only; pass the new spelling so
   // `decideSuggestions` records a 'modified' event and accepts under the new name.

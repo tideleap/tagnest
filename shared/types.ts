@@ -333,6 +333,10 @@ export interface Stats {
   trashed: number;
   untagged: number;
   addedLast7Days: number;
+  /** Live bookmarks that already carry a primary category (CS-P4-2 / C5-4). */
+  categorized: number;
+  /** Live bookmarks with no primary category yet (`bookmarks - categorized`). */
+  uncategorized: number;
 }
 
 /** One day's additions for the report page's collection-trend chart. */
@@ -497,6 +501,13 @@ export interface AiSuggestion {
    */
   category: string | null;
   subcategory: string | null;
+  /**
+   * CategorySync (migration 0024): 'tag' rows propose a loose label written to
+   * `bookmark_tags`; 'category' rows propose a single primary placement written
+   * to `bookmark_primary_category`, with `tagName` carrying the full path
+   * ("开发技术 > 前端开发"). Defaults to 'tag' for pre-0024 rows.
+   */
+  kind?: 'tag' | 'category';
 }
 
 /** Result of applying the automatic three-level hierarchy to the tag set. */
@@ -566,6 +577,12 @@ export interface AiJobRunResult {
   rebalanceWarning: boolean;
   /** Bookmarks in this chunk that received only the domain fallback (no model tag). */
   uncovered: number;
+  /**
+   * CategorySync (C1-7): bookmarks in this chunk whose final placement is the
+   * catch-all 「未分类」 — no model output AND no parseable host signal. Only
+   * meaningful for `kind='categorize'` runs; tagging runs report 0.
+   */
+  uncategorized?: number;
   engine: AiEngineKind;
   modelError: string | null;
   /** Topic frequency produced by this chunk, for the result distribution chart. */
@@ -582,6 +599,51 @@ export interface AiTopicCount {
   topic: string;
   /** Number of bookmarks carrying this topic. */
   count: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * CategorySync P1 — primary-category tree & writeback (PRD §5.1)
+ * ------------------------------------------------------------------ */
+
+/**
+ * One node of the category tree (= the tag tree, D4), annotated with how many
+ * bookmarks each node holds via `bookmark_primary_category`.
+ *
+ * `count` is the subtree total (a top-level category shows every bookmark under
+ * it); `directCount` is placements on the node itself. Empty nodes are included
+ * so the UI can show empty folders and the writeback builder can mirror them.
+ */
+export interface CategoryTreeNode {
+  tagId: string;
+  name: string;
+  parentId: string | null;
+  /** Bookmarks whose primary category is this node or a descendant. */
+  count: number;
+  /** Bookmarks placed exactly on this node. */
+  directCount: number;
+  children: CategoryTreeNode[];
+}
+
+/**
+ * One bookmark's placement for the browser-extension writeback
+ * (`GET /api/category/tree?format=writeback`). `categoryPath` is derived by
+ * walking `tags.parent_id` upward from the placement node — never stored.
+ */
+export interface CategoryWritebackItem {
+  bookmarkId: string;
+  url: string;
+  title: string;
+  /** Full path, e.g. ["开发技术", "前端开发"]; null = not yet categorized. */
+  categoryPath: string[] | null;
+}
+
+/** A page of the writeback mapping, cursor-paged so a large library streams. */
+export interface CategoryWritebackPage {
+  items: CategoryWritebackItem[];
+  /** Opaque cursor for the next page; null when exhausted. */
+  nextCursor: string | null;
+  /** Total bookmarks carrying an accepted placement (for progress UI). */
+  total: number;
 }
 
 

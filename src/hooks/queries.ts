@@ -108,3 +108,9 @@ export {
 } from './queries/collections';
 
 export { useHealthReport, useProbeBookmarks } from './queries/health';
+
+export {
+  useCategoryTree,
+  useCategoryWriteback,
+  useAssignCategory,
+} from './queries/category';

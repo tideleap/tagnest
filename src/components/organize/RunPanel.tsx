@@ -32,6 +32,12 @@ interface Props {
   };
   target: AiJobTarget;
   onTargetChange: (target: AiJobTarget) => void;
+  /**
+   * CategorySync: which organiser track this panel drives. 'tagging' (default)
+   * proposes loose labels; 'categorize' assigns each bookmark a single primary
+   * category. The cost forecast and the scope copy both follow the track.
+   */
+  kind?: 'tagging' | 'categorize';
 }
 
 /** How many bookmarks the trial run samples. One run chunk — small enough to
@@ -54,14 +60,17 @@ const ENGINE_LABEL: Record<AiEngineKind, string> = {
   none: '未运行',
 };
 
-export function RunPanel({ overview, run, target, onTargetChange }: Props) {
+export function RunPanel({ overview, run, target, onTargetChange, kind = 'tagging' }: Props) {
   const untagged = overview?.untaggedBookmarks ?? 0;
   const total = overview?.totalBookmarks ?? 0;
   const scopeSize = target === 'untagged' ? untagged : total;
 
+  const isCategorize = kind === 'categorize';
+
   // The forecast only makes sense while idle; a running job already has real
-  // counters, and fetching mid-run would just churn the cache.
-  const { data: estimateData } = useAiEstimate(target, !run.running && !run.job);
+  // counters, and fetching mid-run would just churn the cache. Keyed by kind so
+  // the two organiser tracks never share one stale number.
+  const { data: estimateData } = useAiEstimate(target, !run.running && !run.job, kind);
   const estimate = estimateData?.estimate;
 
   const job = run.job;
@@ -76,7 +85,9 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Sparkles size={17} className="shrink-0 text-brand-accent" aria-hidden />
-          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">批量整理</h2>
+          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">
+            {isCategorize ? '精确分类' : '批量整理'}
+          </h2>
           <EngineBadge overview={overview} engine={run.engine} />
         </div>
 
@@ -106,7 +117,7 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
               disabled={noEngine || scopeSize === 0}
               onClick={() => void run.start(target)}
             >
-              开始整理
+              {isCategorize ? '开始分类' : '开始整理'}
             </Button>
           </div>
         )}
@@ -119,14 +130,18 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
           value={target}
           onChange={(value) => onTargetChange(value as AiJobTarget)}
           segments={[
-            { value: 'untagged', label: `未打标签（${untagged}）` },
+            { value: 'untagged', label: isCategorize ? `未分类（${untagged}）` : `未打标签（${untagged}）` },
             { value: 'all', label: `全部书签（${total}）` },
           ]}
         />
         <p className="text-2xs text-ink-faint">
-          {target === 'untagged'
-            ? `AI 只分析还没有任何标签的书签，当前共 ${untagged} 条。`
-            : `重新分析全部 ${total} 条书签，已有标签不会被覆盖，只会补充建议。`}
+          {isCategorize
+            ? target === 'untagged'
+              ? `AI 只为还没有主分类的书签指定唯一归属，当前共 ${untagged} 条。`
+              : `重新为全部 ${total} 条书签指定主分类，已有归属会被新建议覆盖（需确认）。`
+            : target === 'untagged'
+              ? `AI 只分析还没有任何标签的书签，当前共 ${untagged} 条。`
+              : `重新分析全部 ${total} 条书签，已有标签不会被覆盖，只会补充建议。`}
         </p>
       </div>
 
@@ -240,6 +255,15 @@ export function RunPanel({ overview, run, target, onTargetChange }: Props) {
       {run.uncovered > 0 && (
         <Notice tone="caution">
           本次有 {run.uncovered} 条书签仅生成了「域名兜底标签」，建议进入确认队列人工核对。
+        </Notice>
+      )}
+
+      {/* CategorySync (C1-7): bookmarks a categorize run could not place at all
+          — no model output AND no parseable host signal. They stay in 未分类,
+          and the user should know how many and why. */}
+      {isCategorize && run.uncategorized > 0 && (
+        <Notice tone="caution">
+          本次有 {run.uncategorized} 条书签无法判断归属，仍留在「未分类」，可稍后手动指定或再次运行。
         </Notice>
       )}
 

@@ -1,9 +1,10 @@
 import type { Env } from '../env';
-import { D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, queryInChunks } from '../db';
+import type { CategoryTreeNode, CategoryWritebackPage } from '../../../shared/types';
+import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, queryInChunks } from '../db';
 import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
 import { recordFeedback, type FeedbackRecord } from './feedback';
-import type { SuggestionResult } from './engine';
+import type { CategorizeResult, SuggestionResult } from './engine';
 
 /**
  * Persistence for the AI tagging workflow: job progress and pending suggestions.
@@ -349,7 +350,7 @@ export async function saveSuggestions(
   for (const result of results) {
     statements.push(
       env.DB.prepare(
-        `DELETE FROM tag_suggestions WHERE bookmark_id = ? AND user_id = ? AND status = 'pending'`,
+        `DELETE FROM tag_suggestions WHERE bookmark_id = ? AND user_id = ? AND kind = 'tag' AND status = 'pending'`,
       ).bind(result.bookmarkId, userId),
     );
 
@@ -358,15 +359,15 @@ export async function saveSuggestions(
       statements.push(
         env.DB.prepare(
           `INSERT INTO tag_suggestions
-             (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason, topic, needs_review, feedback_boosted, status, created_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?
+             (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason, topic, needs_review, feedback_boosted, kind, status, created_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tag', 'pending', ?
             WHERE NOT EXISTS (
               SELECT 1 FROM bookmark_tags bt
                WHERE bt.bookmark_id = ? AND bt.tag_id IS NOT NULL AND bt.tag_id = ?
             )
               AND NOT EXISTS (
               SELECT 1 FROM tag_suggestions s
-               WHERE s.bookmark_id = ? AND s.tag_name = ? COLLATE NOCASE AND s.status = 'rejected'
+               WHERE s.bookmark_id = ? AND s.kind = 'tag' AND s.tag_name = ? COLLATE NOCASE AND s.status = 'rejected'
             )`,
         ).bind(
           newId(),
@@ -429,6 +430,11 @@ export interface SuggestionRow {
   needsReview: boolean;
   /** Confidence was lifted by the user's feedback history (see feedbackBoost). */
   feedbackBoosted: boolean;
+  /**
+   * CategorySync (migration 0024): 'tag' rows propose a loose label; 'category'
+   * rows propose a single primary placement whose `tagName` is the full path.
+   */
+  kind: 'tag' | 'category';
   createdAt: string;
 }
 
@@ -438,16 +444,21 @@ export async function listPendingSuggestions(
   userId: string,
   limit = 200,
   jobId?: string | null,
+  kind?: 'tag' | 'category' | null,
 ): Promise<SuggestionRow[]> {
   const jobClause = jobId ? 'AND s.job_id = ?' : '';
-  const params: unknown[] = jobId ? [userId, jobId, limit] : [userId, limit];
+  const kindClause = kind ? 'AND s.kind = ?' : '';
+  const params: unknown[] = [userId];
+  if (jobId) params.push(jobId);
+  if (kind) params.push(kind);
+  params.push(limit);
 
   const rows = await env.DB.prepare(
     `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source, s.reason,
-            s.topic, s.needs_review, s.feedback_boosted, s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
+            s.topic, s.needs_review, s.feedback_boosted, s.kind, s.created_at, b.title AS bookmark_title, b.url AS bookmark_url
        FROM tag_suggestions s
        JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
-      WHERE s.user_id = ? AND s.status = 'pending' ${jobClause}
+      WHERE s.user_id = ? AND s.status = 'pending' ${jobClause} ${kindClause}
       ORDER BY s.confidence DESC, s.created_at DESC
       LIMIT ?`,
   )
@@ -467,6 +478,7 @@ export async function listPendingSuggestions(
     topic: (row.topic as string | null) ?? null,
     needsReview: Number(row.needs_review ?? 0) === 1,
     feedbackBoosted: Number(row.feedback_boosted ?? 0) === 1,
+    kind: String(row.kind ?? 'tag') === 'category' ? 'category' : 'tag',
     createdAt: String(row.created_at),
   }));
 }
@@ -528,7 +540,7 @@ export async function decideSuggestions(
               b.url AS bookmark_url, b.title AS bookmark_title
          FROM tag_suggestions s
          JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
-        WHERE s.user_id = ? AND s.status = 'pending' AND s.id IN (${ph})`,
+        WHERE s.user_id = ? AND s.status = 'pending' AND s.kind = 'tag' AND s.id IN (${ph})`,
     (r) => r,
   );
 
@@ -658,7 +670,7 @@ export async function autoApply(
 
   const rows = await env.DB.prepare(
     `SELECT id FROM tag_suggestions
-      WHERE user_id = ? AND job_id = ? AND status = 'pending' AND confidence >= ?`,
+      WHERE user_id = ? AND job_id = ? AND kind = 'tag' AND status = 'pending' AND confidence >= ?`,
   )
     .bind(userId, jobId, threshold)
     .all<{ id: string }>();
@@ -784,10 +796,11 @@ export async function undoJob(
 
   const restore = await env.DB.prepare(
     `UPDATE tag_suggestions SET status = 'pending', decided_at = NULL
-      WHERE user_id = ? AND job_id = ? AND status = 'accepted'
+      WHERE user_id = ? AND job_id = ? AND kind = 'tag' AND status = 'accepted'
         AND NOT EXISTS (
           SELECT 1 FROM tag_suggestions s2
            WHERE s2.bookmark_id = tag_suggestions.bookmark_id
+             AND s2.kind = 'tag'
              AND s2.tag_name = tag_suggestions.tag_name COLLATE NOCASE
              AND s2.status = 'pending'
              AND s2.id <> tag_suggestions.id
@@ -798,10 +811,11 @@ export async function undoJob(
 
   const drop = await env.DB.prepare(
     `DELETE FROM tag_suggestions
-      WHERE user_id = ? AND job_id = ? AND status = 'accepted'
+      WHERE user_id = ? AND job_id = ? AND kind = 'tag' AND status = 'accepted'
         AND EXISTS (
           SELECT 1 FROM tag_suggestions s2
            WHERE s2.bookmark_id = tag_suggestions.bookmark_id
+             AND s2.kind = 'tag'
              AND s2.tag_name = tag_suggestions.tag_name COLLATE NOCASE
              AND s2.status = 'pending'
              AND s2.id <> tag_suggestions.id
@@ -814,5 +828,736 @@ export async function undoJob(
     removedLinks: Number((delLinks.meta as { changes?: number } | undefined)?.changes ?? 0),
     restoredSuggestions: Number((restore.meta as { changes?: number } | undefined)?.changes ?? 0),
     droppedSuggestions: Number((drop.meta as { changes?: number } | undefined)?.changes ?? 0),
+  };
+}
+
+/* ================================================================== *
+ * CategorySync P1 — primary-category persistence (C1-3 / §4)
+ *
+ * The tagging queue stores loose labels; the categorize queue stores a single
+ * placement per bookmark. Both live in `tag_suggestions` (migration 0024 added
+ * the `kind` column), so the review UI stays unified — but a category row's
+ * `tag_name` carries the full path ("开发技术 > 前端开发") and accepting it
+ * writes `bookmark_primary_category` instead of `bookmark_tags`.
+ * ================================================================== */
+
+/**
+ * Resolves the scope for a categorize job.
+ *
+ * Differs from `resolveScope` in one deliberate way (PRD §10-6): bookmarks that
+ * already hold a `source = 'browser_folder'` placement are skipped by default,
+ * because a human move inside the managed folder outranks the model (D5). The
+ * caller passes `includeBrowserFolder = true` for the "重新整理全部" path.
+ */
+export async function resolveCategorizeScope(
+  env: Env,
+  userId: string,
+  target: JobScope['target'],
+  explicitIds: string[] = [],
+  includeBrowserFolder = false,
+): Promise<string[]> {
+  const browserFolderClause = includeBrowserFolder
+    ? ''
+    : `AND NOT EXISTS (
+         SELECT 1 FROM bookmark_primary_category bpc
+          WHERE bpc.bookmark_id = b.id AND bpc.source = 'browser_folder'
+       )`;
+
+  if (target === 'ids') {
+    if (explicitIds.length === 0) return [];
+    const placeholders = explicitIds.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT id FROM bookmarks b
+        WHERE b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE} ${browserFolderClause}
+          AND b.id IN (${placeholders})
+        ORDER BY created_at DESC`,
+    )
+      .bind(userId, ...explicitIds)
+      .all<{ id: string }>();
+    return rows.results.map((r) => r.id);
+  }
+
+  // For categorize, `untagged` means "no primary category yet" — the closest
+  // analogue to the tagging scope, expressed against the placement table.
+  const uncategorizedClause =
+    target === 'untagged'
+      ? `AND NOT EXISTS (SELECT 1 FROM bookmark_primary_category bpc WHERE bpc.bookmark_id = b.id)`
+      : '';
+
+  const rows = await env.DB.prepare(
+    `SELECT b.id AS id FROM bookmarks b
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE} ${browserFolderClause} ${uncategorizedClause}
+      ORDER BY b.created_at DESC
+      LIMIT ?`,
+  )
+    .bind(userId, MAX_JOB_ITEMS)
+    .all<{ id: string }>();
+
+  return rows.results.map((r) => r.id);
+}
+
+/**
+ * Replaces the pending CATEGORY suggestions for the given bookmarks.
+ *
+ * Mirrors `saveSuggestions` but scoped to `kind = 'category'`: the delete only
+ * touches category rows (a tagging run must never wipe category proposals and
+ * vice versa), and the insert writes the full path as `tag_name` with the
+ * deepest resolved node as `tag_id`.
+ */
+export async function saveCategorySuggestions(
+  env: Env,
+  userId: string,
+  jobId: string | null,
+  results: CategorizeResult[],
+): Promise<number> {
+  const statements: D1PreparedStatement[] = [];
+  const ts = nowIso();
+  let written = 0;
+
+  for (const result of results) {
+    const candidate = result.category;
+    if (!candidate) continue;
+
+    statements.push(
+      env.DB.prepare(
+        `DELETE FROM tag_suggestions
+          WHERE bookmark_id = ? AND user_id = ? AND kind = 'category' AND status = 'pending'`,
+      ).bind(result.bookmarkId, userId),
+    );
+
+    const pathName = candidate.path.join(' > ');
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO tag_suggestions
+           (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason,
+            topic, needs_review, feedback_boosted, kind, status, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'category', 'pending', ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM bookmark_primary_category bpc
+             WHERE bpc.bookmark_id = ? AND bpc.tag_id IS NOT NULL AND bpc.tag_id = ?
+          )
+            AND NOT EXISTS (
+            SELECT 1 FROM tag_suggestions s
+             WHERE s.bookmark_id = ? AND s.kind = 'category'
+               AND s.tag_name = ? COLLATE NOCASE AND s.status = 'rejected'
+          )`,
+      ).bind(
+        newId(),
+        userId,
+        result.bookmarkId,
+        jobId,
+        pathName,
+        candidate.tagId,
+        candidate.confidence,
+        candidate.source,
+        candidate.reason,
+        candidate.path[0] ?? null,
+        candidate.needsReview ? 1 : 0,
+        candidate.feedbackBoosted ? 1 : 0,
+        ts,
+        result.bookmarkId,
+        candidate.tagId,
+        result.bookmarkId,
+        pathName,
+      ),
+    );
+    written += 1;
+  }
+
+  if (statements.length > 0) {
+    const BATCH_STATEMENT_LIMIT = 100;
+    for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
+      await env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+    }
+  }
+  return written;
+}
+
+/**
+ * Creates (or reuses) the tag nodes along a category path and wires their
+ * `parent_id` chain, returning the deepest node's id.
+ *
+ * Reuse is case-insensitive per level, matching `ensureTags` semantics, but a
+ * level only reuses a tag whose PARENT matches the previous level — otherwise
+ * two unrelated "前端开发" nodes under different tops would collapse into one.
+ * New nodes get a deterministic colour from their name.
+ */
+export async function ensureCategoryPath(
+  env: Env,
+  userId: string,
+  path: string[],
+): Promise<{ leafTagId: string; created: number }> {
+  const cleaned = path
+    .map((p) => p.trim().replace(/\s+/g, ' '))
+    .filter((p) => p.length > 0 && p.length <= 60);
+  if (cleaned.length === 0) throw new Error('ensureCategoryPath: empty path');
+
+  let parentId: string | null = null;
+  let created = 0;
+  let leafTagId = '';
+  const ts = nowIso();
+
+  for (const name of cleaned) {
+    // Look for an existing node with this name under the current parent.
+    const existing = parentId
+      ? await env.DB.prepare(
+          `SELECT id FROM tags
+            WHERE user_id = ? AND parent_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
+        )
+          .bind(userId, parentId, name)
+          .first<{ id: string }>()
+      : await env.DB.prepare(
+          `SELECT id FROM tags
+            WHERE user_id = ? AND parent_id IS NULL AND name = ? COLLATE NOCASE LIMIT 1`,
+        )
+          .bind(userId, name)
+          .first<{ id: string }>();
+
+    if (existing) {
+      leafTagId = existing.id;
+    } else {
+      leafTagId = newId();
+      created += 1;
+      await env.DB.prepare(
+        `INSERT INTO tags (id, user_id, name, color_index, parent_id, sort_order, created_at)
+         VALUES (?, ?, ?, ?, ?, 0, ?)`,
+      ).bind(leafTagId, userId, name, colorForName(name), parentId, ts)
+        .run();
+    }
+    parentId = leafTagId;
+  }
+
+  return { leafTagId, created };
+}
+
+export interface CategoryApplyOutcome {
+  accepted: number;
+  rejected: number;
+  tagsCreated: number;
+}
+
+/**
+ * Accepts or rejects CATEGORY suggestions.
+ *
+ * Accepting writes `bookmark_primary_category` (single placement, `source='ai'`)
+ * and materialises the path's tag nodes; it does NOT touch `bookmark_tags`, so
+ * auxiliary tags stay exactly as the user left them (D2). Every decision is
+ * recorded as feedback keyed by the full path string (C1-6).
+ */
+export async function decideCategorySuggestions(
+  env: Env,
+  userId: string,
+  ids: string[],
+  action: 'accept' | 'reject',
+): Promise<CategoryApplyOutcome> {
+  if (ids.length === 0) return { accepted: 0, rejected: 0, tagsCreated: 0 };
+
+  const rows = await queryInChunks<Record<string, unknown>, Record<string, unknown>>(
+    env.DB,
+    ids,
+    [userId],
+    (ph) =>
+      `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source, s.job_id,
+              b.url AS bookmark_url, b.title AS bookmark_title
+         FROM tag_suggestions s
+         JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        WHERE s.user_id = ? AND s.status = 'pending' AND s.kind = 'category' AND s.id IN (${ph})`,
+    (r) => r,
+  );
+
+  if (rows.length === 0) return { accepted: 0, rejected: 0, tagsCreated: 0 };
+
+  const ts = nowIso();
+  const foundIds = rows.map((r) => String(r.id));
+
+  const feedback: FeedbackRecord[] = rows.map((r) => {
+    const url = String(r.bookmark_url ?? '');
+    const domain = hostOf(url);
+    const context = `${String(r.bookmark_title ?? '')} · ${domain ?? ''}`.trim();
+    return {
+      bookmarkId: String(r.bookmark_id),
+      tagName: String(r.tag_name),
+      action: action === 'reject' ? 'rejected' : 'accepted',
+      source: (r.source as string | null) ?? null,
+      confidence: Number(r.confidence ?? 0),
+      domain,
+      context,
+    };
+  });
+
+  if (action === 'reject') {
+    await markDecided(env, userId, foundIds, 'rejected', ts);
+    await recordFeedback(env, userId, feedback);
+    return { accepted: 0, rejected: foundIds.length, tagsCreated: 0 };
+  }
+
+  // Accept: materialise each path and write the single placement.
+  let tagsCreated = 0;
+  const statements: D1PreparedStatement[] = [];
+  const placedBookmarkIds: string[] = [];
+
+  for (const row of rows) {
+    const path = String(row.tag_name)
+      .split('>')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (path.length === 0) continue;
+
+    const { leafTagId, created } = await ensureCategoryPath(env, userId, path);
+    tagsCreated += created;
+    placedBookmarkIds.push(String(row.bookmark_id));
+
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO bookmark_primary_category
+           (bookmark_id, tag_id, confidence, source, job_id, status, decided_at, updated_at)
+         VALUES (?, ?, ?, 'ai', ?, 'accepted', ?, ?)
+         ON CONFLICT (bookmark_id) DO UPDATE SET
+           tag_id = excluded.tag_id,
+           confidence = excluded.confidence,
+           source = excluded.source,
+           job_id = excluded.job_id,
+           status = excluded.status,
+           decided_at = excluded.decided_at,
+           updated_at = excluded.updated_at`,
+      ).bind(
+        String(row.bookmark_id),
+        leafTagId,
+        Number(row.confidence ?? 0),
+        row.job_id ?? null,
+        ts,
+        ts,
+      ),
+    );
+  }
+
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < statements.length; i += BATCH_LIMIT) {
+    await env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
+  }
+
+  // Accepted placements are category changes too — bump updated_at so the
+  // affected bookmarks flow into the sync-pull stream on other browsers (C5-2).
+  await bumpBookmarksUpdatedAt(env, userId, placedBookmarkIds, ts);
+
+  await markDecided(env, userId, foundIds, 'accepted', ts);
+  await recordFeedback(env, userId, feedback);
+  return { accepted: foundIds.length, rejected: 0, tagsCreated };
+}
+
+/**
+ * Applies high-confidence category suggestions without review (C1-5 auto path).
+ * Only reachable when the user has lowered `autoApplyThreshold` below 1.
+ */
+export async function autoApplyCategories(
+  env: Env,
+  userId: string,
+  threshold: number,
+  jobId: string,
+): Promise<number> {
+  if (threshold >= 1) return 0;
+
+  const rows = await env.DB.prepare(
+    `SELECT id FROM tag_suggestions
+      WHERE user_id = ? AND job_id = ? AND kind = 'category' AND status = 'pending' AND confidence >= ?`,
+  )
+    .bind(userId, jobId, threshold)
+    .all<{ id: string }>();
+
+  if (rows.results.length === 0) return 0;
+  const outcome = await decideCategorySuggestions(
+    env,
+    userId,
+    rows.results.map((r) => r.id),
+    'accept',
+  );
+  return outcome.accepted;
+}
+
+/* ------------------------------------------------------------------ *
+ * Category tree + path derivation (C2-1 / C4-1)
+ * ------------------------------------------------------------------ */
+
+// The wire shape lives in shared/types.ts so the frontend and the extension
+// consume one contract; re-exported here so existing imports keep working.
+export type { CategoryTreeNode };
+
+/**
+ * Builds the category tree = the tag tree (D4), annotated with how many
+ * bookmarks each node holds via `bookmark_primary_category`.
+ *
+ * `count` is the subtree total (a top-level category shows every bookmark
+ * under it), `directCount` is placements on the node itself. Nodes with zero
+ * bookmarks anywhere in their subtree are still returned — the tree is the
+ * user's taxonomy, not just the populated parts — so the UI can show empty
+ * folders and the writeback builder can mirror them.
+ */
+export async function loadCategoryTree(
+  env: Env,
+  userId: string,
+): Promise<CategoryTreeNode[]> {
+  const tagRows = await env.DB.prepare(
+    `SELECT id, name, parent_id FROM tags WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE`,
+  )
+    .bind(userId)
+    .all<{ id: string; name: string; parent_id: string | null }>();
+
+  const countRows = await env.DB.prepare(
+    `SELECT bpc.tag_id AS tag_id, COUNT(*) AS c
+       FROM bookmark_primary_category bpc
+       JOIN bookmarks b ON b.id = bpc.bookmark_id
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND bpc.status = 'accepted'
+      GROUP BY bpc.tag_id`,
+  )
+    .bind(userId)
+    .all<{ tag_id: string; c: number }>();
+
+  const directCount = new Map<string, number>();
+  for (const r of countRows.results) directCount.set(r.tag_id, Number(r.c));
+
+  const nodes = new Map<string, CategoryTreeNode>();
+  for (const t of tagRows.results) {
+    nodes.set(t.id, {
+      tagId: t.id,
+      name: t.name,
+      parentId: t.parent_id,
+      count: 0,
+      directCount: directCount.get(t.id) ?? 0,
+      children: [],
+    });
+  }
+
+  const roots: CategoryTreeNode[] = [];
+  for (const node of nodes.values()) {
+    const parent = node.parentId ? nodes.get(node.parentId) : undefined;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+
+  // Roll direct counts up so each node's `count` covers its whole subtree.
+  const accumulate = (node: CategoryTreeNode): number => {
+    let total = node.directCount;
+    for (const child of node.children) total += accumulate(child);
+    node.count = total;
+    return total;
+  };
+  for (const root of roots) accumulate(root);
+
+  return roots;
+}
+
+/**
+ * Derives a bookmark's category path by walking `parent_id` upward from its
+ * placement node (C4-1). Returns null when the bookmark has no accepted
+ * placement. This is the single source of truth for `categoryPath` — it is
+ * never stored, so the tree and the path can never disagree.
+ */
+export async function deriveCategoryPath(
+  env: Env,
+  userId: string,
+  bookmarkId: string,
+): Promise<string[] | null> {
+  const placement = await env.DB.prepare(
+    `SELECT tag_id FROM bookmark_primary_category
+      WHERE bookmark_id = ? AND status = 'accepted' LIMIT 1`,
+  )
+    .bind(bookmarkId)
+    .first<{ tag_id: string }>();
+  if (!placement) return null;
+
+  const path: string[] = [];
+  let cursor: string | null = placement.tag_id;
+  // Depth-bounded walk guards against a corrupt tree looping forever.
+  for (let depth = 0; cursor !== null && depth < 8; depth += 1) {
+    const row: { name: string; parent_id: string | null } | null = await env.DB.prepare(
+      `SELECT name, parent_id FROM tags WHERE id = ? AND user_id = ? LIMIT 1`,
+    )
+      .bind(cursor, userId)
+      .first<{ name: string; parent_id: string | null }>();
+    if (!row) break;
+    path.unshift(row.name);
+    cursor = row.parent_id;
+  }
+  return path.length > 0 ? path : null;
+}
+
+/**
+ * Batch variant of `deriveCategoryPath` for the sync-pull page (C4-1): one
+ * tag-tree load plus one chunked placement lookup serve every bookmark on the
+ * page, instead of N per-bookmark upward walks. Returns a map keyed by
+ * bookmark id that carries an entry for EVERY requested id (`null` when the
+ * bookmark has no accepted placement), so callers can read it without
+ * existence checks.
+ */
+export async function deriveCategoryPaths(
+  env: Env,
+  userId: string,
+  bookmarkIds: string[],
+): Promise<Map<string, string[] | null>> {
+  const ids = [...new Set(bookmarkIds)];
+  const result = new Map<string, string[] | null>();
+  for (const id of ids) result.set(id, null);
+  if (ids.length === 0) return result;
+
+  // One tag-tree load serves every path derivation on this page (same shape
+  // as loadCategoryWritebackPage's in-memory walk).
+  const tagRows = await env.DB.prepare(
+    `SELECT id, name, parent_id FROM tags WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .all<{ id: string; name: string; parent_id: string | null }>();
+
+  const nodeById = new Map<string, { name: string; parentId: string | null }>();
+  for (const t of tagRows.results) {
+    nodeById.set(t.id, { name: t.name, parentId: t.parent_id });
+  }
+
+  // Walk parent_id upward in memory; depth-bounded against a corrupt tree.
+  const pathFor = (tagId: string): string[] | null => {
+    const path: string[] = [];
+    let cursorId: string | null = tagId;
+    for (let depth = 0; cursorId !== null && depth < 8; depth += 1) {
+      const node = nodeById.get(cursorId);
+      if (!node) break;
+      path.unshift(node.name);
+      cursorId = node.parentId;
+    }
+    return path.length > 0 ? path : null;
+  };
+
+  // Chunk the id list so the IN (...) clause stays within D1's bound-param
+  // limit (no leading params here, so the full chunk width is available).
+  for (let i = 0; i < ids.length; i += D1_IN_CHUNK) {
+    const slice = ids.slice(i, i + D1_IN_CHUNK);
+    const placeholders = slice.map(() => '?').join(',');
+    const rows = await env.DB.prepare(
+      `SELECT bookmark_id, tag_id FROM bookmark_primary_category
+        WHERE status = 'accepted' AND bookmark_id IN (${placeholders})`,
+    )
+      .bind(...slice)
+      .all<{ bookmark_id: string; tag_id: string }>();
+    for (const r of rows.results) {
+      result.set(r.bookmark_id, pathFor(r.tag_id));
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Bumps `bookmarks.updated_at` so a category-only change enters the sync-pull
+ * incremental stream (C5-2): the pull cursor keys on `updated_at`, and a
+ * placement write alone would otherwise never reach the user's other browsers.
+ * Scoped to the owning user; ids are chunked to respect D1's 100-param limit.
+ */
+async function bumpBookmarksUpdatedAt(
+  env: Env,
+  userId: string,
+  bookmarkIds: string[],
+  ts: string,
+): Promise<void> {
+  const ids = [...new Set(bookmarkIds)];
+  // Two leading params (ts, userId) → the chunk ceiling shrinks accordingly.
+  const CHUNK = D1_MAX_PARAMS - 2;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const placeholders = slice.map(() => '?').join(',');
+    await env.DB.prepare(
+      `UPDATE bookmarks SET updated_at = ? WHERE user_id = ? AND id IN (${placeholders})`,
+    )
+      .bind(ts, userId, ...slice)
+      .run();
+  }
+}
+
+/** Bookmarks surfaced per writeback page. Keyset-paged so a large library streams. */
+export const WRITEBACK_PAGE_SIZE = 500;
+
+/**
+ * Builds one page of the writeback mapping for the browser extension
+ * (`GET /api/category/tree?format=writeback`, PRD §5.1 / §7.2).
+ *
+ * Returns every live, non-private bookmark carrying an ACCEPTED primary
+ * placement, each with its derived `categoryPath`. The path is computed in
+ * memory from a single tag-tree load (id → {name, parent_id}) rather than one
+ * `deriveCategoryPath` query per bookmark — a 2,000-bookmark library would
+ * otherwise issue thousands of round trips.
+ *
+ * Pagination is keyset over `bookmark_id` (the placement PK): the caller passes
+ * the last `bookmarkId` it saw as `cursor`. We fetch `limit + 1` rows to detect
+ * whether a next page exists without a separate COUNT per page; `total` is a
+ * single cheap aggregate for the extension's progress bar.
+ */
+export async function loadCategoryWritebackPage(
+  env: Env,
+  userId: string,
+  cursor: string | null = null,
+  limit = WRITEBACK_PAGE_SIZE,
+): Promise<CategoryWritebackPage> {
+  // One tag-tree load serves every path derivation on this page.
+  const tagRows = await env.DB.prepare(
+    `SELECT id, name, parent_id FROM tags WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .all<{ id: string; name: string; parent_id: string | null }>();
+
+  const nodeById = new Map<string, { name: string; parentId: string | null }>();
+  for (const t of tagRows.results) {
+    nodeById.set(t.id, { name: t.name, parentId: t.parent_id });
+  }
+
+  // Walk parent_id upward in memory; depth-bounded against a corrupt tree.
+  const pathFor = (tagId: string): string[] | null => {
+    const path: string[] = [];
+    let cursorId: string | null = tagId;
+    for (let depth = 0; cursorId !== null && depth < 8; depth += 1) {
+      const node = nodeById.get(cursorId);
+      if (!node) break;
+      path.unshift(node.name);
+      cursorId = node.parentId;
+    }
+    return path.length > 0 ? path : null;
+  };
+
+  const rows = await env.DB.prepare(
+    `SELECT bpc.bookmark_id AS bookmark_id, bpc.tag_id AS tag_id, b.url AS url, b.title AS title
+       FROM bookmark_primary_category bpc
+       JOIN bookmarks b ON b.id = bpc.bookmark_id
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        AND bpc.status = 'accepted' AND bpc.bookmark_id > ?
+      ORDER BY bpc.bookmark_id
+      LIMIT ?`,
+  )
+    .bind(userId, cursor ?? '', limit + 1)
+    .all<{ bookmark_id: string; tag_id: string; url: string; title: string }>();
+
+  const hasMore = rows.results.length > limit;
+  const pageRows = hasMore ? rows.results.slice(0, limit) : rows.results;
+
+  const items = pageRows.map((r) => ({
+    bookmarkId: r.bookmark_id,
+    url: r.url,
+    title: r.title ?? '',
+    categoryPath: pathFor(r.tag_id),
+  }));
+
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS n
+       FROM bookmark_primary_category bpc
+       JOIN bookmarks b ON b.id = bpc.bookmark_id
+      WHERE b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        AND bpc.status = 'accepted'`,
+  )
+    .bind(userId)
+    .first<{ n: number }>();
+
+  return {
+    items,
+    nextCursor: hasMore && items.length > 0 ? items[items.length - 1].bookmarkId : null,
+    total: Number(totalRow?.n ?? 0),
+  };
+}
+
+/**
+ * Manually assigns (or re-assigns) the primary category for a set of bookmarks
+ * (C2-3 drag / `/api/category/assign`). Writes `source = 'manual'` and records
+ * a `modified` feedback event per bookmark so the loop learns from hand moves.
+ * Returns the number of placements written.
+ */
+export async function assignPrimaryCategory(
+  env: Env,
+  userId: string,
+  bookmarkIds: string[],
+  tagId: string,
+): Promise<number> {
+  if (bookmarkIds.length === 0) return 0;
+
+  // The target node must belong to this user.
+  const tag = await env.DB.prepare(`SELECT id, name FROM tags WHERE id = ? AND user_id = ? LIMIT 1`)
+    .bind(tagId, userId)
+    .first<{ id: string; name: string }>();
+  if (!tag) return 0;
+
+  const ts = nowIso();
+  const statements: D1PreparedStatement[] = [];
+  for (const bookmarkId of bookmarkIds) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO bookmark_primary_category
+           (bookmark_id, tag_id, confidence, source, job_id, status, decided_at, updated_at)
+         VALUES (?, ?, NULL, 'manual', NULL, 'accepted', ?, ?)
+         ON CONFLICT (bookmark_id) DO UPDATE SET
+           tag_id = excluded.tag_id,
+           confidence = excluded.confidence,
+           source = excluded.source,
+           status = excluded.status,
+           decided_at = excluded.decided_at,
+           updated_at = excluded.updated_at`,
+      ).bind(bookmarkId, tagId, ts, ts),
+    );
+  }
+
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < statements.length; i += BATCH_LIMIT) {
+    await env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
+  }
+
+  // A manual move is a category change the user's other browsers must see:
+  // bump updated_at so the row enters the sync-pull incremental stream (C5-2).
+  await bumpBookmarksUpdatedAt(env, userId, bookmarkIds, ts);
+
+  // Record the hand move as feedback so future categorize runs respect it.
+  const path = await deriveCategoryPath(env, userId, bookmarkIds[0]);
+  await recordFeedback(
+    env,
+    userId,
+    bookmarkIds.map((bookmarkId) => ({
+      bookmarkId,
+      tagName: path?.join(' > ') ?? tag.name,
+      action: 'modified' as const,
+      source: 'manual',
+      confidence: null,
+      domain: null,
+      context: tag.name,
+    })),
+  );
+
+  return bookmarkIds.length;
+}
+
+/**
+ * Undoes the placements one categorize job wrote (mirrors `undoJob`).
+ *
+ * Deletes the `source = 'ai'` placements traceable to this job and returns the
+ * job's accepted category suggestions to `pending` so the user can decide again.
+ * Manual / browser-folder placements are never touched — `source = 'ai'` and the
+ * job id are the whole basis of the delete.
+ */
+export async function undoCategorizeJob(
+  env: Env,
+  userId: string,
+  jobId: string,
+): Promise<{ removedPlacements: number; restoredSuggestions: number }> {
+  const del = await env.DB.prepare(
+    `DELETE FROM bookmark_primary_category
+      WHERE source = 'ai' AND job_id = ?
+        AND EXISTS (
+          SELECT 1 FROM bookmarks b
+           WHERE b.id = bookmark_primary_category.bookmark_id AND b.user_id = ?
+        )`,
+  )
+    .bind(jobId, userId)
+    .run();
+
+  const restore = await env.DB.prepare(
+    `UPDATE tag_suggestions SET status = 'pending', decided_at = NULL
+      WHERE user_id = ? AND job_id = ? AND kind = 'category' AND status = 'accepted'`,
+  )
+    .bind(userId, jobId)
+    .run();
+
+  return {
+    removedPlacements: Number((del.meta as { changes?: number } | undefined)?.changes ?? 0),
+    restoredSuggestions: Number((restore.meta as { changes?: number } | undefined)?.changes ?? 0),
   };
 }

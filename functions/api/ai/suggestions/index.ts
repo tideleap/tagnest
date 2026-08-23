@@ -15,6 +15,8 @@ import { classifyTag, countPending, listPendingSuggestions, toApiSuggestion } fr
  * Query params:
  *   `limit`  1-500, default 200
  *   `jobId`  restrict to one run, for the "review what I just generated" view
+ *   `kind`   'tag' | 'category' (CategorySync migration 0024). Filters the
+ *            unified queue to one proposal type; absent returns both.
  */
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -24,14 +26,27 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const limit = Number.isFinite(rawLimit) ? Math.min(500, Math.max(1, Math.trunc(rawLimit))) : 200;
   const jobId = url.searchParams.get('jobId');
 
+  const rawKind = url.searchParams.get('kind');
+  const kind = rawKind === 'tag' || rawKind === 'category' ? rawKind : null;
+
   const [rows, total] = await Promise.all([
-    listPendingSuggestions(ctx.env, userId, limit, jobId),
+    listPendingSuggestions(ctx.env, userId, limit, jobId, kind),
     countPending(ctx.env, userId),
   ]);
 
   // Enrich each suggestion with its 一级/二级 hierarchy path so the review
   // panel can group by category as well as by bookmark or topic.
   const suggestions = rows.map((row) => {
+    // A category row's tagName already IS the full path ("开发技术 > 前端开发"),
+    // so split it rather than re-deriving; a tag row gets the classifier path.
+    if (row.kind === 'category') {
+      const parts = row.tagName.split('>').map((p) => p.trim()).filter(Boolean);
+      return {
+        ...toApiSuggestion(row),
+        category: parts[0] ?? null,
+        subcategory: parts[1] ?? null,
+      };
+    }
     const path = classifyTag(row.tagName);
     return {
       ...toApiSuggestion(row),

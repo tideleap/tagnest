@@ -5,9 +5,12 @@ import { conflict, json, notFound } from '../../../../_lib/http';
 import { createLogger } from '../../../../_lib/logger';
 import {
   RUN_CHUNK,
+  aggregateCategoryTopics,
   autoApply,
+  autoApplyCategories,
   aggregateTopics,
   applyTagHierarchy,
+  categorizeBookmarks,
   countJobNewTags,
   getJob,
   loadAiConfig,
@@ -16,7 +19,9 @@ import {
   loadFeedbackProfile,
   loadFewShotExamples,
   loadVocabulary,
+  makeKvCategoryCache,
   makeKvTagCache,
+  saveCategorySuggestions,
   saveSuggestions,
   shouldWarnRebalance,
   suggestForBookmarks,
@@ -101,6 +106,83 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Anything that vanished between snapshot and now (trashed, deleted) counts
   // as processed-but-failed rather than silently shrinking the total.
   const missing = slice.length - inputs.length;
+
+  // ---- CategorySync: the categorize track shares the job loop but writes
+  // single placements instead of loose labels. Everything above (snapshot,
+  // chunking, config re-read) is identical; only the engine + persistence differ.
+  if (job.kind === 'categorize') {
+    const outcome = await categorizeBookmarks(inputs, {
+      vocab,
+      config,
+      feedback,
+      categoryCache: ctx.env.AI_CACHE ? makeKvCategoryCache(ctx.env.AI_CACHE) : undefined,
+    });
+
+    const written = await saveCategorySuggestions(ctx.env, userId, jobId, outcome.results);
+    const autoApplied = await autoApplyCategories(ctx.env, userId, local.autoApplyThreshold, jobId);
+
+    const processed = job.processed + slice.length;
+    const finished = processed >= ids.length;
+    const failed = Boolean(outcome.fatal);
+
+    await updateJob(ctx.env, userId, jobId, {
+      processed,
+      suggested: job.suggested + written,
+      failed: job.failed + missing,
+      engine: outcome.engine,
+      status: failed ? 'failed' : finished ? 'done' : 'running',
+      error: failed ? outcome.modelError : null,
+    });
+
+    log.info('ai.job.chunk', {
+      userId,
+      jobId,
+      kind: 'categorize',
+      processed,
+      total: ids.length,
+      suggested: written,
+      autoApplied,
+      uncategorized: outcome.uncategorized,
+      engine: outcome.engine,
+      fatal: outcome.fatal,
+    });
+
+    const updated = await getJob(ctx.env, userId, jobId);
+
+    // P2-2: mirror the tagging track — on a successful finish, measure how much
+    // NEW taxonomy this categorize run introduced relative to what already
+    // existed, so the UI can suggest a full re-classify when the incremental
+    // pass has drifted.
+    let rebalanceWarning = false;
+    if (finished && !failed) {
+      try {
+        const { newTags, existingTags } = await countJobNewTags(ctx.env, userId, jobId);
+        rebalanceWarning = shouldWarnRebalance(newTags, existingTags);
+      } catch (e) {
+        log.error('ai.job.rebalance', {
+          userId,
+          jobId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    const result: AiJobRunResult = {
+      job: toApiJob(updated ?? job),
+      done: finished || failed,
+      suggested: written,
+      autoApplied,
+      rebalanceWarning,
+      uncovered: outcome.uncovered,
+      uncategorized: outcome.uncategorized,
+      engine: outcome.engine,
+      modelError: outcome.modelError,
+      topics: aggregateCategoryTopics(outcome.results),
+    };
+    return json(result);
+  }
+
+  // ---- Tagging track (legacy behaviour, unchanged) ----
 
   // 方案B: few-shot examples from the user's own well-tagged bookmarks. Loaded
   // once per chunk (cheap, capped at 4 rows) so a long run keeps teaching the

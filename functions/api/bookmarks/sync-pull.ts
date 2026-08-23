@@ -2,27 +2,39 @@ import type { Env, RequestData } from '../../_lib/env';
 import { requireUserId } from '../../_lib/auth';
 import { json } from '../../_lib/http';
 import { attachTags } from '../../_lib/db';
+import { deriveCategoryPaths } from '../../_lib/ai/store';
 
 /**
  * Incremental bookmark pull for two-way browser-extension sync.
  *
  * Unlike `sync-keys` (a read-only reconciliation listing) this endpoint emits
  * the *full lightweight object* the extension needs to write TagNest state back
- * into the browser: canonical `url_key`, `url`, `title`, `tagNames`, and a
- * `deletedAt` flag. It is the read half of the hub-and-spoke changelog — the
- * extension is a spoke that periodically pulls everything that changed since
- * its watermark and replays it locally.
+ * into the browser: canonical `url_key`, `url`, `title`, `tagNames`, the
+ * derived `categoryPath` (C4-1), and a `deletedAt` flag. It is the read half
+ * of the hub-and-spoke changelog — the extension is a spoke that periodically
+ * pulls everything that changed since its watermark and replays it locally.
  *
  * Watermark model
  * ---------------
- * `updated_at` is the unified change timestamp: a normal upsert bumps it, and a
- * soft-delete bumps it too (see `trash.ts`), so a single cursor over
- * `(updated_at, id)` captures both edits and deletions. Deleted rows are
- * *included* (we do NOT filter `deleted_at IS NULL`) so the deletion can be
- * propagated to the browser as a removal. `since` and `cursor` are folded into
- * one keyset: a bare `since` becomes `{updatedAt: since, id: ''}` (the empty
- * id makes `id > ''` true for every real id, i.e. `updated_at >= since`); a
- * `cursor` carries the real last id for stable pagination.
+ * `updated_at` is the unified change timestamp: a normal upsert bumps it, a
+ * soft-delete bumps it too (see `trash.ts`), and a primary-category placement
+ * write bumps it as well (see `store.ts`), so a single cursor over
+ * `(updated_at, id)` captures edits, deletions, and category moves. Deleted
+ * rows are *included* (we do NOT filter `deleted_at IS NULL`) so the deletion
+ * can be propagated to the browser as a removal. `since` and `cursor` are
+ * folded into one keyset: a bare `since` becomes `{updatedAt: since, id: ''}`
+ * (the empty id makes `id > ''` true for every real id, i.e.
+ * `updated_at >= since`); a `cursor` carries the real last id for stable
+ * pagination.
+ *
+ * Category path (C4-1)
+ * --------------------
+ * Each item carries `categoryPath` — the bookmark's accepted primary placement
+ * walked up `tags.parent_id` to a root-to-leaf name array, or `null` when the
+ * bookmark is uncategorised. The path is never stored; it is derived in memory
+ * from one tag-tree load per page (`deriveCategoryPaths`), so the tree and the
+ * path can never disagree. Soft-deleted rows report `null` (their placement is
+ * irrelevant once the bookmark is gone from the browser).
  *
  * Privacy
  * -------
@@ -111,9 +123,19 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     items.map((i) => i.id),
   );
 
+  // Attach the derived primary-category path in one tag-tree load + one
+  // chunked placement lookup rather than N upward walks (C4-1).
+  const pathMap = await deriveCategoryPaths(
+    ctx.env,
+    userId,
+    items.map((i) => i.id),
+  );
+
   const payload = items.map((i) => ({
     ...i,
     tagNames: (tagMap.get(i.id) ?? []).map((t) => t.name),
+    // A soft-deleted row's placement is moot — the browser removes the node.
+    categoryPath: i.deletedAt === null ? (pathMap.get(i.id) ?? null) : null,
   }));
 
   const hasMore = payload.length === pageSize;

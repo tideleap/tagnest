@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Download, ListChecks, Settings2, Sparkles, Wrench } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Download, FolderTree, ListChecks, Settings2, Sparkles, Tags, Wrench } from 'lucide-react';
 import type { AiJobTarget } from '@shared/types';
 import { Button, PageHeader, SegmentedControl } from '@/components/ui';
 import { Reveal } from '@/components/atelier';
@@ -35,14 +35,46 @@ import { useTags } from '@/hooks/queries';
  *   整理   pick a scope, run it, watch it work
  *   确认   review what came back and decide
  *   体检   clean up the tag vocabulary itself
+ *
+ * ## CategorySync: two organiser tracks
+ *
+ * The page drives one of two tracks, selected by the top-level mode switch:
+ *
+ *   标签整理 (tagging)    — the legacy loose-label flow: propose tags, write
+ *                           to `bookmark_tags` on accept.
+ *   精确分类 (categorize) — CategorySync C1: assign each bookmark exactly ONE
+ *                           primary category, written to
+ *                           `bookmark_primary_category` on accept.
+ *
+ * Both tracks share the job/run/review machinery; they differ in the `kind`
+ * passed to the jobs + suggestions endpoints and in the review queue filter.
+ * The `?mode=category` query param (linked from the Library's 未分类 group,
+ * C2-5) lands directly on the categorize track.
  */
 
 type Tab = 'run' | 'review' | 'audit';
+type Mode = 'tagging' | 'categorize';
 
 export function OrganizePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>('run');
   const [target, setTarget] = useState<AiJobTarget>('untagged');
+
+  // Mode is URL-driven so the Library's "立即整理" entry point (C2-5) can
+  // deep-link straight into the categorize track.
+  const mode: Mode = searchParams.get('mode') === 'category' ? 'categorize' : 'tagging';
+  const setMode = (next: Mode) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === 'categorize') params.set('mode', 'category');
+        else params.delete('mode');
+        return params;
+      },
+      { replace: true },
+    );
+  };
 
   const { data: overview } = useAiOverview();
   const run = useOrganizeRun();
@@ -50,12 +82,15 @@ export function OrganizePage() {
   // Scoped to the current run right after one finishes, so "确认" shows what
   // was just produced rather than everything ever proposed.
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
+  // The review queue is kind-scoped: the categorize track must only see
+  // category proposals, and vice versa, or an "apply all" would mix queues.
+  const suggestionKind = mode === 'categorize' ? 'category' : 'tag';
   const {
     data: queue,
     isLoading: queueLoading,
     isError: queueFailed,
     refetch: refetchQueue,
-  } = useAiSuggestions(reviewJobId);
+  } = useAiSuggestions(reviewJobId, suggestionKind);
 
   // The audit is a full-vocabulary scan; only pay for it on its own tab.
   const { data: audit, isLoading: auditLoading } = useAiTaxonomyAudit(tab === 'audit');
@@ -63,7 +98,7 @@ export function OrganizePage() {
   const pending = overview?.pendingSuggestions ?? 0;
 
   const startRun = async (nextTarget: AiJobTarget, ids?: string[], limit?: number) => {
-    const job = await run.start(nextTarget, ids, limit);
+    const job = await run.start(nextTarget, ids, limit, mode);
     if (job) {
       setReviewJobId(job.id);
       setTab('review');
@@ -78,7 +113,11 @@ export function OrganizePage() {
         eyebrow="AI 引擎"
         index="06 / 16"
         title="AI 整理"
-        description="给待打标书签生成标签，确认后写入——标签库的词汇表在这里生长。"
+        description={
+          mode === 'categorize'
+            ? '为每条书签指定唯一主分类，确认后写入——分类树在这里成形。'
+            : '给待打标书签生成标签，确认后写入——标签库的词汇表在这里生长。'
+        }
       >
         {pending > 0 && (
           <span className="mr-1 text-xs tabular-nums text-ink-faint">{pending} 条待确认</span>
@@ -94,6 +133,18 @@ export function OrganizePage() {
       </PageHeader>
 
       {overview && <AiMetricsPanel overview={overview} />}
+
+      {/* CategorySync: the two organiser tracks. Everything below — run panel,
+          review queue — follows whichever track is active. */}
+      <SegmentedControl
+        label="整理模式"
+        value={mode}
+        onChange={(value) => setMode(value as Mode)}
+        segments={[
+          { value: 'tagging', label: '标签整理', icon: <Tags size={14} /> },
+          { value: 'categorize', label: '精确分类', icon: <FolderTree size={14} /> },
+        ]}
+      />
 
       <SegmentedControl
         label="AI 整理视图"
@@ -117,6 +168,7 @@ export function OrganizePage() {
             run={{ ...run, start: startRun }}
             target={target}
             onTargetChange={setTarget}
+            kind={mode}
           />
           <EvaluationPanel overview={overview} />
         </Reveal>
@@ -141,6 +193,7 @@ export function OrganizePage() {
             loading={queueLoading}
             failed={queueFailed}
             onRetry={() => void refetchQueue()}
+            kind={suggestionKind}
           />
         </Reveal>
       )}

@@ -43,23 +43,32 @@ export function useAiOverview() {
  * no model call), so it is cheap to refetch whenever the scope changes. The
  * query is disabled while a run is in flight: the forecast only makes sense
  * before pressing start.
+ *
+ * CategorySync: `kind` selects the organiser track. 'categorize' applies the
+ * primary-category scope rules (bookmarks with a browser_folder placement are
+ * skipped; `untagged` means "no primary category yet"), so the forecast must
+ * be keyed by kind or the two tracks would share one stale number.
  */
-export function useAiEstimate(target: AiJobTarget, enabled = true) {
+export function useAiEstimate(
+  target: AiJobTarget,
+  enabled = true,
+  kind: 'tagging' | 'categorize' = 'tagging',
+) {
   return useQuery({
-    queryKey: keys.aiEstimate(target),
+    queryKey: keys.aiEstimate(target, undefined, kind),
     queryFn: () =>
-      api.get<{ estimate: AiJobEstimate }>(`/ai/jobs/estimate${qs({ target })}`),
+      api.get<{ estimate: AiJobEstimate }>(`/ai/jobs/estimate${qs({ target, kind })}`),
     enabled,
     staleTime: 30_000,
   });
 }
 
-export function useAiSuggestions(jobId?: string | null) {
+export function useAiSuggestions(jobId?: string | null, kind?: 'tag' | 'category') {
   return useQuery({
-    queryKey: keys.aiSuggestions(jobId),
+    queryKey: keys.aiSuggestions(jobId, kind),
     queryFn: () =>
       api.get<{ suggestions: AiSuggestion[]; total: number }>(
-        jobId ? `/ai/suggestions?jobId=${encodeURIComponent(jobId)}` : '/ai/suggestions',
+        `/ai/suggestions${qs({ jobId: jobId ?? undefined, kind })}`,
       ),
     staleTime: 10_000,
   });
@@ -140,6 +149,13 @@ export interface DecideInput {
   bookmarkId?: string;
   /** New spelling when a single suggestion is edited before accept. */
   renameTo?: string;
+  /**
+   * CategorySync (migration 0024): which queue the decision lands in.
+   * 'tag' (default) writes `bookmark_tags`; 'category' writes the single
+   * primary placement (`bookmark_primary_category`). The server scopes the
+   * whole apply to one kind, so a mixed batch is impossible by construction.
+   */
+  kind?: 'tag' | 'category';
 }
 
 /**
@@ -147,7 +163,9 @@ export interface DecideInput {
  *
  * Invalidates the bookmark and tag caches as well as the queue: accepting
  * writes real tag links, so a stale library list would show the bookmark
- * without the tag the user just approved.
+ * without the tag the user just approved. For `kind='category'` decisions the
+ * category tree and writeback mapping change too, so those caches refresh as
+ * well.
  */
 export function useDecideSuggestions() {
   const qc = useQueryClient();
@@ -162,14 +180,27 @@ export function useDecideSuggestions() {
       void qc.invalidateQueries({ queryKey: keys.aiSuggestionsRoot });
       void qc.invalidateQueries({ queryKey: keys.aiOverview });
 
+      const isCategory = input.kind === 'category';
+
       if (input.action === 'accept') {
         void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
         void qc.invalidateQueries({ queryKey: keys.tags });
         void qc.invalidateQueries({ queryKey: keys.stats });
-        void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+        if (isCategory) {
+          // Accepting a category proposal moves the bookmark's primary
+          // placement — the tree counts and the writeback feed both change.
+          void qc.invalidateQueries({ queryKey: keys.categoryTree });
+          void qc.invalidateQueries({ queryKey: keys.categoryWriteback });
+        } else {
+          void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+        }
 
         const created = result.tagsCreated > 0 ? `，新建 ${result.tagsCreated} 个标签` : '';
-        toast.success(`已应用 ${result.accepted} 个标签${created}`);
+        toast.success(
+          isCategory
+            ? `已应用 ${result.accepted} 条分类`
+            : `已应用 ${result.accepted} 个标签${created}`,
+        );
       } else {
         toast.success(`已忽略 ${result.rejected} 条建议`);
       }
@@ -219,6 +250,12 @@ export interface RunState {
   autoApplied: number;
   /** Bookmarks that received only the domain fallback across the run. */
   uncovered: number;
+  /**
+   * CategorySync (C1-7): bookmarks whose final placement is the catch-all
+   * 「未分类」 across a categorize run (no model output AND no parseable
+   * host signal). Always 0 for tagging runs.
+   */
+  uncategorized: number;
   error: string | null;
   /** Topic distribution accumulated across chunks, for the result chart. */
   topics: AiTopicCount[];
@@ -241,6 +278,7 @@ const IDLE: RunState = {
   modelError: null,
   autoApplied: 0,
   uncovered: 0,
+  uncategorized: 0,
   error: null,
   topics: [],
   autoGrouped: null,
@@ -312,7 +350,13 @@ export function useOrganizeRun() {
   }, [cancelled]);
 
   const start = useCallback(
-    async (target: AiJobTarget, bookmarkIds?: string[], limit?: number) => {
+    async (
+      target: AiJobTarget,
+      bookmarkIds?: string[],
+      limit?: number,
+      kind: 'tagging' | 'categorize' = 'tagging',
+      includeBrowserFolder?: boolean,
+    ) => {
       cancelled.current = false;
       setState({ ...IDLE, running: true });
 
@@ -322,6 +366,9 @@ export function useOrganizeRun() {
           target,
           bookmarkIds,
           limit,
+          kind,
+          // Only meaningful for categorize runs; the server ignores it otherwise.
+          includeBrowserFolder,
         });
         job = created.job;
       } catch (e) {
@@ -334,6 +381,7 @@ export function useOrganizeRun() {
 
       let autoApplied = 0;
       let uncovered = 0;
+      let uncategorized = 0;
 
       // Bounded so a server bug that never advances `processed` cannot spin
       // forever; +2 covers the settle call after the last chunk.
@@ -359,6 +407,7 @@ export function useOrganizeRun() {
 
       autoApplied += result.autoApplied;
       uncovered += result.uncovered;
+      uncategorized += result.uncategorized ?? 0;
       setState((s) => ({
         job: result.job,
         running: !result.done,
@@ -366,6 +415,7 @@ export function useOrganizeRun() {
         modelError: result.modelError,
         autoApplied,
         uncovered,
+        uncategorized,
         error: result.job.status === 'failed' ? result.job.error : null,
         topics: mergeTopicCounts(s.topics, result.topics),
         autoGrouped: result.autoGrouped ?? s.autoGrouped,
@@ -385,6 +435,13 @@ export function useOrganizeRun() {
       // The forecast is stale once a run has consumed part of the scope
       // (untagged shrinks as suggestions are accepted).
       void qc.invalidateQueries({ queryKey: keys.aiEstimateRoot });
+      if (kind === 'categorize') {
+        // Placements may have landed (auto-apply or fallback writes), so the
+        // tree counts and the writeback feed must refresh regardless of how
+        // many rows the review queue still holds.
+        void qc.invalidateQueries({ queryKey: keys.categoryTree });
+        void qc.invalidateQueries({ queryKey: keys.categoryWriteback });
+      }
       if (autoApplied > 0) {
         void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
         void qc.invalidateQueries({ queryKey: keys.tags });

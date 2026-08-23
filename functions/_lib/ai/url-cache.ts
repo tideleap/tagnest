@@ -1,5 +1,6 @@
-import { PROMPT_VERSION } from './prompt';
-import type { ParsedTag } from './prompt';
+import { CATEGORIZE_PROMPT_VERSION, PROMPT_VERSION } from './prompt';
+import type { ParsedCategory, ParsedTag } from './prompt';
+import type { CandidateSource } from './types';
 
 /**
  * P1-2 — per-URL cache of AI tagging results.
@@ -65,6 +66,59 @@ export async function cacheKeyFor(url: string, model: string): Promise<string> {
   const hash = await sha256Hex(normalizeUrlForCache(url));
   const safeModel = model.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
   return `ai:tag:${PROMPT_VERSION}:${safeModel}:${hash}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * CategorySync P1 — categorize results live in their own namespace.
+ *
+ * The cached shape differs (a single placement, not a tag list) and the
+ * prompt version is tracked separately, so categorize keys use the `ai:cat:`
+ * prefix and `CATEGORIZE_PROMPT_VERSION`. Sharing the tagging namespace would
+ * either collide on shape or invalidate tagging entries on a categorize bump.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The cached categorize output for one bookmark: the parsed placement plus the
+ * engine that produced it (so a cached fallback stays a fallback on replay).
+ */
+export type CategoryCacheEntry = ParsedCategory & { source?: CandidateSource };
+
+/** Minimal async key-value surface for categorize results — KV-backed in production. */
+export interface CategoryCache {
+  get(key: string): Promise<CategoryCacheEntry | null>;
+  put(key: string, entry: CategoryCacheEntry): Promise<void>;
+}
+
+/**
+ * Builds the categorize cache key. Shape: `ai:cat:<promptVersion>:<model>:<sha256(url)>`.
+ */
+export async function categoryCacheKeyFor(url: string, model: string): Promise<string> {
+  const hash = await sha256Hex(normalizeUrlForCache(url));
+  const safeModel = model.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
+  return `ai:cat:${CATEGORIZE_PROMPT_VERSION}:${safeModel}:${hash}`;
+}
+
+/**
+ * Wraps a KV namespace as a `CategoryCache`. Same defensive posture as the tag
+ * cache: a KV hiccup degrades to a miss, never to a failed categorize run.
+ */
+export function makeKvCategoryCache(kv: KVNamespace): CategoryCache {
+  return {
+    async get(key) {
+      try {
+        return await kv.get<CategoryCacheEntry>(key, 'json');
+      } catch {
+        return null;
+      }
+    },
+    async put(key, entry) {
+      try {
+        await kv.put(key, JSON.stringify(entry), { expirationTtl: CACHE_TTL_SECONDS });
+      } catch {
+        /* a failed write just means a future miss — never an error */
+      }
+    },
+  };
 }
 
 /** 30 days: long enough to pay off, short enough to self-heal stale entries. */

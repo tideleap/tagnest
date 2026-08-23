@@ -1,10 +1,10 @@
 import type { Env } from '../env';
 import { createLogger } from '../logger';
 import { loadAiConfig, loadConfigRow, loadVocabulary, toLocalConfig } from './config';
-import { suggestForBookmarks } from './engine';
-import { saveSuggestions } from './store';
+import { suggestForBookmarks, categorizeBookmarks } from './engine';
+import { saveSuggestions, saveCategorySuggestions } from './store';
 import { loadFeedbackProfile } from './feedback';
-import { makeKvTagCache } from './url-cache';
+import { makeKvTagCache, makeKvCategoryCache } from './url-cache';
 import type { EnrichInput } from './types';
 
 /**
@@ -97,7 +97,7 @@ export async function enrichBookmark(
       return;
     }
 
-    await saveSuggestions(env, userId, null, [result]);
+    await saveSuggestions(env, userId,  null, [result]);
 
     log.info('ai.enrich', {
       userId,
@@ -105,6 +105,31 @@ export async function enrichBookmark(
       suggested: result.tags.length,
       summarized: Boolean(result.summary),
     });
+
+    // C6-1: classify the same bookmark inline so the library learns a primary
+    // category on every save, not just during bulk jobs. The `autoTag` master
+    // switch gates both tracks identically (a key-less user has opted out of
+    // automatic organisation entirely), and the categorize KV cache is reused
+    // so that a URL classified by a bulk job — or another save — is free here.
+    if (config.autoTag) {
+      const catOutcome = await categorizeBookmarks([{ id: bookmarkId, ...input }], {
+        vocab,
+        config,
+        feedback,
+        categoryCache: env.AI_CACHE ? makeKvCategoryCache(env.AI_CACHE) : undefined,
+      });
+
+      const catResult = catOutcome.results[0];
+      if (catResult && catResult.category) {
+        await saveCategorySuggestions(env, userId, null, [catResult]);
+        log.info('ai.enrich.category', {
+          userId,
+          bookmarkId,
+          engine: catOutcome.engine,
+          category: catResult.category.path.join(' > '),
+        });
+      }
+    }
   } catch (error) {
     log.warn('ai.enrich.failed', {
       userId,

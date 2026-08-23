@@ -1,9 +1,9 @@
 import type { Env } from '../env';
 import type { AiJobEstimate } from '../../../shared/types';
-import { BATCH_SIZE, buildCoarsePrompt, buildTaggingPrompt } from './prompt';
+import { BATCH_SIZE, buildCategorizePrompt, buildCoarsePrompt, buildTaggingPrompt } from './prompt';
 import { MAX_OUTPUT_TOKENS, RETRY_MAX_ATTEMPTS } from './providers';
 import { isModelReady, loadConfigRow, loadVocabulary } from './config';
-import { MAX_JOB_ITEMS, RUN_CHUNK, loadBookmarkInputs, resolveScope } from './store';
+import { MAX_JOB_ITEMS, RUN_CHUNK, loadBookmarkInputs, resolveCategorizeScope, resolveScope } from './store';
 import type { JobScope } from './store';
 
 /**
@@ -64,6 +64,19 @@ export function representativeOutput(
 }
 
 /**
+ * Representative model OUTPUT for one categorize batch (CategorySync). Each
+ * bookmark yields exactly one single-placement object — deliberately a bit
+ * longer than reality (full-length category + subcategory + reason) so the
+ * forecast overestimates rather than underestimates cost.
+ */
+export function representativeCategorizeOutput(batchSize: number): string {
+  const item =
+    '{"i":1,"category":"这是一个代表性的一级分类名称","subcategory":"代表性的二级分类","confidence":0.85,"reason":"不超过二十四个字的归类理由说明","isNew":false,"needsReview":false}';
+  const items = Array.from({ length: Math.max(1, batchSize) }, () => item).join(',');
+  return `{"results":[${items}]}`;
+}
+
+/**
  * Assumed wall-clock seconds per model call, for the happy-path time forecast.
  * A 10-bookmark batch typically answers in 3–8s; 8s errs toward overestimating
  * the wait (the safe direction for setting expectations).
@@ -81,8 +94,14 @@ export async function estimateJob(
   userId: string,
   target: JobScope['target'],
   explicitIds: string[] = [],
+  kind: 'tagging' | 'categorize' = 'tagging',
 ): Promise<AiJobEstimate> {
-  const ids = await resolveScope(env, userId, target, explicitIds);
+  // CategorySync: the categorize track resolves scope differently (skips
+  // browser_folder placements, treats `untagged` as "no primary category").
+  const ids =
+    kind === 'categorize'
+      ? await resolveCategorizeScope(env, userId, target, explicitIds)
+      : await resolveScope(env, userId, target, explicitIds);
   const bookmarks = ids.length;
   const batches = Math.ceil(bookmarks / BATCH_SIZE);
   const chunks = Math.ceil(bookmarks / RUN_CHUNK);
@@ -103,30 +122,41 @@ export async function estimateJob(
     const inputs = await loadBookmarkInputs(env, userId, sampleIds);
     const vocab = await loadVocabulary(env, userId);
 
-    const prompt = buildTaggingPrompt(inputs, vocab, {
-      maxTags: row.maxTags,
-      wantSummary: row.autoSummarize,
-    });
-    estimatedInputTokens = tokensFromChars(prompt.length) * batches;
+    if (kind === 'categorize') {
+      const prompt = buildCategorizePrompt(inputs, vocab);
+      estimatedInputTokens = tokensFromChars(prompt.length) * batches;
+      const perBatchOutput = Math.min(
+        tokensFromChars(representativeCategorizeOutput(inputs.length).length),
+        MAX_OUTPUT_TOKENS,
+      );
+      estimatedOutputTokens = perBatchOutput * batches;
+    } else {
+      const prompt = buildTaggingPrompt(inputs, vocab, {
+        maxTags: row.maxTags,
+        wantSummary: row.autoSummarize,
+      });
+      estimatedInputTokens = tokensFromChars(prompt.length) * batches;
 
-    // Two-pass adds one cheap coarse call per batch; measure its prompt too so
-    // the input forecast covers it instead of silently omitting it.
-    if (row.twoPass) {
-      estimatedInputTokens += tokensFromChars(buildCoarsePrompt(inputs).length) * batches;
+      // Two-pass adds one cheap coarse call per batch; measure its prompt too so
+      // the input forecast covers it instead of silently omitting it.
+      if (row.twoPass) {
+        estimatedInputTokens += tokensFromChars(buildCoarsePrompt(inputs).length) * batches;
+      }
+
+      const perBatchOutput = Math.min(
+        tokensFromChars(representativeOutput(inputs.length, row.maxTags, row.autoSummarize).length),
+        MAX_OUTPUT_TOKENS,
+      );
+      estimatedOutputTokens = perBatchOutput * batches;
     }
-
-    const perBatchOutput = Math.min(
-      tokensFromChars(representativeOutput(inputs.length, row.maxTags, row.autoSummarize).length),
-      MAX_OUTPUT_TOKENS,
-    );
-    estimatedOutputTokens = perBatchOutput * batches;
   }
 
-  // Happy-path call count: one tagging call per batch, plus one coarse call per
-  // batch when two-pass is on. The worst case multiplies by the retry ceiling —
-  // a consistently-failing provider could burn that many attempts before the
-  // engine gives up, so the user should see the upper bound they are authorising.
-  const callsPerBatch = row.twoPass ? 2 : 1;
+  // Happy-path call count: one model call per batch. Tagging with two-pass adds
+  // one coarse call per batch; categorize is always a single pass. The worst
+  // case multiplies by the retry ceiling — a consistently-failing provider
+  // could burn that many attempts before the engine gives up, so the user
+  // should see the upper bound they are authorising.
+  const callsPerBatch = kind === 'categorize' ? 1 : row.twoPass ? 2 : 1;
   const estimatedCalls = batches * callsPerBatch;
   const maxModelCalls = estimatedCalls * RETRY_MAX_ATTEMPTS;
   const estimatedSeconds = estimatedCalls * SECONDS_PER_CALL;

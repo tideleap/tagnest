@@ -28,18 +28,26 @@ export const keys = {
   aiTaxonomy: ['ai-taxonomy'] as const,
   /** Alias proposals + topic clustering for the taxonomy health page. */
   aiAliases: ['ai-aliases'] as const,
-  /** Pending proposals; scoped by run so "review what I just made" is cacheable. */
-  aiSuggestions: (jobId?: string | null) => ['ai-suggestions', jobId ?? 'all'] as const,
+  /** Pending proposals; scoped by run and kind so "review what I just made"
+   *  is cacheable per queue. CategorySync (migration 0024): the unified queue
+   *  holds 'tag' and 'category' rows, and each view must refetch its own. */
+  aiSuggestions: (jobId?: string | null, kind?: 'tag' | 'category') =>
+    ['ai-suggestions', jobId ?? 'all', kind ?? 'all'] as const,
   aiSuggestionsRoot: ['ai-suggestions'] as const,
   /** AI batch-run history; the jobs list is its own cache so cancelling one
    *  run does not disturb the suggestion queue or the overview counters. */
   aiJobs: ['ai-jobs'] as const,
   aiJob: (id: string) => ['ai-job', id] as const,
-  /** A1 — pre-run cost forecast, keyed by scope so switching ranges refetches. */
-  aiEstimate: (target: string, ids?: string[]) =>
-    ['ai-estimate', target, ids?.join(',') ?? ''] as const,
+  /** A1 — pre-run cost forecast, keyed by scope (and organiser kind) so
+   *  switching ranges refetches. */
+  aiEstimate: (target: string, ids?: string[], kind?: 'tagging' | 'categorize') =>
+    ['ai-estimate', target, ids?.join(',') ?? '', kind ?? 'tagging'] as const,
   /** Root key so a finished run can invalidate every scope's forecast at once. */
   aiEstimateRoot: ['ai-estimate'] as const,
+  /** CategorySync — primary-category tree with per-node placement counts. */
+  categoryTree: ['category-tree'] as const,
+  /** CategorySync — keyset-paged writeback mapping (bookmark → category path). */
+  categoryWriteback: ['category-writeback'] as const,
   apiKeys: ['api-keys'] as const,
   /** Storage management: R2 usage, export preview, snapshot cleanup. */
   storageUsage: ['storage-usage'] as const,

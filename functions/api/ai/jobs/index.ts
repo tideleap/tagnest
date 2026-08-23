@@ -1,8 +1,15 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { badRequest, badRequestCode, json, readJson } from '../../../_lib/http';
-import { MAX_JOB_ITEMS, createJob, listJobs, resolveScope, toApiJob } from '../../../_lib/ai';
-import { PROMPT_VERSION } from '../../../_lib/ai/prompt';
+import {
+  MAX_JOB_ITEMS,
+  createJob,
+  listJobs,
+  resolveCategorizeScope,
+  resolveScope,
+  toApiJob,
+} from '../../../_lib/ai';
+import { CATEGORIZE_PROMPT_VERSION, PROMPT_VERSION } from '../../../_lib/ai/prompt';
 
 /**
  * Batch organiser runs.
@@ -30,9 +37,21 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
 
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
-  const body = await readJson<{ target?: unknown; bookmarkIds?: unknown; limit?: unknown }>(
-    ctx.request,
-  );
+  const body = await readJson<{
+    target?: unknown;
+    bookmarkIds?: unknown;
+    limit?: unknown;
+    kind?: unknown;
+    includeBrowserFolder?: unknown;
+  }>(ctx.request);
+
+  // CategorySync: `kind` selects the organiser track. 'tagging' (default) keeps
+  // the legacy loose-label behaviour; 'categorize' runs the single-placement
+  // pipeline (PRD §5.1 — reuses this endpoint rather than a new /api/ai/categorize).
+  const kind = String(body.kind ?? 'tagging');
+  if (kind !== 'tagging' && kind !== 'categorize') {
+    throw badRequest('任务类型无效');
+  }
 
   const target = String(body.target ?? 'untagged');
   if (target !== 'untagged' && target !== 'all' && target !== 'ids') {
@@ -58,7 +77,16 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       ? Math.min(Math.trunc(rawLimit), MAX_JOB_ITEMS)
       : null;
 
-  let ids = await resolveScope(ctx.env, userId, target, explicitIds);
+  let ids: string[];
+  if (kind === 'categorize') {
+    // Categorize scope differs deliberately (PRD §10-6): bookmarks holding a
+    // browser_folder placement are skipped unless the caller opts in, and
+    // `untagged` means "no primary category yet".
+    const includeBrowserFolder = body.includeBrowserFolder === true;
+    ids = await resolveCategorizeScope(ctx.env, userId, target, explicitIds, includeBrowserFolder);
+  } else {
+    ids = await resolveScope(ctx.env, userId, target, explicitIds);
+  }
   if (limit !== null) ids = ids.slice(0, limit);
 
   // An empty scope is a dead end, not something a retry fixes — say which case
@@ -66,10 +94,17 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   if (ids.length === 0) {
     throw badRequestCode(
       'ai_scope_empty',
-      target === 'untagged' ? '没有待整理的书签，全部书签都已有标签' : '所选范围内没有可整理的书签',
+      kind === 'categorize'
+        ? target === 'untagged'
+          ? '没有待分类的书签，全部书签都已有主分类'
+          : '所选范围内没有可分类的书签'
+        : target === 'untagged'
+          ? '没有待整理的书签，全部书签都已有标签'
+          : '所选范围内没有可整理的书签',
     );
   }
 
-  const job = await createJob(ctx.env, userId, 'tagging', { target, ids }, PROMPT_VERSION);
+  const promptVersion = kind === 'categorize' ? CATEGORIZE_PROMPT_VERSION : PROMPT_VERSION;
+  const job = await createJob(ctx.env, userId, kind, { target, ids }, promptVersion);
   return json({ job: toApiJob(job) }, { status: 201 });
 };

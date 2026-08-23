@@ -51,6 +51,18 @@ export const MAX_REASON_LENGTH = 24;
  */
 export const PROMPT_VERSION = '2026-08-21';
 
+/**
+ * Version tag for the *categorize* prompt (CategorySync P1, C1-1).
+ *
+ * Tracked separately from `PROMPT_VERSION` on purpose: the tagging prompt is
+ * unchanged by this feature, so bumping the shared constant would invalidate
+ * every live URL-cache entry (`ai:tag:<version>:…`) and re-bill work that is
+ * still correct. Categorize jobs stamp this version instead, and its cache
+ * namespace (`ai:cat:…`) is separate anyway because the cached shape differs
+ * (single placement vs. tag list).
+ */
+export const CATEGORIZE_PROMPT_VERSION = '2026-08-22';
+
 export interface PromptOptions {
   maxTags: number;
   wantSummary: boolean;
@@ -475,6 +487,277 @@ export interface ParsedTag {
   confidence: number;
   reason: string;
   isNew: boolean;
+}
+
+/* ------------------------------------------------------------------ *
+ * Categorize mode (CategorySync P1, C1-1 / C1-2 / C1-3)
+ *
+ * Tagging asks "which labels fit?" and happily returns several; categorizing
+ * asks "which single folder does this belong in?" and returns exactly one
+ * placement. The two prompts share the robust extraction layer but diverge
+ * everywhere else: the schema, the few-shot examples and the rules all push
+ * the model toward a unique, tree-anchored decision instead of a tag cloud.
+ * ------------------------------------------------------------------ */
+
+export interface CategorizePromptOptions {
+  /**
+   * Optional few-shot examples. When absent, `DEFAULT_CATEGORIZE_EXAMPLES`
+   * are used so the model always sees the single-placement shape.
+   */
+  examples?: CategorizeExample[];
+}
+
+export interface CategorizeExample {
+  title: string;
+  url: string;
+  description?: string;
+  category: string;
+  subcategory?: string | null;
+  reason: string;
+}
+
+/** One bookmark's single placement, as the model reports it. */
+export interface ParsedCategory {
+  /** Top-level category (一级分类). */
+  category: string;
+  /** Second-level category (二级分类); null when the top level is enough. */
+  subcategory: string | null;
+  confidence: number;
+  reason: string;
+  /** True when the model could not reuse the existing tree and proposes a new node. */
+  isNew: boolean;
+  needsReview: boolean;
+}
+
+export interface ParsedCategorizeItem {
+  /** Zero-based index back into the batch. */
+  index: number;
+  /** Null when the model returned no usable placement for this bookmark. */
+  category: ParsedCategory | null;
+}
+
+const DEFAULT_CATEGORIZE_EXAMPLES: CategorizeExample[] = [
+  {
+    title: 'React 官方文档：Thinking in React',
+    url: 'https://react.dev/learn/thinking-in-react',
+    description: 'Learn how to think in React with a searchable product table example.',
+    category: '开发技术',
+    subcategory: '前端开发',
+    reason: 'React 官方教程',
+  },
+  {
+    title: 'Figma — 在线协作设计工具',
+    url: 'https://www.figma.com/',
+    description: 'Figma is the leading collaborative design tool.',
+    category: '在线工具',
+    subcategory: null,
+    reason: '在线设计工具',
+  },
+  {
+    title: '深度学习论文：Attention Is All You Need',
+    url: 'https://arxiv.org/abs/1706.03762',
+    description: 'The original Transformer paper.',
+    category: '人工智能',
+    subcategory: '论文',
+    reason: 'Transformer 论文',
+  },
+];
+
+function renderCategorizeExamples(examples: CategorizeExample[]): string {
+  if (examples.length === 0) return '';
+  const lines = ['', '参考示例：'];
+  for (const ex of examples) {
+    lines.push(`标题：${ex.title}`);
+    lines.push(`网址：${ex.url}`);
+    if (ex.description) lines.push(`描述：${ex.description}`);
+    const path = ex.subcategory ? `${ex.category} > ${ex.subcategory}` : ex.category;
+    lines.push(`分类：${path}（${ex.reason}）`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Builds one categorize prompt covering a batch of bookmarks (C1-1/C1-2).
+ *
+ * Differences from `buildTaggingPrompt`, each deliberate:
+ *  - The task is *placement*, not labelling: exactly one `{category,
+ *    subcategory}` per bookmark, never a list (fixes G1).
+ *  - The decision must come from page content — title + URL + description +
+ *    fetched excerpt — not from whatever tags happen to exist (fixes G2).
+ *  - The existing tree is presented as the *target* structure; new nodes are
+ *    allowed but flagged `isNew` so they enter review instead of silently
+ *    inflating the taxonomy (C1-3).
+ */
+export function buildCategorizePrompt(
+  inputs: EnrichInput[],
+  vocab: Vocabulary,
+  options: CategorizePromptOptions = {},
+): string {
+  const hosts = inputs
+    .map((input) => {
+      try {
+        return new URL(input.url).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean);
+
+  const known = selectVocabularyHierarchical(vocab, VOCAB_LIMIT, hosts);
+  const examples =
+    options.examples && options.examples.length > 0 ? options.examples : DEFAULT_CATEGORIZE_EXAMPLES;
+
+  const lines: string[] = [
+    [
+      '你是个人书签归档助手。任务：理解每个网页的内容，为每条书签指定唯一的分类归属。',
+      '',
+      '这不是打标签：每条书签有且只有一个归属，就像把它放进书架上的一个文件夹。',
+      '',
+      '核心原则：',
+      '- 依据页面内容（标题、网址、描述、正文摘要）判断归属，而不是依据书签上已有的标签。',
+      '- 优先从「已有分类树」中选择节点；确无合适节点时才建议新分类（isNew 填 true）。',
+      '- 一级分类要稳定、宽泛、可长期复用（如「开发技术」「在线工具」「人工智能」）；二级子类更具体（如「前端开发」「论文」）。',
+      '- 内容只够判断一级时，subcategory 填 null，不要硬造二级。',
+      '- 同一公司、同一项目或同一业务系统的页面应归到同一分类下，不要拆散。',
+      '- 用中文，专有名词保留原文（React、Python、Docker、LLM）。',
+      '- 分类名 ≤ 24 字；理由 ≤ 24 字。',
+    ].join('\n'),
+    '',
+    [
+      '输出格式：仅输出一个 JSON 对象，不要代码块、不要解释。',
+      'schema: {"results":[{"i":1,"category":"一级分类","subcategory":"二级分类或null","confidence":0.85,"reason":"不超过24字的理由","isNew":false,"needsReview":false}]}',
+      '',
+      '字段说明：',
+      '- i: 书签序号，从 1 开始，与输入顺序一致。',
+      '- category: 一级分类，必填。',
+      '- subcategory: 二级分类；无法判断或不需要时填 null。',
+      '- confidence: 0-1，对归属有多大把握。内容信息不足时如实给低分。',
+      '- reason: 不超过 24 字的归属理由。',
+      '- isNew: 该分类节点不在「已有分类树」中、需要新建时填 true。',
+      '- needsReview: 对归属没有把握时填 true，进入人工确认。',
+    ].join('\n'),
+  ];
+
+  if (known.length > 0) {
+    lines.push('', '已有分类树（括号内为书签数，「>」表示父子层级；请优先归入已有节点，选择最具体的层级）：');
+    lines.push(...known.map((line) => `- ${line}`));
+  } else {
+    lines.push('', '该用户还没有任何分类，请建立一套简洁（≤10 个一级分类）、可长期复用的分类体系。');
+  }
+
+  lines.push(renderCategorizeExamples(examples));
+
+  lines.push('', '待分类书签：');
+  inputs.forEach((input, index) => {
+    lines.push(renderBookmark(input, index));
+  });
+
+  lines.push('', '仅输出一个 JSON 对象，不要代码块、不要解释。');
+  return lines.join('\n');
+}
+
+/**
+ * Normalises one model row into a `ParsedCategory`.
+ *
+ * Tolerates two common shape variants besides the documented one:
+ *  - `path: ["开发技术", "前端开发"]` — models that read the tree as a path;
+ *  - `category: "开发技术 > 前端开发"` — models that fold the path into one
+ *    string. Both are split into (category, subcategory) so downstream code
+ *    sees one shape only.
+ */
+function parseCategoryRow(row: Record<string, unknown>): ParsedCategory | null {
+  let category = '';
+  let subcategory: string | null = null;
+
+  const rawPath = row.path;
+  if (Array.isArray(rawPath)) {
+    // Path-array variant: first element is the top level, last is the deepest.
+    const parts = rawPath
+      .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+      .map((p) => p.trim().slice(0, MAX_TAG_LENGTH));
+    if (parts.length > 0) {
+      category = parts[0];
+      // The tree is capped at three levels; anything deeper collapses onto the
+      // second level so the placement stays representable.
+      subcategory = parts.length > 1 ? parts.slice(1).join(' > ').slice(0, MAX_TAG_LENGTH) : null;
+    }
+  }
+
+  if (!category && typeof row.category === 'string') {
+    const raw = row.category.trim();
+    if (raw.includes('>')) {
+      // Folded-path variant: "开发技术 > 前端开发".
+      const parts = raw
+        .split('>')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      category = (parts[0] ?? '').slice(0, MAX_TAG_LENGTH);
+      subcategory =
+        parts.length > 1 ? parts.slice(1).join(' > ').slice(0, MAX_TAG_LENGTH) : null;
+    } else {
+      category = raw.slice(0, MAX_TAG_LENGTH);
+    }
+  }
+
+  if (!category) return null;
+
+  if (subcategory === null && typeof row.subcategory === 'string' && row.subcategory.trim()) {
+    subcategory = row.subcategory.trim().slice(0, MAX_TAG_LENGTH);
+  }
+
+  const confidenceRaw = Number(row.confidence);
+  const confidence = Number.isFinite(confidenceRaw) ? Math.min(1, Math.max(0, confidenceRaw)) : 0.6;
+
+  const reason =
+    typeof row.reason === 'string' && row.reason.trim()
+      ? row.reason.trim().slice(0, MAX_REASON_LENGTH)
+      : '模型分类';
+
+  return {
+    category,
+    subcategory,
+    confidence,
+    reason,
+    isNew: row.isNew === true,
+    needsReview: row.needsReview === true,
+  };
+}
+
+/**
+ * Parses a categorize batch response (C1-1).
+ *
+ * Shares the robust `extractJsonValue` layer with the tagging parser: fences,
+ * prose, full-width brackets and trailing commas are all tolerated. Malformed
+ * rows degrade to `category: null` for that bookmark — which the engine counts
+ * as uncategorized (C1-7) rather than failing the whole batch.
+ */
+export function parseCategorizeResponse(raw: string | null, batchSize: number): ParsedCategorizeItem[] {
+  if (!raw) return [];
+
+  const parsed = extractJsonValue(raw);
+  if (parsed === null) return [];
+
+  const results = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { results?: unknown }).results;
+  if (!Array.isArray(results)) return [];
+
+  const out: ParsedCategorizeItem[] = [];
+
+  for (const entry of results) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as { i?: unknown } & Record<string, unknown>;
+
+    const rawIndex = Number(row.i);
+    if (!Number.isFinite(rawIndex)) continue;
+    const index = Math.trunc(rawIndex) - 1;
+    if (index < 0 || index >= batchSize) continue;
+
+    out.push({ index, category: parseCategoryRow(row) });
+  }
+
+  return out;
 }
 
 export interface ParsedItem {

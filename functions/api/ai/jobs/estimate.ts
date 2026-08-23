@@ -13,6 +13,7 @@ import { MAX_JOB_ITEMS, estimateJob } from '../../../_lib/ai';
  * Query params mirror `POST /api/ai/jobs`:
  *   `target`  'untagged' | 'all' | 'ids' (default 'untagged')
  *   `ids`     comma-separated bookmark ids, required when target=ids
+ *   `kind`    'tagging' (default) | 'categorize' — CategorySync scope rules
  */
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -22,6 +23,8 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   if (target !== 'untagged' && target !== 'all' && target !== 'ids') {
     throw badRequest('整理范围无效');
   }
+
+  const kind = url.searchParams.get('kind') === 'categorize' ? 'categorize' : 'tagging';
 
   const explicitIds =
     target === 'ids'
@@ -34,6 +37,6 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     throw badRequest('请选择要整理的书签');
   }
 
-  const estimate = await estimateJob(ctx.env, userId, target, explicitIds);
+  const estimate = await estimateJob(ctx.env, userId, target, explicitIds, kind);
   return json({ estimate });
 };

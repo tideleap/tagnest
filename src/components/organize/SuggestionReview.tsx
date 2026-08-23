@@ -41,6 +41,14 @@ interface Props {
   /** The queue could not be fetched — distinct from "the queue is empty". */
   failed?: boolean;
   onRetry?: () => void;
+  /**
+   * CategorySync (C2-2): which proposal queue this view is reviewing. 'tag'
+   * (default) shows loose-label proposals; 'category' shows single-placement
+   * category paths. The value is forwarded on every accept/reject so the
+   * server writes to the right store (`bookmark_tags` vs
+   * `bookmark_primary_category`).
+   */
+  kind?: 'tag' | 'category';
 }
 
 interface Group {
@@ -165,8 +173,9 @@ function groupByTopic(suggestions: AiSuggestion[]): TopicGroup[] {
   return [...map.values()].sort((a, b) => b.items.length - a.items.length || b.top - a.top);
 }
 
-export function SuggestionReview({ suggestions, loading, failed, onRetry }: Props) {
+export function SuggestionReview({ suggestions, loading, failed, onRetry, kind = 'tag' }: Props) {
   const decide = useDecideSuggestions();
+  const isCategory = kind === 'category';
   // Locally hidden groups: the server round trip is fast but not instant, and
   // a card that lingers after a click reads as a broken button.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -197,15 +206,15 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
 
   const acceptOne = (item: AiSuggestion) => {
     hide(item.bookmarkId);
-    decide.mutate({ action: 'accept', ids: [item.id] });
+    decide.mutate({ action: 'accept', ids: [item.id], kind });
   };
   const rejectOne = (item: AiSuggestion) => {
     hide(item.bookmarkId);
-    decide.mutate({ action: 'reject', ids: [item.id] });
+    decide.mutate({ action: 'reject', ids: [item.id], kind });
   };
   const renameOne = (item: AiSuggestion, name: string) => {
     hide(item.bookmarkId);
-    decide.mutate({ action: 'accept', ids: [item.id], renameTo: name });
+    decide.mutate({ action: 'accept', ids: [item.id], renameTo: name, kind });
   };
 
   const applyByIds = (ids: string[]) => {
@@ -218,7 +227,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
       bookmarkIds.forEach((id) => next.add(id));
       return next;
     });
-    decide.mutate({ action: 'accept', ids });
+    decide.mutate({ action: 'accept', ids, kind });
   };
   const rejectByIds = (ids: string[]) => {
     if (ids.length === 0) return;
@@ -230,7 +239,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
       bookmarkIds.forEach((id) => next.add(id));
       return next;
     });
-    decide.mutate({ action: 'reject', ids });
+    decide.mutate({ action: 'reject', ids, kind });
   };
 
   if (loading) {
@@ -269,22 +278,27 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
       <EmptyState
         icon={<Sparkles size={22} />}
         title="没有待确认的建议"
-        description="运行一次整理，AI 会在这里列出它为每条书签推荐的标签，确认后才会写入。"
+        description={
+          isCategory
+            ? '运行一次「精确分类」，AI 会在这里列出它为每条书签推荐的唯一分类路径，确认后才会写入。'
+            : '运行一次整理，AI 会在这里列出它为每条书签推荐的标签，确认后才会写入。'
+        }
       />
     );
   }
 
   const totalTags = visible.length;
+  const unit = isCategory ? '分类' : '标签';
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs text-ink-faint">
           {grouping === 'topic'
-            ? `${topicGroups.length} 个主题 · ${totalTags} 个待确认标签`
+            ? `${topicGroups.length} 个主题 · ${totalTags} 个待确认${unit}`
             : grouping === 'hierarchy'
-              ? `${hierarchyGroups.length} 个大类 · ${totalTags} 个待确认标签`
-              : `${groups.length} 条书签 · ${totalTags} 个待确认标签`}
+              ? `${hierarchyGroups.length} 个大类 · ${totalTags} 个待确认${unit}`
+              : `${groups.length} 条书签 · ${totalTags} 个待确认${unit}`}
         </p>
         <SegmentedControl
           label="分组方式"
@@ -365,19 +379,26 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry }: Prop
           setConfirmAll(false);
           applyByIds(allIds);
         }}
-        title="确认应用全部标签建议"
+        title={isCategory ? '确认应用全部分类建议' : '确认应用全部标签建议'}
         tone="default"
         confirmLabel="全部应用"
         message={
-          <span>
-            将写入 <b>{allIds.length}</b> 条标签关联
-            {newTagCount > 0 && (
-              <>
-                ，其中 <b>{newTagCount}</b> 个为新标签（将在标签体系中新建）
-              </>
-            )}
-            。确认后这些建议会立即写入书签，且无法一次性撤销。
-          </span>
+          isCategory ? (
+            <span>
+              将为 <b>{allIds.length}</b> 条书签写入唯一主分类。确认后这些建议会立即写入，
+              且无法一次性撤销。
+            </span>
+          ) : (
+            <span>
+              将写入 <b>{allIds.length}</b> 条标签关联
+              {newTagCount > 0 && (
+                <>
+                  ，其中 <b>{newTagCount}</b> 个为新标签（将在标签体系中新建）
+                </>
+              )}
+              。确认后这些建议会立即写入书签，且无法一次性撤销。
+            </span>
+          )
         }
       />
     </div>
@@ -698,6 +719,10 @@ function TagProposal({
   const [label, setLabel] = useState(item.tagName);
   const low = item.confidence < LOW_CONFIDENCE;
   const percent = Math.round(item.confidence * 100);
+  // CategorySync (C2-2): a category row proposes a placement path, not a free
+  // label — renaming it would mean picking a different node, which is a
+  // manual re-classification, not an edit. Hide the pencil for those rows.
+  const isCategoryRow = item.kind === 'category';
 
   if (decided) {
     return (
@@ -777,6 +802,7 @@ function TagProposal({
       )}
     >
       <span className="flex items-center gap-1">
+        {isCategoryRow && <FolderTree size={11} aria-hidden className="text-brand-accent" />}
         <span className="font-medium">{label}</span>
         <span className="tabular-nums text-ink-faint">{percent}%</span>
         <Badge tone="neutral" className="hidden sm:inline-flex">
@@ -792,14 +818,16 @@ function TagProposal({
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          aria-label={`编辑标签 ${item.tagName}`}
-          className="ml-0.5 rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
-        >
-          <Pencil size={12} />
-        </button>
+        {!isCategoryRow && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            aria-label={`编辑标签 ${item.tagName}`}
+            className="ml-0.5 rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
