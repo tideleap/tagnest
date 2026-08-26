@@ -8,85 +8,37 @@ import {
   type CategoryGroup,
 } from '@/lib/categoryGroups';
 import { tagColorVars, Button } from '@/components/ui';
-import { BookmarkCard, type BookmarkCardProps } from '@/components/bookmark/BookmarkCard';
 import { cx } from '@/lib/cx';
-import { useAssignCategory, useCategoryWriteback } from '@/hooks/queries/category';
+import { useCategoryWriteback } from '@/hooks/queries/category';
+import { NavigationTile } from './NavigationTile';
 
 /**
- * C2-3 — drag-to-reclassify.
+ * Website-navigation style browse view for the Library.
  *
- * Every card is draggable; dropping one onto a category section (or its level-2
- * sub-section) re-assigns its PRIMARY category to that tag via `useAssignCategory`.
- * The bookmark id travels on the native drag payload (`text/plain`), set by
- * `BookmarkCard` on drag start, so the drop handler never needs a shared state
- * variable for the id — only `overTagId` for the highlight. Synthetic groups
- * (deleted-root path labels / the 未分类 catch-all) are not real tags, so they
- * reject drops.
- */
-
-/**
- * Two-level category browse view for the Library.
+ * Bookmarks are grouped by their PRIMARY category — the same placement the
+ * bookmark bar and the browser extension consume, read from the writeback feed
+ * — so the view can never disagree with what lands in the toolbar.
  *
- * CategorySync (C2-1): this view renders the PRIMARY-category placement, not
- * the loose tag graph. Every bookmark appears exactly once — under the single
- * category it was assigned (`bookmark_primary_category`) — instead of under
- * every tag it carries. Placements are read from the writeback feed
- * (`/api/category/tree?format=writeback`), the same mapping the browser
- * extension consumes, so the view and the bookmark bar can never disagree.
- *
- * Bookmarks with no placement yet collect in the `__untagged` group, which
- * doubles as the C2-5 entry point: a "立即整理" button jumps straight to the
- * categorize organiser. Collapse state per group persists to localStorage.
+ * Each category becomes a section; inside it, bookmarks render as compact
+ * favicon tiles (a "site navigation" grid) instead of management cards. The
+ * goal here is fast visual scanning and one-click open, not bulk edits.
+ * Untagged bookmarks collect in a catch-all section with a "立即整理" entry
+ * point into the categoriser.
  */
 
 const STORAGE_KEY = 'tagnest.library.category-collapsed';
 
-/** Cap on cards per sub-section before a "load more" control appears. */
-const PER_SECTION_LIMIT = 12;
-
-type CardHandlers = Omit<
-  BookmarkCardProps,
-  'bookmark' | 'view' | 'selected' | 'selectionActive' | 'draggable' | 'onDragStartCard' | 'isDragOver'
->;
+/** Cap on tiles per sub-section before a "load more" control appears. */
+const PER_SECTION_LIMIT = 18;
 
 export function CategoryView({
   bookmarks,
   tags,
-  selected,
-  selectionActive,
-  handlers,
 }: {
   bookmarks: Bookmark[];
   tags: Tag[];
-  selected: Set<string>;
-  selectionActive: boolean;
-  handlers: CardHandlers;
 }) {
   const navigate = useNavigate();
-  const assignCategory = useAssignCategory();
-  const [overTagId, setOverTagId] = useState<string | null>(null);
-
-  // C2-3: the dragged bookmark id rides the native payload set by BookmarkCard,
-  // so we only track the hovered target tag for highlighting.
-  const handleDragStart = (id: string) => {
-    setOverTagId(null);
-    void id; // id is carried via dataTransfer; no extra state needed.
-  };
-
-  const handleDragOver = (tagId: string, e: React.DragEvent) => {
-    if (tagId === UNTAGGED_GROUP_ID || tagId.startsWith('__path:')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (overTagId !== tagId) setOverTagId(tagId);
-  };
-
-  const handleDrop = (tagId: string, e: React.DragEvent) => {
-    if (  tagId === UNTAGGED_GROUP_ID || tagId.startsWith('__path:')) return;
-    e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain');
-    setOverTagId(null);
-    if (id) assignCategory.mutate({ bookmarkIds: [id], tagId });
-  };
 
   // Primary placements come from the writeback feed. It is keyset-paged, so
   // pull every page before grouping — a partial map would misfile bookmarks
@@ -166,15 +118,7 @@ export function CategoryView({
           group={group}
           collapsed={collapsed[group.id] === true}
           onToggle={() => toggle(group.id)}
-          selected={selected}
-          selectionActive={selectionActive}
-          handlers={handlers}
           onOrganizeUntagged={() => navigate('/organize?mode=category')}
-          draggable
-          onDragStartCard={handleDragStart}
-          onDragOverTag={handleDragOver}
-          onDropTag={handleDrop}
-          overTagId={overTagId}
         />
       ))}
     </div>
@@ -185,44 +129,22 @@ function CategorySection({
   group,
   collapsed,
   onToggle,
-  selected,
-  selectionActive,
-  handlers,
   onOrganizeUntagged,
-  draggable,
-  onDragStartCard,
-  onDragOverTag,
-  onDropTag,
-  overTagId,
 }: {
   group: CategoryGroup;
   collapsed: boolean;
   onToggle: () => void;
-  selected: Set<string>;
-  selectionActive: boolean;
-  handlers: CardHandlers;
-  /** C2-5 — jump to the categorize organiser from the 未分类 group. */
+  /** Jump to the categorize organiser from the 未分类 group. */
   onOrganizeUntagged: () => void;
-  draggable: boolean;
-  onDragStartCard: (id: string) => void;
-  onDragOverTag: (tagId: string, e: React.DragEvent) => void;
-  onDropTag: (tagId: string, e: React.DragEvent) => void;
-  overTagId: string | null;
 }) {
   const isUntagged = group.id === UNTAGGED_GROUP_ID;
-  const isDropTarget = overTagId === group.id;
   const totalCount =
     group.directItems.length + group.children.reduce((s, c) => s + c.items.length, 0);
 
   return (
     <section
-      className={cx(
-        'rounded-xl border bg-surface/70 backdrop-blur-sm transition-colors',
-        isDropTarget ? 'border-brand ring-2 ring-brand/40' : 'border-line',
-      )}
+      className="rounded-xl border border-line bg-surface/70 backdrop-blur-sm"
       aria-labelledby={`category-${group.id}`}
-      onDragOver={!isUntagged ? (e) => onDragOverTag(group.id, e) : undefined}
-      onDrop={!isUntagged ? (e) => onDropTag(group.id, e) : undefined}
     >
       {/* Group header — name, colour accent, counts, collapse control. */}
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
@@ -285,15 +207,6 @@ function CategorySection({
               title={child.name}
               colorIndex={child.colorIndex}
               items={child.items}
-              selected={selected}
-              selectionActive={selectionActive}
-              handlers={handlers}
-              draggable={draggable}
-              onDragStartCard={onDragStartCard}
-              onDragOverTag={onDragOverTag}
-              onDropTag={onDropTag}
-              overTagId={overTagId}
-              tagId={child.id}
             />
           ))}
 
@@ -303,15 +216,6 @@ function CategorySection({
               title={isUntagged ? '尚未分类' : '直接归类'}
               items={group.directItems}
               untagged={isUntagged}
-              selected={selected}
-              selectionActive={selectionActive}
-              handlers={handlers}
-              draggable={draggable}
-              onDragStartCard={onDragStartCard}
-              onDragOverTag={onDragOverTag}
-              onDropTag={onDropTag}
-              overTagId={overTagId}
-              tagId={group.id}
             />
           )}
 
@@ -338,7 +242,7 @@ function CategorySection({
 }
 
 /**
- * One level-2 bucket: a small title bar plus a responsive card grid. Items
+ * One level-2 bucket: a small title bar plus a dense favicon-tile grid. Items
  * beyond the cap hide behind a "load more" control so a huge bucket cannot
  * blow up the page.
  */
@@ -347,60 +251,18 @@ function SubSection({
   colorIndex,
   items,
   untagged,
-  selected,
-  selectionActive,
-  handlers,
-  draggable,
-  onDragStartCard,
-  onDragOverTag,
-  onDropTag,
-  overTagId,
-  tagId,
 }: {
   title: string;
   colorIndex?: number;
   items: Bookmark[];
   untagged?: boolean;
-  selected: Set<string>;
-  selectionActive: boolean;
-  handlers: CardHandlers;
-  draggable: boolean;
-  onDragStartCard: (id: string) => void;
-  onDragOverTag: (tagId: string, e: React.DragEvent) => void;
-  onDropTag: (tagId: string, e: React.DragEvent) => void;
-  overTagId: string | null;
-  /** Real tag id this bucket maps to (drop target); absent only for 未分类. */
-  tagId?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasMore = items.length > PER_SECTION_LIMIT;
   const visible = expanded ? items : items.slice(0, PER_SECTION_LIMIT);
-  const isDropTarget = tagId !== undefined && overTagId === tagId;
-
-  // A level-2 bucket is itself a drop target. stopPropagation keeps a drop on a
-  // child bucket from bubbling to the parent section and landing on the parent
-  // tag instead of the child.
-  const childHandlers = tagId
-    ? {
-        onDragOver: (e: React.DragEvent) => {
-          e.stopPropagation();
-          onDragOverTag(tagId, e);
-        },
-        onDrop: (e: React.DragEvent) => {
-          e.stopPropagation();
-          onDropTag(tagId, e);
-        },
-      }
-    : {};
 
   return (
-    <div
-      {...childHandlers}
-      className={cx(
-        'rounded-lg transition-colors',
-        isDropTarget && 'bg-brand-soft/50 ring-1 ring-brand/40',
-      )}
-    >
+    <div>
       <div className="mb-2.5 flex items-center gap-2">
         {!untagged && colorIndex !== undefined && (
           <span
@@ -413,18 +275,10 @@ function SubSection({
         <span className="text-2xs tabular-nums text-ink-faint">{items.length}</span>
       </div>
 
-      <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {visible.map((b) => (
           <li key={b.id}>
-            <BookmarkCard
-              bookmark={b}
-              view="grid"
-              selected={selected.has(b.id)}
-              selectionActive={selectionActive}
-              draggable={draggable}
-              onDragStartCard={onDragStartCard}
-              {...handlers}
-            />
+            <NavigationTile bookmark={b} />
           </li>
         ))}
       </ul>

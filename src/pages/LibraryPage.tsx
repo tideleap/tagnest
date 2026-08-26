@@ -494,13 +494,7 @@ export function LibraryPage() {
           style={{ maxHeight: 'calc(100dvh - 11rem)' }}
         >
           {viewMode === 'category' ? (
-            <CategoryView
-              bookmarks={items}
-              tags={tags ?? []}
-              selected={selected}
-              selectionActive={selected.size > 0}
-              handlers={cardHandlers}
-            />
+            <CategoryView bookmarks={items} tags={tags ?? []} />
           ) : isGrid ? (
             // Grid density defers to CSS columns — virtualizing a responsive
             // grid buys little and breaks keyboard order.
