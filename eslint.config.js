@@ -11,6 +11,8 @@ export default tseslint.config(
     ignores: [
       'dist',
       'dist_*',
+      'dist-ext',
+      'dist-ext/**',
       'node_modules',
       '.wrangler',
       'parser.bundle.mjs',

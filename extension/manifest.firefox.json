@@ -7,6 +7,7 @@
   "optional_permissions": ["bookmarks"],
   "background": {
     "service_worker": "bg/service-worker.js",
+    "scripts": ["bg/service-worker.js"],
     "type": "module"
   },
   "action": {

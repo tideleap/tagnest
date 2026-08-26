@@ -33,6 +33,9 @@
     "release": "node scripts/deploy.mjs --push",
     "infra:setup": "node scripts/setup-infra.mjs",
     "extension:icons": "node extension/build-icons.mjs",
+    "extension:build": "node scripts/build-extension.mjs",
+    "extension:build:chrome": "node scripts/build-extension.mjs --target chrome",
+    "extension:build:firefox": "node scripts/build-extension.mjs --target firefox",
     "pwa:icons": "node scripts/gen-pwa-icons.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
   },
