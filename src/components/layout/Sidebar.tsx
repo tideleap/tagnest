@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -29,8 +29,9 @@ import type { Tag } from '@shared/types';
 import { buildTagTree, subtreeIds, type TreeNode } from '@/components/tags/buildTagTree';
 import { cx } from '@/lib/cx';
 import { IconButton, Skeleton } from '@/components/ui';
-import { useOverlay, useView } from '@/stores/ui';
+import { isNavGroupCollapsed, useOverlay, useView } from '@/stores/ui';
 import { useStats, useTags } from '@/hooks/queries';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useVault } from '@/stores/vault';
 import { Logo } from '@/components/decor/Logo';
 
@@ -56,27 +57,65 @@ interface NavItem {
   vaultState?: boolean;
 }
 
-const PRIMARY: NavItem[] = [
-  { to: '/dashboard', label: '概览', icon: LayoutDashboard },
-  { to: '/library/inbox', label: '收件箱', icon: Inbox, countKey: 'inbox' },
-  { to: '/library/all', label: '全部书签', icon: Layers, countKey: 'bookmarks' },
-  { to: '/library/favorites', label: '收藏', icon: Star, countKey: 'favorites' },
-  { to: '/library/archive', label: '归档', icon: Archive, countKey: 'archived' },
+/** Standalone home link, always pinned above the groups. */
+const OVERVIEW: NavItem = { to: '/dashboard', label: '概览', icon: LayoutDashboard };
+
+/**
+ * Semantic grouping of the 16 functional destinations (IA redesign).
+ * Each group is collapsible; open/closed state persists in `tagnest.view`.
+ * The dynamic tag tree renders as its own group (`tags`) between Library and
+ * Organize, since tags are how you browse the library.
+ */
+interface NavGroupDef {
+  id: string;
+  title: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroupDef[] = [
+  {
+    id: 'library',
+    title: '书签库 / Library',
+    items: [
+      { to: '/library/all', label: '全部书签', icon: Layers, countKey: 'bookmarks' },
+      { to: '/library/inbox', label: '收件箱', icon: Inbox, countKey: 'inbox' },
+      { to: '/library/favorites', label: '收藏', icon: Star, countKey: 'favorites' },
+      { to: '/library/archive', label: '归档', icon: Archive, countKey: 'archived' },
+      { to: '/library/trash', label: '回收站', icon: Trash2, countKey: 'trashed' },
+    ],
+  },
+  {
+    id: 'organize',
+    title: '整理 / Organize',
+    items: [
+      { to: '/organize', label: 'AI 整理', icon: Sparkles },
+      { to: '/tags', label: '标签', icon: TagIcon },
+      { to: '/collections', label: '集合', icon: Folder },
+      { to: '/tab-groups', label: '标签页组', icon: FolderOpen },
+    ],
+  },
+  {
+    id: 'insights',
+    title: '洞察 / Insights',
+    items: [
+      { to: '/timeline', label: '时间线', icon: CalendarClock },
+      { to: '/report', label: '报告', icon: BarChart3 },
+      { to: '/feeds', label: 'RSS 订阅', icon: Rss },
+    ],
+  },
+  {
+    id: 'system',
+    title: '系统 / System',
+    items: [
+      { to: '/import', label: '导入导出', icon: Download },
+      { to: '/private', label: '私密保险库', icon: Lock, vaultState: true },
+      { to: '/settings', label: '设置', icon: Settings },
+    ],
+  },
 ];
 
-const SECONDARY: NavItem[] = [
-  { to: '/organize', label: 'AI 整理', icon: Sparkles },
-  { to: '/tags', label: '标签', icon: TagIcon },
-  { to: '/tab-groups', label: '标签页组', icon: FolderOpen },
-  { to: '/collections', label: '集合', icon: Folder },
-  { to: '/timeline', label: '时间线', icon: CalendarClock },
-  { to: '/report', label: '报告', icon: BarChart3 },
-  { to: '/import', label: '导入导出', icon: Download },
-  { to: '/feeds', label: 'RSS 订阅', icon: Rss },
-  { to: '/private', label: '私密保险库', icon: Lock, vaultState: true },
-  { to: '/library/trash', label: '回收站', icon: Trash2, countKey: 'trashed' },
-  { to: '/settings', label: '设置', icon: Settings },
-];
+/** Flat list of every destination — used by the icon-only collapsed rail. */
+const ALL_ITEMS: NavItem[] = [OVERVIEW, ...NAV_GROUPS.flatMap((g) => g.items)];
 
 function NavRow({
   item,
@@ -118,12 +157,57 @@ function NavRow({
   );
 }
 
-function NavGroup({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * Collapsible semantic group. The header doubles as the toggle; when folded
+ * it shows how many destinations live inside so nothing feels lost.
+ * `aria-expanded` + `aria-controls` keep screen readers in the loop.
+ */
+function CollapsibleGroup({
+  id,
+  title,
+  count,
+  collapsed,
+  onToggle,
+  tall,
+  children,
+}: {
+  id: string;
+  title: string;
+  count?: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  tall?: boolean;
+  children: ReactNode;
+}) {
+  const bodyId = `nav-group-${id}`;
   return (
-    <div>
-      <p className="nav-section mb-2 px-2.5">{title}</p>
-      <ul className="flex flex-col gap-1">{children}</ul>
-    </div>
+    <section>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        aria-controls={bodyId}
+        className={cx(
+          'flex w-full items-center gap-1.5 rounded-md px-2.5 text-left transition-colors hover:bg-surface-hover',
+          tall ? 'h-9' : 'h-7',
+        )}
+      >
+        <ChevronRight
+          size={12}
+          className={cx('shrink-0 text-ink-faint transition-transform duration-200', !collapsed && 'rotate-90')}
+          aria-hidden
+        />
+        <span className="nav-section min-w-0 flex-1 truncate">{title}</span>
+        {collapsed && count !== undefined && count > 0 && (
+          <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{count}</span>
+        )}
+      </button>
+      {!collapsed && (
+        <ul id={bodyId} className="mt-1 flex flex-col gap-1">
+          {children}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -188,86 +272,131 @@ function SidebarContent({
   const isDrawer = variant === 'drawer';
   const tall = isDrawer;
 
-  const primaryBlock = (
-    <NavGroup title="导航 / Navigate">
-      {PRIMARY.map((item) => (
-        <li key={item.to}>
-          <NavRow
-            item={item}
-            count={item.countKey ? counts[item.countKey] : undefined}
-            mode={mode}
-            tall={tall}
-            onNavigate={onNavigate}
-          />
-        </li>
-      ))}
-    </NavGroup>
+  // `mode='lg'` hides row labels below the lg breakpoint (the rail narrows to
+  // 64px there). Group headers are text, so they must go too — fall back to
+  // the flat icon list in that band.
+  const isLg = useMediaQuery('(min-width: 1024px)');
+
+  const navGroups = useView((s) => s.navGroups);
+  const toggleNavGroup = useView((s) => s.toggleNavGroup);
+
+  const renderRow = (item: NavItem) => (
+    <li key={item.to}>
+      <NavRow
+        item={item}
+        count={item.countKey ? counts[item.countKey] : undefined}
+        trailing={
+          item.vaultState && vaultStatus === 'unlocked' ? (
+            <span title="保险库已解锁" aria-label="保险库已解锁" className="block h-1.5 w-1.5 rounded-full bg-brand-accent" />
+          ) : undefined
+        }
+        mode={mode}
+        tall={tall}
+        onNavigate={onNavigate}
+      />
+    </li>
   );
 
-  const tagsBlock = (
-    <>
-      <h2 className="nav-section mb-2 px-2.5 pb-1">标签分组 / Tags</h2>
+  // Icon-only rail: a flat list, no group headers (they would not fit in
+  // 64px). Applies to the collapsed rail (`never`) and the md–lg band where
+  // labels are hidden. Tooltips carry the labels.
+  if (mode === 'never' || (mode === 'lg' && !isLg)) {
+    return (
+      <nav aria-label="书签分区" className="flex h-full flex-col gap-1 overflow-y-auto px-2.5 py-3 scrollbar-slim">
+        {ALL_ITEMS.map(renderRow)}
+      </nav>
+    );
+  }
+
+  const tagsCollapsed = isNavGroupCollapsed(navGroups, 'tags');
+  const tagCount = (tags ?? []).length;
+
+  const tagsGroup = (
+    <CollapsibleGroup
+      id="tags"
+      title="标签分组 / Tags"
+      count={tagCount}
+      collapsed={tagsCollapsed}
+      onToggle={() => toggleNavGroup('tags')}
+      tall={tall}
+    >
       {tagsLoading ? (
-        <div className="flex flex-col gap-1.5 px-2.5 py-1">
+        <li className="flex flex-col gap-1.5 px-2.5 py-1">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-5 w-16" />
           <Skeleton className="h-5 w-20" />
-        </div>
-      ) : (tags ?? []).length === 0 ? (
-        <p className="px-2.5 text-xs leading-relaxed text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</p>
+        </li>
+      ) : tagCount === 0 ? (
+        <li className="px-2.5 text-xs leading-relaxed text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</li>
       ) : (
-        <TagTree tags={tags ?? []} activeTagIds={activeTagIds} onToggle={toggleTag} tall={tall} />
+        <li>
+          <TagTree tags={tags ?? []} activeTagIds={activeTagIds} onToggle={toggleTag} tall={tall} />
+        </li>
       )}
-    </>
+    </CollapsibleGroup>
   );
 
-  const secondaryBlock = (
-    <NavGroup title="整理 / Organize">
-      {SECONDARY.map((item) => (
-        <li key={item.to}>
-          <NavRow
-            item={item}
-            count={item.countKey ? counts[item.countKey] : undefined}
-            trailing={
-              item.vaultState && vaultStatus === 'unlocked' ? (
-                <span title="保险库已解锁" aria-label="保险库已解锁" className="block h-1.5 w-1.5 rounded-full bg-brand-accent" />
-              ) : undefined
-            }
-            mode={mode}
-            tall={tall}
-            onNavigate={onNavigate}
-          />
-        </li>
-      ))}
-    </NavGroup>
+  // Interleave: library → tags → organize → insights → system.
+  const libraryGroup = NAV_GROUPS[0];
+  const restGroups = NAV_GROUPS.slice(1);
+
+  const renderNavGroup = (group: NavGroupDef) => (
+    <CollapsibleGroup
+      key={group.id}
+      id={group.id}
+      title={group.title}
+      count={group.items.length}
+      collapsed={isNavGroupCollapsed(navGroups, group.id)}
+      onToggle={() => toggleNavGroup(group.id)}
+      tall={tall}
+    >
+      {group.items.map(renderRow)}
+    </CollapsibleGroup>
+  );
+
+  const overviewRow = (
+    <div className="mb-3">
+      <ul className="flex flex-col gap-1">{renderRow(OVERVIEW)}</ul>
+    </div>
   );
 
   if (isDrawer) {
     // Phone drawer: the <nav> itself is the single scroll container, so the
-    // whole column (primary → tags → secondary) always scrolls — no zone can
-    // be squeezed out. overscroll-contain stops the scroll chaining into the
-    // page behind the scrim.
+    // whole column always scrolls — no zone can be squeezed out.
+    // overscroll-contain stops the scroll chaining into the page behind the
+    // scrim.
     return (
       <nav
         aria-label="书签分区"
         className="flex h-full flex-col overflow-y-auto overscroll-contain px-2.5 py-3 scrollbar-slim"
       >
-        {primaryBlock}
-        <div className="mt-5">{tagsBlock}</div>
-        <div className="mt-5 border-t border-line/70 pt-3">{secondaryBlock}</div>
+        {overviewRow}
+        {renderNavGroup(libraryGroup)}
+        <div className="mt-4">{tagsGroup}</div>
+        {restGroups.map((group, i) => (
+          <div key={group.id} className={cx('mt-4', i === 0 && 'border-t border-line/70 pt-3')}>
+            {renderNavGroup(group)}
+          </div>
+        ))}
       </nav>
     );
   }
 
+  // Desktop rail: overview pinned on top, groups below. The whole column
+  // scrolls when it overflows (the rail is narrow enough that a nested
+  // scroll zone would feel cramped).
   return (
-    <nav aria-label="书签分区" className="flex h-full flex-col px-2.5 py-3">
-      {primaryBlock}
-
-      <div className={cx('mt-5 min-h-0 flex-1 overflow-y-auto scrollbar-slim', LABEL_VISIBILITY[mode])}>
-        {tagsBlock}
-      </div>
-
-      <div className="mt-4 border-t border-line/70 pt-3">{secondaryBlock}</div>
+    <nav aria-label="书签分区" className="flex h-full flex-col overflow-y-auto px-2.5 py-3 scrollbar-slim">
+      {overviewRow}
+      {renderNavGroup(libraryGroup)}
+      <div className="mt-4">{tagsGroup}</div>
+      {restGroups.map((group, i) => (
+        <Fragment key={group.id}>
+          <div className={cx('mt-4', i === 0 && 'border-t border-line/70 pt-3')}>
+            {renderNavGroup(group)}
+          </div>
+        </Fragment>
+      ))}
     </nav>
   );
 }

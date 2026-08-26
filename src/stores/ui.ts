@@ -8,13 +8,35 @@ export type ViewMode = 'list' | 'grid' | 'compact' | 'category';
 export { THEMES, THEME_LABEL } from '@/lib/themes';
 export type { ThemeOption } from '@/lib/themes';
 
+/**
+ * Sidebar nav groups that start collapsed. High-frequency groups (library,
+ * organize) stay open; low-frequency ones (insights, system) tuck away so the
+ * rail is not a 16-item wall. User toggles are persisted in `navGroups` and
+ * win over these defaults. The dynamic tag-tree group (`tags`) defaults open
+ * and is handled here too.
+ */
+export const NAV_GROUP_DEFAULT_COLLAPSED: Record<string, boolean> = {
+  library: false,
+  tags: false,
+  organize: false,
+  insights: true,
+  system: true,
+};
+
+export function isNavGroupCollapsed(groups: Record<string, boolean>, id: string): boolean {
+  return groups[id] ?? NAV_GROUP_DEFAULT_COLLAPSED[id] ?? false;
+}
+
 interface ViewState {
   viewMode: ViewMode;
   sort: BookmarkSort;
   sidebarCollapsed: boolean;
+  /** groupId -> collapsed override; missing keys fall back to defaults. */
+  navGroups: Record<string, boolean>;
   setViewMode: (mode: ViewMode) => void;
   setSort: (sort: BookmarkSort) => void;
   toggleSidebar: () => void;
+  toggleNavGroup: (id: string) => void;
 }
 
 /** Persisted view preferences. Purged on logout via `tagnest.view`. */
@@ -24,9 +46,14 @@ export const useView = create<ViewState>()(
       viewMode: 'list',
       sort: 'created_desc',
       sidebarCollapsed: false,
+      navGroups: {},
       setViewMode: (viewMode) => set({ viewMode }),
       setSort: (sort) => set({ sort }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      toggleNavGroup: (id) =>
+        set((s) => ({
+          navGroups: { ...s.navGroups, [id]: !isNavGroupCollapsed(s.navGroups, id) },
+        })),
     }),
     { name: 'tagnest.view' },
   ),
