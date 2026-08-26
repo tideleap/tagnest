@@ -5,6 +5,7 @@ import type { AiJobTarget } from '@shared/types';
 import { Button, PageHeader, SegmentedControl } from '@/components/ui';
 import { Reveal } from '@/components/atelier';
 import { RunPanel } from '@/components/organize/RunPanel';
+import { CategoryExportPanel } from '@/components/organize/CategoryExportPanel';
 import { AiMetricsPanel } from '@/components/organize/AiMetricsPanel';
 import { EvaluationPanel } from '@/components/organize/EvaluationPanel';
 import { SuggestionReview } from '@/components/organize/SuggestionReview';
@@ -170,6 +171,7 @@ export function OrganizePage() {
             onTargetChange={setTarget}
             kind={mode}
           />
+          {mode === 'categorize' && <CategoryExportPanel />}
           <EvaluationPanel overview={overview} />
         </Reveal>
       )}
