@@ -117,7 +117,7 @@ export function DirectoryView({
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
       {/* Sticky, scroll-spy-aware sidebar of first-level categories. */}
       <aside className="hidden lg:block">
         <div className="sticky top-4 rounded-xl border border-line bg-surface/80 p-2.5 backdrop-blur-md">

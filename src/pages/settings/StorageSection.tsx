@@ -110,7 +110,7 @@ export function StorageSection() {
               <PreviewStat label="含快照" value={String(preview.data.snapshotCount)} />
             </div>
             <div className="mt-4 h-px bg-line" />
-            <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
               <Select
                 label="导出格式"
                 value={format}

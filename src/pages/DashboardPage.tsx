@@ -215,7 +215,7 @@ function RecentBookmarks() {
 
   if (isLoading) {
     return (
-      <div className="grid gap-2.5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-[4.25rem] w-full rounded-xl" />
         ))}
@@ -231,7 +231,7 @@ function RecentBookmarks() {
   }
 
   return (
-    <ul className="grid gap-2.5 sm:grid-cols-2">
+    <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
       {items.map((b) => (
         <li key={b.id}>
           <Link
@@ -344,7 +344,7 @@ export function DashboardPage() {
 
       <section aria-label="需要处理">
         <SectionHead index="01" title="需要你处理" note="点一下就直奔那个分区" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {attention.map((a, i) => (
             <AttentionCard key={a.to} index={i} {...a} loading={loading} failed={failed} />
           ))}
@@ -353,7 +353,7 @@ export function DashboardPage() {
 
       {/* Responsive composition: a wide main column + a slim right rail on
           desktop; both stack on phones and tablets. */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
           <section aria-label="书签库构成">
             <SectionHead index="02" title="书签库构成" note="你的收藏形状" />
