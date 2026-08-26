@@ -11,16 +11,12 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { useStats } from '@/hooks/queries';
-import { Button, Skeleton } from '@/components/ui';
+import { useStats, useBookmarks, useTags } from '@/hooks/queries';
+import { Button, Skeleton, TagChip } from '@/components/ui';
+import { RemoteImage } from '@/components/ui';
 import { CartoonMascot } from '@/components/decor/CartoonMascot';
-import {
-  KineticText,
-  Magnetic,
-  Reveal,
-  Stagger,
-  TiltCard,
-} from '@/components/atelier';
+import { KineticText, Magnetic, Reveal, Stagger, TiltCard } from '@/components/atelier';
+import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 
 const TILE = ['#6366f1', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#f59e0b', '#f97316', '#ef4444'];
 
@@ -36,14 +32,14 @@ function Hero({
   failed?: boolean;
 }) {
   return (
-    <section className="atelier-edge relative overflow-hidden rounded-2xl border border-line bg-surface/70 p-7 shadow-float backdrop-blur-sm sm:p-10">
+    <section className="atelier-edge relative overflow-hidden rounded-2xl border border-line bg-surface/70 p-6 shadow-float backdrop-blur-sm sm:p-9">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-soft/60 blur-[80px]" />
         <div className="absolute -bottom-24 left-1/4 h-60 w-60 rounded-full bg-brand-accent/10 blur-[70px]" />
       </div>
 
       <Reveal className="relative flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
-        <div className="max-w-2xl">
+        <div className="min-w-0 max-w-2xl">
           <p className="atelier-eyebrow">
             <Sparkles size={13} aria-hidden /> 我的书签小天地
           </p>
@@ -205,9 +201,101 @@ function SectionHead({ index, title, note }: { index: string; title: string; not
             <span className="absolute -bottom-1 left-0 h-0.5 w-8 rounded-full bg-brand-accent" aria-hidden />
           </span>
         </h2>
-        <span className="text-2xs text-ink-faint">{note}</span>
+        <span className="hidden text-2xs text-ink-faint sm:block">{note}</span>
       </div>
     </Reveal>
+  );
+}
+
+/** Compact list of the most recently added bookmarks — gives the dashboard
+ *  immediate substance instead of floating in whitespace. */
+function RecentBookmarks() {
+  const { data, isLoading, isError } = useBookmarks({ scope: 'all', sort: 'created_desc' });
+  const items = (data?.pages[0]?.items ?? []).slice(0, 6);
+
+  if (isLoading) {
+    return (
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[4.25rem] w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+  if (isError || items.length === 0) {
+    return (
+      <p className="rounded-xl border border-line bg-surface/60 px-4 py-6 text-center text-sm text-ink-faint">
+        还没有书签，添加第一条开始搭建秩序。
+      </p>
+    );
+  }
+
+  return (
+    <ul className="grid gap-2.5 sm:grid-cols-2">
+      {items.map((b) => (
+        <li key={b.id}>
+          <Link
+            to={`/library/all?focus=${b.id}`}
+            className="spotlight group flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition-colors hover:border-brand-accent"
+          >
+            <span className="favicon-badge h-9 w-9 shrink-0 p-1.5">
+              <RemoteImage
+                src={faviconFor(b.url)}
+                alt=""
+                className="h-full w-full rounded"
+              />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-ink">
+                {b.title || b.url}
+              </span>
+              <span className="mt-0.5 block truncate text-2xs text-ink-faint">
+                {displayHost(b.url)} · {b.createdAt ? relativeTime(b.createdAt) : ''}
+              </span>
+            </span>
+            <ArrowUpRight
+              size={15}
+              className="shrink-0 text-ink-faint transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-ink"
+              aria-hidden
+            />
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** A wrap of the most-used tags, sized as a cloud — quick entry into the
+ *  library and a second source of "what's in here" context. */
+function TagCloud() {
+  const { data: tags, isLoading } = useTags();
+  const top = [...(tags ?? [])]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 14);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-7 w-16 rounded-full" />
+        ))}
+      </div>
+    );
+  }
+  if (top.length === 0) {
+    return (
+      <p className="text-sm text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {top.map((t) => (
+        <Link key={t.id} to={`/library/all?tagIds=${t.id}`} className="transition-transform hover:-translate-y-0.5">
+          <TagChip name={t.name} colorIndex={t.colorIndex} size="sm" count={t.count} />
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -224,8 +312,19 @@ export function DashboardPage() {
     { icon: <Sparkles size={20} aria-hidden />, label: 'AI 整理', hint: s && s.untagged > 0 ? '让 AI 帮未打标书签生成标签' : '全库标签健康检查', count: undefined, to: '/organize', color: TILE[3] },
   ];
 
+  const quickLinks = [
+    { to: '/library/inbox', icon: <Inbox size={17} aria-hidden />, label: '收件箱' },
+    { to: '/library/favorites', icon: <Star size={17} aria-hidden />, label: '收藏' },
+    { to: '/library/archive', icon: <ArchiveIcon />, label: '归档' },
+    { to: '/tags', icon: <TagIcon size={17} aria-hidden />, label: '管理标签' },
+    { to: '/tab-groups', icon: <FolderOpen size={17} aria-hidden />, label: '标签页组' },
+    { to: '/library/trash', icon: <Trash2 size={17} aria-hidden />, label: '回收站' },
+    { to: '/import', icon: <Upload size={17} aria-hidden />, label: '导入导出' },
+    { to: '/settings', icon: <Sparkles size={17} aria-hidden />, label: '设置' },
+  ];
+
   return (
-    <div className="relative mx-auto flex max-w-5xl flex-col gap-10 pb-14 pt-2">
+    <div className="relative mx-auto flex max-w-7xl flex-col gap-6 pb-14 pt-2">
       <Hero total={s?.bookmarks} added={s?.addedLast7Days} loading={loading} failed={failed} />
 
       {!loading && !failed && s?.bookmarks === 0 && (
@@ -245,22 +344,56 @@ export function DashboardPage() {
 
       <section aria-label="需要处理">
         <SectionHead index="01" title="需要你处理" note="点一下就直奔那个分区" />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {attention.map((a, i) => (
             <AttentionCard key={a.to} index={i} {...a} loading={loading} failed={failed} />
           ))}
         </div>
       </section>
 
-      <section aria-label="书签库构成">
-        <SectionHead index="02" title="书签库构成" note="你的收藏形状" />
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard index={0} label="全部书签" value={s?.bookmarks} loading={loading} failed={failed} to="/library/all" color={TILE[4]} />
-          <StatCard index={1} label="收藏" value={s?.favorites} loading={loading} failed={failed} to="/library/favorites" color={TILE[5]} />
-          <StatCard index={2} label="已归档" value={s?.archived} loading={loading} failed={failed} to="/library/archive" color={TILE[6]} />
-          <StatCard index={3} label="标签" value={s?.tags} loading={loading} failed={failed} to="/tags" color={TILE[7]} />
+      {/* Responsive composition: a wide main column + a slim right rail on
+          desktop; both stack on phones and tablets. */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+          <section aria-label="书签库构成">
+            <SectionHead index="02" title="书签库构成" note="你的收藏形状" />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StatCard index={0} label="全部书签" value={s?.bookmarks} loading={loading} failed={failed} to="/library/all" color={TILE[4]} />
+              <StatCard index={1} label="收藏" value={s?.favorites} loading={loading} failed={failed} to="/library/favorites" color={TILE[5]} />
+              <StatCard index={2} label="已归档" value={s?.archived} loading={loading} failed={failed} to="/library/archive" color={TILE[6]} />
+              <StatCard index={3} label="标签" value={s?.tags} loading={loading} failed={failed} to="/tags" color={TILE[7]} />
+            </div>
+          </section>
+
+          <section aria-label="最近添加">
+            <SectionHead index="03" title="最近添加" note="最新的收藏，点开看全部" />
+            <RecentBookmarks />
+          </section>
         </div>
-      </section>
+
+        <div className="flex min-w-0 flex-col gap-6">
+          <section aria-label="热门标签">
+            <SectionHead index="04" title="热门标签" note="用得最多的标签" />
+            <TagCloud />
+          </section>
+
+          <section aria-label="快捷入口">
+            <SectionHead index="05" title="快捷入口" note="像翻杂志一样点着玩" />
+            <Stagger className="grid grid-cols-2 gap-2.5">
+              {quickLinks.map((a) => (
+                <Link
+                  key={a.to}
+                  to={a.to}
+                  className="spotlight flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-3 text-sm font-medium text-ink transition-colors hover:border-brand-accent hover:text-brand-ink"
+                >
+                  <span className="shrink-0 text-brand-ink">{a.icon}</span>
+                  <span className="truncate">{a.label}</span>
+                </Link>
+              ))}
+            </Stagger>
+          </section>
+        </div>
+      </div>
 
       <div className="overflow-hidden rounded-2xl border border-line/60 bg-surface/50 py-4">
         <KineticText duration={30} separator={<Sparkles size={14} className="text-brand-accent" aria-hidden />}>
@@ -272,31 +405,6 @@ export function DashboardPage() {
           ))}
         </KineticText>
       </div>
-
-      <section aria-label="快捷入口">
-        <SectionHead index="03" title="快捷入口" note="像翻杂志一样点着玩" />
-        <Stagger className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          {[
-            { to: '/library/inbox', icon: <Inbox size={17} aria-hidden />, label: '收件箱' },
-            { to: '/library/favorites', icon: <Star size={17} aria-hidden />, label: '收藏' },
-            { to: '/library/archive', icon: <ArchiveIcon />, label: '归档' },
-            { to: '/tags', icon: <TagIcon size={17} aria-hidden />, label: '管理标签' },
-            { to: '/tab-groups', icon: <FolderOpen size={17} aria-hidden />, label: '标签页组' },
-            { to: '/library/trash', icon: <Trash2 size={17} aria-hidden />, label: '回收站' },
-            { to: '/import', icon: <Upload size={17} aria-hidden />, label: '导入导出' },
-            { to: '/settings', icon: <Sparkles size={17} aria-hidden />, label: '设置' },
-          ].map((a) => (
-            <Link
-              key={a.to}
-              to={a.to}
-              className="spotlight flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-3 text-sm font-medium text-ink transition-colors hover:border-brand-accent hover:text-brand-ink"
-            >
-              <span className="shrink-0 text-brand-ink">{a.icon}</span>
-              <span className="truncate">{a.label}</span>
-            </Link>
-          ))}
-        </Stagger>
-      </section>
     </div>
   );
 }
