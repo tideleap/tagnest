@@ -83,12 +83,15 @@ function NavRow({
   count,
   trailing,
   mode,
+  tall,
   onNavigate,
 }: {
   item: NavItem;
   count?: number;
   trailing?: ReactNode;
   mode: LabelMode;
+  /** Drawer mode: bump the row to a 44px touch target (Apple HIG minimum). */
+  tall?: boolean;
   onNavigate?: () => void;
 }) {
   const Icon = item.icon;
@@ -98,7 +101,7 @@ function NavRow({
       end={item.to === '/tags'}
       onClick={onNavigate}
       title={item.label}
-      className={({ isActive }) => cx('nav-row', ROW_LAYOUT[mode], isActive && 'is-active')}
+      className={({ isActive }) => cx('nav-row', ROW_LAYOUT[mode], tall && 'h-11', isActive && 'is-active')}
     >
       <span className="nav-row__bar" aria-hidden />
       <Icon size={17} className="nav-row__icon shrink-0" aria-hidden />
@@ -124,7 +127,24 @@ function NavGroup({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: () => void }) {
+function SidebarContent({
+  mode,
+  variant = 'rail',
+  onNavigate,
+}: {
+  mode: LabelMode;
+  /**
+   * `rail`  — desktop: fixed primary + secondary blocks, only the tag tree
+   *           scrolls (the classic three-zone rail).
+   * `drawer` — phone: ONE scrollable column (primary → tags → secondary).
+   *           The rail layout collapses on small screens — the two fixed
+   *           zones eat all the height and the middle scroll region gets
+   *           squeezed to 0px, leaving nothing scrollable. A single scroll
+   *           container is the only layout that always works.
+   */
+  variant?: 'rail' | 'drawer';
+  onNavigate?: () => void;
+}) {
   const { data: stats } = useStats();
   const { data: tags, isLoading: tagsLoading } = useTags();
   const vaultStatus = useVault((s) => s.status);
@@ -165,55 +185,105 @@ function SidebarContent({ mode, onNavigate }: { mode: LabelMode; onNavigate?: ()
     onNavigate?.();
   };
 
+  const isDrawer = variant === 'drawer';
+  const tall = isDrawer;
+
+  const primaryBlock = (
+    <NavGroup title="导航 / Navigate">
+      {PRIMARY.map((item) => (
+        <li key={item.to}>
+          <NavRow
+            item={item}
+            count={item.countKey ? counts[item.countKey] : undefined}
+            mode={mode}
+            tall={tall}
+            onNavigate={onNavigate}
+          />
+        </li>
+      ))}
+    </NavGroup>
+  );
+
+  const tagsBlock = (
+    <>
+      <h2 className="nav-section mb-2 px-2.5 pb-1">标签分组 / Tags</h2>
+      {tagsLoading ? (
+        <div className="flex flex-col gap-1.5 px-2.5 py-1">
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-5 w-20" />
+        </div>
+      ) : (tags ?? []).length === 0 ? (
+        <p className="px-2.5 text-xs leading-relaxed text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</p>
+      ) : (
+        <TagTree tags={tags ?? []} activeTagIds={activeTagIds} onToggle={toggleTag} tall={tall} />
+      )}
+    </>
+  );
+
+  const secondaryBlock = (
+    <NavGroup title="整理 / Organize">
+      {SECONDARY.map((item) => (
+        <li key={item.to}>
+          <NavRow
+            item={item}
+            count={item.countKey ? counts[item.countKey] : undefined}
+            trailing={
+              item.vaultState && vaultStatus === 'unlocked' ? (
+                <span title="保险库已解锁" aria-label="保险库已解锁" className="block h-1.5 w-1.5 rounded-full bg-brand-accent" />
+              ) : undefined
+            }
+            mode={mode}
+            tall={tall}
+            onNavigate={onNavigate}
+          />
+        </li>
+      ))}
+    </NavGroup>
+  );
+
+  if (isDrawer) {
+    // Phone drawer: the <nav> itself is the single scroll container, so the
+    // whole column (primary → tags → secondary) always scrolls — no zone can
+    // be squeezed out. overscroll-contain stops the scroll chaining into the
+    // page behind the scrim.
+    return (
+      <nav
+        aria-label="书签分区"
+        className="flex h-full flex-col overflow-y-auto overscroll-contain px-2.5 py-3 scrollbar-slim"
+      >
+        {primaryBlock}
+        <div className="mt-5">{tagsBlock}</div>
+        <div className="mt-5 border-t border-line/70 pt-3">{secondaryBlock}</div>
+      </nav>
+    );
+  }
+
   return (
     <nav aria-label="书签分区" className="flex h-full flex-col px-2.5 py-3">
-      <NavGroup title="导航 / Navigate">
-        {PRIMARY.map((item) => (
-          <li key={item.to}>
-            <NavRow item={item} count={item.countKey ? counts[item.countKey] : undefined} mode={mode} onNavigate={onNavigate} />
-          </li>
-        ))}
-      </NavGroup>
+      {primaryBlock}
 
       <div className={cx('mt-5 min-h-0 flex-1 overflow-y-auto scrollbar-slim', LABEL_VISIBILITY[mode])}>
-        <h2 className="nav-section mb-2 px-2.5 pb-1">标签分组 / Tags</h2>
-        {tagsLoading ? (
-          <div className="flex flex-col gap-1.5 px-2.5 py-1">
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="h-5 w-16" />
-            <Skeleton className="h-5 w-20" />
-          </div>
-        ) : (tags ?? []).length === 0 ? (
-          <p className="px-2.5 text-xs leading-relaxed text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</p>
-        ) : (
-          <TagTree tags={tags ?? []} activeTagIds={activeTagIds} onToggle={toggleTag} />
-        )}
+        {tagsBlock}
       </div>
 
-      <div className="mt-4 border-t border-line/70 pt-3">
-        <NavGroup title="整理 / Organize">
-          {SECONDARY.map((item) => (
-            <li key={item.to}>
-              <NavRow
-                item={item}
-                count={item.countKey ? counts[item.countKey] : undefined}
-                trailing={
-                  item.vaultState && vaultStatus === 'unlocked' ? (
-                    <span title="保险库已解锁" aria-label="保险库已解锁" className="block h-1.5 w-1.5 rounded-full bg-brand-accent" />
-                  ) : undefined
-                }
-                mode={mode}
-                onNavigate={onNavigate}
-              />
-            </li>
-          ))}
-        </NavGroup>
-      </div>
+      <div className="mt-4 border-t border-line/70 pt-3">{secondaryBlock}</div>
     </nav>
   );
 }
 
-function TagTree({ tags, activeTagIds, onToggle }: { tags: Tag[]; activeTagIds: string[]; onToggle: (id: string) => void }) {
+function TagTree({
+  tags,
+  activeTagIds,
+  onToggle,
+  tall,
+}: {
+  tags: Tag[];
+  activeTagIds: string[];
+  onToggle: (id: string) => void;
+  /** Drawer mode: roomier rows for touch. */
+  tall?: boolean;
+}) {
   const tree = useMemo(() => buildTagTree(tags), [tags]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const seeded = useRef(false);
@@ -233,6 +303,7 @@ function TagTree({ tags, activeTagIds, onToggle }: { tags: Tag[]; activeTagIds: 
           node={top}
           depth={0}
           expanded={expanded}
+          tall={tall}
           onToggleExpand={(id) =>
             setExpanded((prev) => {
               const next = new Set(prev);
@@ -256,6 +327,7 @@ function TreeNodeRow({
   onToggleExpand,
   activeTagIds,
   onToggleTag,
+  tall,
 }: {
   node: TreeNode;
   depth: number;
@@ -263,6 +335,7 @@ function TreeNodeRow({
   onToggleExpand: (id: string) => void;
   activeTagIds: string[];
   onToggleTag: (id: string) => void;
+  tall?: boolean;
 }) {
   const hasChildren = node.children.length > 0;
   const isOpen = expanded.has(node.id);
@@ -273,7 +346,8 @@ function TreeNodeRow({
     <li className="flex flex-col">
       <div
         className={cx(
-          'group flex w-full items-center gap-1 rounded-md py-1 pr-1.5 text-left text-2xs transition-colors',
+          'group flex w-full items-center gap-1 rounded-md pr-1.5 text-left transition-colors',
+          tall ? 'py-2 text-xs' : 'py-1 text-2xs',
           active ? 'bg-brand-soft text-brand-ink' : 'text-ink-soft hover:bg-surface-hover hover:text-ink',
         )}
         style={{ paddingLeft: `${8 + indent}px` }}
@@ -282,13 +356,16 @@ function TreeNodeRow({
           <button
             type="button"
             onClick={() => onToggleExpand(node.id)}
-            className="shrink-0 rounded p-0.5 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            className={cx(
+              'shrink-0 rounded text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink',
+              tall ? 'p-1.5' : 'p-0.5',
+            )}
             aria-label={isOpen ? '收起' : '展开'}
           >
-            {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {isOpen ? <ChevronDown size={tall ? 14 : 12} /> : <ChevronRight size={tall ? 14 : 12} />}
           </button>
         ) : (
-          <span className="w-5" />
+          <span className={tall ? 'w-6' : 'w-5'} />
         )}
         <button
           type="button"
@@ -316,6 +393,7 @@ function TreeNodeRow({
               onToggleExpand={onToggleExpand}
               activeTagIds={activeTagIds}
               onToggleTag={onToggleTag}
+              tall={tall}
             />
           ))}
         </ul>
@@ -346,6 +424,22 @@ export function Sidebar() {
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname, setMobileOpen]);
+
+  // While the drawer is open: lock body scroll (the page behind must not
+  // scroll) and close on Escape.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [mobileOpen, setMobileOpen]);
 
   const desktopMode: LabelMode = collapsed ? 'never' : 'lg';
 
@@ -380,15 +474,18 @@ export function Sidebar() {
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="导航菜单">
           <div className="anim-fade absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
-          <aside className="anim-rise absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col bg-surface shadow-modal">
-            <div className="flex h-16 shrink-0 items-center justify-between px-3">
+          <aside className="anim-drawer-in absolute inset-y-0 left-0 flex w-[18rem] max-w-[85vw] flex-col bg-surface shadow-modal">
+            <div className="flex h-16 shrink-0 items-center justify-between border-b border-line/60 px-3">
               <BrandMark mode="always" />
               <IconButton label="关闭导航" icon={<X size={17} />} onClick={() => setMobileOpen(false)} />
             </div>
+            {/* The drawer body is ONE scroll container — see SidebarContent
+                `variant="drawer"`. min-h-0 lets the nav shrink below its
+                content height so overflow-y-auto actually scrolls. */}
             <div className="min-h-0 flex-1">
-              <SidebarContent mode="always" onNavigate={() => setMobileOpen(false)} />
+              <SidebarContent mode="always" variant="drawer" onNavigate={() => setMobileOpen(false)} />
             </div>
           </aside>
         </div>

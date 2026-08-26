@@ -360,50 +360,54 @@
   letter-spacing: -0.03em;
 }
 
-/* Nav row — active pill with brand outline + animated left accent bar. */
-.nav-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  height: 2.5rem;
-  border-radius: 0.625rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-ink-soft);
-  transition:
-    color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.18s var(--ease-spring);
+/* Nav row — active pill with brand outline + animated left accent bar.
+   Layered so responsive utilities (e.g. taller touch targets on phones)
+   can override the base metrics. */
+@layer components {
+  .nav-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    height: 2.5rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-ink-soft);
+    transition:
+      color 0.18s ease,
+      background-color 0.18s ease,
+      transform 0.18s var(--ease-spring);
+  }
+  .nav-row:hover {
+    color: var(--color-ink);
+    background: color-mix(in oklab, var(--color-surface-hover) 80%, transparent);
+    transform: translateX(2px);
+  }
+  .nav-row.is-active {
+    color: var(--color-brand-ink);
+    background: color-mix(in oklab, var(--color-brand-soft) 92%, transparent);
+  }
+  .nav-row__bar {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 1.15rem;
+    width: 3px;
+    transform: translateY(-50%) scaleY(0);
+    border-radius: 9999px;
+    background: var(--color-brand-accent);
+    transition: transform 0.22s var(--ease-spring), opacity 0.2s ease;
+    opacity: 0;
+  }
+  .nav-row:hover .nav-row__bar { opacity: 0.45; transform: translateY(-50%) scaleY(0.7); }
+  .nav-row.is-active .nav-row__bar { opacity: 1; transform: translateY(-50%) scaleY(1); }
+  .nav-row__icon {
+    flex-shrink: 0;
+    transition: transform 0.18s var(--ease-spring);
+  }
+  .nav-row:hover .nav-row__icon { transform: scale(1.12) rotate(-4deg); }
 }
-.nav-row:hover {
-  color: var(--color-ink);
-  background: color-mix(in oklab, var(--color-surface-hover) 80%, transparent);
-  transform: translateX(2px);
-}
-.nav-row.is-active {
-  color: var(--color-brand-ink);
-  background: color-mix(in oklab, var(--color-brand-soft) 92%, transparent);
-}
-.nav-row__bar {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  height: 1.15rem;
-  width: 3px;
-  transform: translateY(-50%) scaleY(0);
-  border-radius: 9999px;
-  background: var(--color-brand-accent);
-  transition: transform 0.22s var(--ease-spring), opacity 0.2s ease;
-  opacity: 0;
-}
-.nav-row:hover .nav-row__bar { opacity: 0.45; transform: translateY(-50%) scaleY(0.7); }
-.nav-row.is-active .nav-row__bar { opacity: 1; transform: translateY(-50%) scaleY(1); }
-.nav-row__icon {
-  flex-shrink: 0;
-  transition: transform 0.18s var(--ease-spring);
-}
-.nav-row:hover .nav-row__icon { transform: scale(1.12) rotate(-4deg); }
 
 /* Sidebar section label. */
 .nav-section {

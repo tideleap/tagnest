@@ -212,6 +212,14 @@
     transform: none;
   }
 }
+@keyframes tn-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
 @keyframes tn-spin {
   to {
     transform: rotate(360deg);
@@ -232,6 +240,9 @@
   }
   .anim-slide-up {
     animation: tn-slide-up 0.24s var(--ease-out-soft);
+  }
+  .anim-drawer-in {
+    animation: tn-drawer-in 0.26s var(--ease-out-soft);
   }
   .anim-spin {
     animation: tn-spin 0.7s linear infinite;
