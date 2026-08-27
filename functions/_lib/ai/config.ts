@@ -44,6 +44,12 @@ export interface ConfigRow {
   fetchContent: boolean;
   /** Extra coarse-to-fine refinement pass (costs ~1 extra call per batch). */
   twoPass: boolean;
+  /**
+   * Consent to run inference on TagNest's hosted model when the user has no key
+   * of their own and holds a paid plan with credits. Mirrors the migration
+   * default (on); a missing column reads as enabled.
+   */
+  managedEnabled: boolean;
 }
 
 const DEFAULT_MAX_TAGS = 4;
@@ -80,6 +86,8 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
       // Mirrors the migration defaults: fetching on (accuracy), two-pass off (cost).
       fetchContent: true,
       twoPass: false,
+      // Migration 0025 default: a hosted account is meant to be zero-config.
+      managedEnabled: true,
     };
   }
 
@@ -96,6 +104,9 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
     // migration default: fetching on, two-pass off.
     fetchContent: row.fetch_content !== 0,
     twoPass: row.two_pass === 1,
+    // `!== 0` mirrors fetchContent: a missing managed_enabled column (or a
+    // pre-0025 row) reads as the migration default — consent on.
+    managedEnabled: row.managed_enabled !== 0,
   };
 }
 

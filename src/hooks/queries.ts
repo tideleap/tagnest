@@ -45,6 +45,11 @@ export {
 } from './queries/ai';
 
 export {
+  useBillingStatus,
+  useGrantProTrial,
+} from './queries/billing';
+
+export {
   useUserSettings,
   useUpdateUserSettings,
 } from './queries/settings';

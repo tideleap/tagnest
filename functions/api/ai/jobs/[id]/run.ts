@@ -13,7 +13,8 @@ import {
   categorizeBookmarks,
   countJobNewTags,
   getJob,
-  loadAiConfig,
+  getEffectiveAiConfig,
+  consumeAiCredit,
   loadBookmarkInputs,
   loadConfigRow,
   loadFeedbackProfile,
@@ -91,7 +92,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // job creation.
   const row = await loadConfigRow(ctx.env, userId);
   const local = toLocalConfig(row);
-  const config = await loadAiConfig(ctx.env, userId);
+  const effective = await getEffectiveAiConfig(ctx.env, userId);
+  const config = effective?.config ?? null;
 
   // Vocabulary is also re-read per chunk, so tags accepted from the previous
   // chunk are already part of the taxonomy the next chunk normalises against.
@@ -120,6 +122,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
     const written = await saveCategorySuggestions(ctx.env, userId, jobId, outcome.results);
     const autoApplied = await autoApplyCategories(ctx.env, userId, local.autoApplyThreshold, jobId);
+
+    // Meter the hosted tier per bookmark analysed; best-effort.
+    if (effective?.managed && outcome.engine === 'model') {
+      try {
+        await consumeAiCredit(ctx.env, userId, slice.length, 'ai.job.categorize', jobId);
+      } catch {
+        /* meter is best-effort */
+      }
+    }
 
     const processed = job.processed + slice.length;
     const finished = processed >= ids.length;
@@ -205,6 +216,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const written = await saveSuggestions(ctx.env, userId, jobId, outcome.results);
   const autoApplied = await autoApply(ctx.env, userId, local.autoApplyThreshold, jobId);
+
+  // Meter the hosted tier per bookmark analysed; best-effort.
+  if (effective?.managed && outcome.engine === 'model') {
+    try {
+      await consumeAiCredit(ctx.env, userId, slice.length, 'ai.job.tagging', jobId);
+    } catch {
+      /* meter is best-effort */
+    }
+  }
 
   const processed = job.processed + slice.length;
   const finished = processed >= ids.length;

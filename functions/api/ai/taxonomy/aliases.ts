@@ -9,7 +9,7 @@ import {
   loadTopicClusters,
   type ApplyAliasItem,
 } from '../../../_lib/ai';
-import { loadAiConfig, loadVocabulary } from '../../../_lib/ai/config';
+import { getEffectiveAiConfig, consumeAiCredit, loadVocabulary } from '../../../_lib/ai';
 
 /**
  * Automatic alias expansion + topic clustering for the taxonomy health page.
@@ -49,7 +49,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   }
 
   if (action === 'generate') {
-    const config = await loadAiConfig(ctx.env, userId);
+    const effective = await getEffectiveAiConfig(ctx.env, userId);
+    const config = effective?.config ?? null;
     const vocab = await loadVocabulary(ctx.env, userId);
     const requested = new Set(Array.isArray(body.tagIds) ? body.tagIds : []);
     const entries = vocab.entries.filter((e) => requested.size === 0 || requested.has(e.id));
@@ -73,6 +74,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     const aliasSuggestions = generated
       .map((s) => ({ ...s, tagId: byName.get(s.tagName) ?? s.tagId }))
       .filter((s) => s.tagId);
+
+    // Meter the hosted tier for this maintenance call; best-effort.
+    if (effective?.managed) {
+      try {
+        await consumeAiCredit(ctx.env, userId, entries.length, 'ai.aliases');
+      } catch {
+        /* meter is best-effort */
+      }
+    }
 
     return json({ aliasSuggestions, modelAvailable: true });
   }

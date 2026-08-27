@@ -11,6 +11,7 @@ export default tseslint.config(
     ignores: [
       'dist',
       'dist_*',
+      'dist-bak-*',
       'dist-ext',
       'dist-ext/**',
       'node_modules',

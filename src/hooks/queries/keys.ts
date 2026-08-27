@@ -67,6 +67,8 @@ export const keys = {
   privateTagBookmarkRoot: ['private-tag-bookmark'] as const,
   /** B-11 — RSS subscriptions. */
   feeds: ['feeds'] as const,
+  /** Phase A billing — plan + credit meter for the settings page. */
+  billing: ['billing'] as const,
 };
 
 export const PAGE_SIZE = 40;

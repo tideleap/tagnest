@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import { createLogger } from '../logger';
-import { loadAiConfig, loadConfigRow, loadVocabulary, toLocalConfig } from './config';
+import { loadConfigRow, loadVocabulary, toLocalConfig } from './config';
+import { getEffectiveAiConfig, consumeAiCredit } from './billing';
 import { suggestForBookmarks, categorizeBookmarks } from './engine';
 import { saveSuggestions, saveCategorySuggestions } from './store';
 import { loadFeedbackProfile } from './feedback';
@@ -28,6 +29,7 @@ import type { EnrichInput } from './types';
 
 export * from './types';
 export * from './config';
+export * from './billing';
 export * from './taxonomy';
 export * from './scoring';
 export * from './grouping';
@@ -72,7 +74,8 @@ export async function enrichBookmark(
   try {
     const row = await loadConfigRow(env, userId);
     const local = toLocalConfig(row);
-    const config = await loadAiConfig(env, userId);
+    const effective = await getEffectiveAiConfig(env, userId);
+    const config = effective?.config ?? null;
 
     // When no model is configured the caller (a job run) still gets
     // domain-derived fallback tags from suggestForBookmarks. On the silent
@@ -83,6 +86,7 @@ export async function enrichBookmark(
 
     const vocab = await loadVocabulary(env, userId);
     const feedback = await loadFeedbackProfile(env, userId);
+    let modelUsed = false;
     const outcome = await suggestForBookmarks([{ id: bookmarkId, ...input }], {
       vocab,
       config,
@@ -98,6 +102,7 @@ export async function enrichBookmark(
     }
 
     await saveSuggestions(env, userId,  null, [result]);
+    modelUsed = outcome.engine === 'model';
 
     log.info('ai.enrich', {
       userId,
@@ -128,6 +133,17 @@ export async function enrichBookmark(
           engine: catOutcome.engine,
           category: catResult.category.path.join(' > '),
         });
+      }
+      modelUsed = modelUsed || catOutcome.engine === 'model';
+    }
+
+    // Meter the hosted tier: one credit per saved bookmark, only when the
+    // hosted key actually did the work. Best-effort — never fail a save.
+    if (effective?.managed && modelUsed) {
+      try {
+        await consumeAiCredit(env, userId, 1, 'ai.enrich', bookmarkId);
+      } catch {
+        /* meter is best-effort */
       }
     }
   } catch (error) {

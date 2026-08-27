@@ -4,7 +4,8 @@ import { badRequest, badRequestCode, json, readJson } from '../../_lib/http';
 import {
   classifyTag,
   listPendingSuggestions,
-  loadAiConfig,
+  getEffectiveAiConfig,
+  consumeAiCredit,
   loadBookmarkInputs,
   loadConfigRow,
   loadFeedbackProfile,
@@ -42,7 +43,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   const row = await loadConfigRow(ctx.env, userId);
   const local = toLocalConfig(row);
-  const config = await loadAiConfig(ctx.env, userId);
+  const effective = await getEffectiveAiConfig(ctx.env, userId);
+  const config = effective?.config ?? null;
 
   // With the local rule engine removed, a missing model is the only thing that
   // blocks an explicit re-analyse; a job run still falls back to domain tags.
@@ -77,6 +79,16 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   });
 
   await saveSuggestions(ctx.env, userId, null, outcome.results);
+
+  // Meter the hosted tier. Only real model calls spend credits; a fallback run
+  // is free. Best-effort: a ledger hiccup must never fail the user's analysis.
+  if (effective?.managed && outcome.engine === 'model') {
+    try {
+      await consumeAiCredit(ctx.env, userId, inputs.length, 'ai.suggest');
+    } catch {
+      /* meter is best-effort */
+    }
+  }
 
   // Read back rather than echoing the in-memory result: the store drops tags
   // the bookmark already has and ones the user previously rejected, so this is

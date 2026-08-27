@@ -1,6 +1,7 @@
 import { NavLink, useParams } from 'react-router-dom';
 import {
   Camera,
+  CreditCard,
   Database,
   DatabaseBackup,
   Info,
@@ -26,6 +27,7 @@ import { JobsSection } from './settings/JobsSection';
 import { ShortcutsSection } from './settings/ShortcutsSection';
 import { AboutSection } from './settings/AboutSection';
 import { BackupSection } from './settings/BackupSection';
+import { BillingSection } from './settings/BillingSection';
 
 const SECTIONS = [
   { id: 'account', label: '账户', icon: User },
@@ -33,6 +35,7 @@ const SECTIONS = [
   { id: 'shares', label: '分享', icon: Share2 },
   { id: 'appearance', label: '外观', icon: Palette },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
+  { id: 'billing', label: '用量与订阅', icon: CreditCard },
   { id: 'jobs', label: '任务', icon: ListChecks },
   { id: 'snapshots', label: '快照', icon: Camera },
   { id: 'storage', label: '存储', icon: Database },
@@ -80,6 +83,7 @@ export function SettingsPage() {
         {active === 'shares' && <SharesSection />}
         {active === 'appearance' && <AppearanceSection />}
         {active === 'ai' && <AiSection />}
+        {active === 'billing' && <BillingSection />}
         {active === 'jobs' && <JobsSection />}
         {active === 'snapshots' && <SnapshotsSection />}
         {active === 'storage' && <StorageSection />}

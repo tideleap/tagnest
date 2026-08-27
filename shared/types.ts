@@ -430,6 +430,61 @@ export interface AiSettings {
    * one extra (cheap) call per batch; default off.
    */
   twoPass: boolean;
+  /**
+   * Consent to run inference on TagNest's hosted model when the user has no key
+   * of their own and holds a paid plan with credits. Default true; only
+   * meaningful on the managed (Pro/Team) tier.
+   */
+  managedEnabled: boolean;
+}
+
+/* ------------------------------------------------------------------ *
+ * Billing / managed tier (Phase A scaffold)
+ * ------------------------------------------------------------------ */
+
+/** Plan a user is on. `free` = self-hosted BYO-key; the rest are paid/managed. */
+export type PlanId = 'free' | 'pro' | 'team' | 'admin';
+
+/** Lifecycle of a subscription. `none` = no paid plan (degrades to BYO-key). */
+export type SubStatus = 'none' | 'trialing' | 'active' | 'canceled';
+
+/** What the client shows the user about their plan + credit meter. */
+export interface BillingInfo {
+  plan: PlanId;
+  status: SubStatus;
+  /** True when this instance serves a hosted model (MANAGED_AI_KEY set). */
+  managedAvailable: boolean;
+  /** Whether the user has opted into hosted inference. */
+  managedEnabled: boolean;
+  /** Live credit meter; only meaningful when `managedAvailable` is true. */
+  credits: {
+    /** Remaining spendable credits (1 credit = 1 bookmark analysed). */
+    balance: number;
+    /** Cumulative spend, for dashboards. */
+    used: number;
+    /** Plan-entitled allowance, for the "used / plan" ratio. 0 = no plan cap. */
+    plan: number;
+  };
+  /** True while `status === 'trialing'`. */
+  isTrial: boolean;
+}
+
+/** Operator request to grant a Pro trial (admin endpoint). */
+export interface GrantTrialRequest {
+  email: string;
+  plan?: PlanId;
+  /** Credits to seed. Defaults to the plan's trial allowance. */
+  credits?: number;
+  /** Trial length in days. Defaults to 14. */
+  days?: number;
+}
+
+export interface GrantTrialResponse {
+  userId: string;
+  email: string;
+  plan: PlanId;
+  status: SubStatus;
+  credits: number;
 }
 
 /* ------------------------------------------------------------------ *

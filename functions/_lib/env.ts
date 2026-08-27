@@ -76,6 +76,29 @@ export interface Env {
   SNAPSHOT_API_KEY?: string;
   /** Minimum severity emitted by the structured logger (default 'info'). */
   LOG_LEVEL?: string;
+  /**
+   * Hosted-AI credential for the managed tier. When set, Pro/Team accounts
+   * with credits can run inference without supplying their own key (Phase A of
+   * the billing scaffold). Absent ⇒ managed AI is unavailable and every user
+   * falls back to bring-your-own-key. Set via `wrangler pages secret put`.
+   */
+  MANAGED_AI_KEY?: string;
+  /**
+   * Model served by the managed tier (default 'gpt-4o-mini'). OpenAI-compatible.
+   */
+  MANAGED_AI_MODEL?: string;
+  /**
+   * Optional base URL for the managed tier (OpenAI-compatible gateway). When
+   * empty, the standard OpenAI endpoint is used. Lets an operator point
+   * managed inference at a self-hosted or regional model.
+   */
+  MANAGED_AI_BASE_URL?: string;
+  /**
+   * Gate for the operator admin API (`POST /api/admin/grant-pro-trial`). Set
+   * via `wrangler pages secret put`; absent ⇒ the admin endpoints refuse with
+   * 503 so a misconfigured instance never exposes an open grant path.
+   */
+  ADMIN_TOKEN?: string;
 }
 
 /** Populated by the API middleware once a request is authenticated. */
