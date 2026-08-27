@@ -131,6 +131,15 @@ const MIGRATION_PROBES = {
   // "duplicate column name: fetch_content").
   '0023_ai_enhancements.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('ai_settings') WHERE name='fetch_content'`,
+  // 0024 adds tag_suggestions.kind (ALTER, non-idempotent) + rebuilds the
+  // pending-unique index. The column was applied via a direct `wrangler d1
+  // execute --file` that never wrote _d1_migrations, so probe kind as the
+  // "already applied" marker instead of re-ADDing (which would throw
+  // "duplicate column name: kind"). The surrounding CREATE TABLE/INDEX and the
+  // DROP+CREATE UNIQUE INDEX are all idempotent, so recording-and-skipping is
+  // safe once the column exists.
+  '0024_primary_category.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('tag_suggestions') WHERE name='kind'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
