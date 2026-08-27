@@ -23,6 +23,13 @@ export interface AiConfig {
   fetchContent: boolean;
   /** Extra coarse-to-fine refinement pass (costs ~1 extra call per batch). */
   twoPass: boolean;
+  /**
+   * Operator-controlled extra fields merged into the OpenAI-compatible request
+   * body (managed tier only — a user's own key never carries this). Lets a
+   * gateway model be tuned without code changes, e.g. `{"enable_thinking":false}`
+   * to stop a reasoning model from burning tokens on internal deliberation.
+   */
+  extraBody?: Record<string, unknown>;
 }
 
 /**

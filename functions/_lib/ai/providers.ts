@@ -170,6 +170,11 @@ export function buildProviderRequest(config: AiConfig, prompt: string): Provider
           authorization: `Bearer ${config.apiKey}`,
         },
         body: {
+          // Operator-controlled gateway tuning (managed tier), e.g.
+          // `enable_thinking:false` for reasoning models. Spread FIRST so the
+          // fixed fields below always win — extraBody can add knobs, never
+          // override identity/safety fields.
+          ...(config.extraBody ?? {}),
           model: config.model,
           temperature: 0.2,
           max_tokens: MAX_OUTPUT_TOKENS,

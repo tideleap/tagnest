@@ -57,6 +57,8 @@ export interface ManagedModelSpec {
   baseUrl: string | null;
   model: string;
   apiKey: string;
+  /** Extra request-body fields for gateway tuning (see `AiConfig.extraBody`). */
+  extraBody?: Record<string, unknown>;
 }
 
 /**
@@ -64,13 +66,34 @@ export interface ManagedModelSpec {
  * Returns null when no key is configured, which is the "managed AI is off"
  * signal every other gate keys off of. OpenAI-compatible: a `MANAGED_AI_BASE_URL`
  * makes it ride any gateway that speaks /chat/completions.
+ *
+ * `MANAGED_AI_EXTRA_BODY` (JSON object) carries gateway-specific tuning knobs —
+ * e.g. `{"enable_thinking":false}` for reasoning models, which cut our measured
+ * per-call cost ~23x on the uupt gateway. Malformed JSON is ignored (logged by
+ * the caller's error path) rather than taking the whole tier down.
  */
 export function getManagedModelSpec(env: Env): ManagedModelSpec | null {
   const key = env.MANAGED_AI_KEY?.trim();
   if (!key) return null;
   const model = env.MANAGED_AI_MODEL?.trim() || 'gpt-4o-mini';
   const baseUrl = env.MANAGED_AI_BASE_URL?.trim() || null;
-  return { provider: 'openai', baseUrl, model, apiKey: key };
+  const extraBody = parseExtraBody(env.MANAGED_AI_EXTRA_BODY);
+  return { provider: 'openai', baseUrl, model, apiKey: key, extraBody };
+}
+
+/** Parses the optional JSON object; anything unparseable reads as undefined. */
+function parseExtraBody(raw: string | undefined): Record<string, unknown> | undefined {
+  const text = raw?.trim();
+  if (!text) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** True when this instance can serve a hosted model at all. */
@@ -97,6 +120,7 @@ export function buildManagedConfig(env: Env, ownRow: ConfigRow): AiConfig {
     maxTags: ownRow.maxTags,
     fetchContent: ownRow.fetchContent,
     twoPass: ownRow.twoPass,
+    extraBody: spec.extraBody,
   };
 }
 

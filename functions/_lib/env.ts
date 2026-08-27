@@ -94,6 +94,13 @@ export interface Env {
    */
   MANAGED_AI_BASE_URL?: string;
   /**
+   * Optional JSON object merged into every managed-tier request body, for
+   * gateway-specific tuning. Example: `{"enable_thinking":false}` disables the
+   * internal reasoning pass of thinking models (measured ~23x token savings on
+   * the uupt gateway). Ignored when absent or malformed.
+   */
+  MANAGED_AI_EXTRA_BODY?: string;
+  /**
    * Gate for the operator admin API (`POST /api/admin/grant-pro-trial`). Set
    * via `wrangler pages secret put`; absent ⇒ the admin endpoints refuse with
    * 503 so a misconfigured instance never exposes an open grant path.
