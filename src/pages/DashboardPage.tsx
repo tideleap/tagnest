@@ -7,11 +7,12 @@ import {
   Plus,
   Sparkles,
   Star,
+  Stethoscope,
   Tag as TagIcon,
   Trash2,
   Upload,
 } from 'lucide-react';
-import { useStats, useBookmarks, useTags } from '@/hooks/queries';
+import { useStats, useBookmarks, useTags, useHealthReport } from '@/hooks/queries';
 import { Button, Skeleton, TagChip } from '@/components/ui';
 import { RemoteImage } from '@/components/ui';
 import { CartoonMascot } from '@/components/decor/CartoonMascot';
@@ -299,6 +300,84 @@ function TagCloud() {
   );
 }
 
+/**
+ * First-screen library health check. Surfaces the existing /bookmarks/health
+ * report so users see redundancy / orphan-tag issues the moment they land,
+ * instead of only discovering them on /organize or /report. This is the entry
+ * point of the "free scan → clean up" funnel (auto-patrol later becomes a
+ * Pro perk once the plan/upgrade surface exists).
+ */
+function HealthCard() {
+  const { data, isLoading, isError, refetch, isFetching } = useHealthReport();
+  const issues = (data?.duplicateExtra ?? 0) + (data?.orphanTags.length ?? 0);
+  const score = data?.score ?? 0;
+  const tone =
+    score >= 90
+      ? { color: '#14b8a6', label: '很健康' }
+      : score >= 70
+        ? { color: '#f59e0b', label: '有小问题' }
+        : { color: '#ef4444', label: '需要清理' };
+
+  return (
+    <Reveal>
+      <TiltCard className="h-full" max={6}>
+        <section
+          aria-label="书签体检"
+          className="flex h-full flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-float sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-center gap-4">
+            <span
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-raised"
+              style={{ backgroundColor: tone.color }}
+            >
+              <Stethoscope size={22} aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="flex items-baseline gap-2 text-sm font-bold text-ink">
+                书签体检
+                {!isLoading && !isError && (
+                  <span className="text-2xs font-medium" style={{ color: tone.color }}>
+                    {tone.label} · {score} 分
+                  </span>
+                )}
+              </p>
+              {isLoading ? (
+                <Skeleton className="mt-1 h-4 w-40" />
+              ) : isError ? (
+                <p className="mt-1 text-2xs text-ink-faint">体检暂不可用，稍后重试</p>
+              ) : issues > 0 ? (
+                <p className="mt-0.5 truncate text-2xs text-ink-soft">
+                  发现 {issues} 处可优化：{data?.duplicateExtra ?? 0} 条冗余书签 ·{' '}
+                  {data?.orphanTags.length ?? 0} 个孤儿标签
+                </p>
+              ) : (
+                <p className="mt-0.5 text-2xs text-ink-soft">你的书签库很整洁，继续保持</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {isError && (
+              <Button size="sm" variant="secondary" onClick={() => void refetch()} loading={isFetching}>
+                重试
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant={issues > 0 ? 'primary' : 'secondary'}
+              iconLeft={<ArrowUpRight size={15} aria-hidden />}
+            >
+              <Link to="/organize" className="contents">
+                {issues > 0 ? '去清理' : '查看详情'}
+              </Link>
+            </Button>
+          </div>
+        </section>
+      </TiltCard>
+    </Reveal>
+  );
+}
+
 export function DashboardPage() {
   const stats = useStats();
   const s = stats.data;
@@ -351,12 +430,17 @@ export function DashboardPage() {
         </div>
       </section>
 
+      <section aria-label="书签体检">
+        <SectionHead index="02" title="书签体检" note="一键看清库里的冗余与孤儿" />
+        <HealthCard />
+      </section>
+
       {/* Responsive composition: a wide main column + a slim right rail on
           desktop; both stack on phones and tablets. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
           <section aria-label="书签库构成">
-            <SectionHead index="02" title="书签库构成" note="你的收藏形状" />
+            <SectionHead index="03" title="书签库构成" note="你的收藏形状" />
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <StatCard index={0} label="全部书签" value={s?.bookmarks} loading={loading} failed={failed} to="/library/all" color={TILE[4]} />
               <StatCard index={1} label="收藏" value={s?.favorites} loading={loading} failed={failed} to="/library/favorites" color={TILE[5]} />
@@ -366,19 +450,19 @@ export function DashboardPage() {
           </section>
 
           <section aria-label="最近添加">
-            <SectionHead index="03" title="最近添加" note="最新的收藏，点开看全部" />
+            <SectionHead index="04" title="最近添加" note="最新的收藏，点开看全部" />
             <RecentBookmarks />
           </section>
         </div>
 
         <div className="flex min-w-0 flex-col gap-6">
           <section aria-label="热门标签">
-            <SectionHead index="04" title="热门标签" note="用得最多的标签" />
+            <SectionHead index="05" title="热门标签" note="用得最多的标签" />
             <TagCloud />
           </section>
 
           <section aria-label="快捷入口">
-            <SectionHead index="05" title="快捷入口" note="像翻杂志一样点着玩" />
+            <SectionHead index="06" title="快捷入口" note="像翻杂志一样点着玩" />
             <Stagger className="grid grid-cols-2 gap-2.5">
               {quickLinks.map((a) => (
                 <Link
