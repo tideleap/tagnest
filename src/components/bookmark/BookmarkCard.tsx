@@ -347,16 +347,14 @@ function BookmarkCardBase({
           disabled: generate.isPending,
           onSelect: () => generate.mutate(b.id),
         },
-        ...(b.snapshotKey
-          ? [
-              {
-                id: 'view-snapshots',
-                label: '时光机（快照历史）',
-                icon: <Images size={15} />,
-                onSelect: () => setShowSnapshots(true),
-              },
-            ]
-          : []),
+        // P3: always visible — the time machine is discoverable even before
+        // the first snapshot exists (the modal offers a generate CTA).
+        {
+          id: 'view-snapshots',
+          label: '时光机（快照历史）',
+          icon: <Images size={15} />,
+          onSelect: () => setShowSnapshots(true),
+        },
         ...(onSetPrivate
           ? [
               {
@@ -427,6 +425,19 @@ function BookmarkCardBase({
     />
   ) : null;
 
+  // P3: direct time-machine shortcut — only when a snapshot exists, so the
+  // icon doubles as a "this bookmark has history" signal. Hover-revealed
+  // like the star button to keep resting cards quiet.
+  const timeMachine = !inTrash && liveSnapshotKey ? (
+    <IconButton
+      label="时光机（快照历史）"
+      size="sm"
+      icon={<Images size={15} aria-hidden />}
+      onClick={() => setShowSnapshots(true)}
+      className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+    />
+  ) : null;
+
   const more = (
     <Menu
       align="end"
@@ -492,6 +503,7 @@ function BookmarkCardBase({
           )}
           <CompactHost bookmark={b} />
           <div className="flex shrink-0 items-center gap-0.5">
+            {timeMachine}
             {star}
             {more}
           </div>
@@ -598,6 +610,7 @@ function BookmarkCardBase({
                     )}
                     <div className="flex items-center gap-0.5">
                       {grip}
+                      {timeMachine}
                       {star}
                       {more}
                     </div>
@@ -678,6 +691,7 @@ function BookmarkCardBase({
               </div>
 
               <div className="flex shrink-0 items-center gap-0.5 self-start">
+                {timeMachine}
                 {star}
                 {more}
               </div>
@@ -745,8 +759,23 @@ function BookmarkCardBase({
           </ul>
         </>
       ) : (
-        <div className="flex h-40 items-center justify-center text-sm text-ink-faint">
-          还没有快照
+        // P3: empty state doubles as onboarding — explain what the time
+        // machine does and offer the first capture right here.
+        <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
+          <Images size={28} aria-hidden className="text-ink-faint" />
+          <div className="text-sm text-ink-soft">还没有快照</div>
+          <p className="max-w-xs text-xs leading-relaxed text-ink-faint">
+            生成快照后，时光机会保存网页历次画面，随时可以回看或恢复到任意版本。
+          </p>
+          <Button
+            variant="primary"
+            size="sm"
+            loading={generate.isPending}
+            iconLeft={<Camera size={14} aria-hidden />}
+            onClick={() => generate.mutate(b.id)}
+          >
+            生成第一张快照
+          </Button>
         </div>
       )}
     </Modal>

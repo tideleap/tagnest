@@ -8,6 +8,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileTabBar } from './MobileTabBar';
 import { OfflineBanner } from './OfflineBanner';
+import { InstallBanner } from './InstallBanner';
 import { AmbientGlow } from '@/components/decor/AmbientGlow';
 import { cx } from '@/lib/cx';
 
@@ -85,6 +86,7 @@ export function AppLayout() {
         )}
       >
         <OfflineBanner />
+        <InstallBanner />
         <TopBar />
 
         <main

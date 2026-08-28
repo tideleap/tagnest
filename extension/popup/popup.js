@@ -8,6 +8,8 @@ const $ = (id) => document.getElementById(id);
 const els = {
   status: $('status'),
   statusText: $('statusText'),
+  guideCard: $('guideCard'),
+  guideGoBtn: $('guideGoBtn'),
   modeBadge: $('modeBadge'),
   syncStatus: $('syncStatus'),
   lastSyncText: $('lastSyncText'),
@@ -44,10 +46,15 @@ async function reflectStatus() {
     els.status.hidden = false;
     els.status.className = 'status ok';
     els.statusText.textContent = `已连接 ${baseHost(cfg.baseUrl)}`;
+    // P1: configured — hide the setup guide.
+    if (els.guideCard) els.guideCard.hidden = true;
   } else {
     els.status.hidden = false;
     els.status.className = 'status warn';
     els.statusText.textContent = '尚未配置服务器与密钥';
+    // P1: not configured — proactively surface the three-step pairing guide
+    // instead of waiting for a failed save attempt.
+    if (els.guideCard) els.guideCard.hidden = false;
   }
   // P6-A: surface the current category placement mode in the popup.
   if (els.modeBadge) {
@@ -182,6 +189,9 @@ els.openOptions.addEventListener('keydown', (e) => {
     openOptions();
   }
 });
+
+// P1: the guide card's primary action goes straight to the options wizard.
+if (els.guideGoBtn) els.guideGoBtn.addEventListener('click', openOptions);
 
 // Open the read-only reconciliation page (B-12 Phase A) in its own tab.
 els.openSync.addEventListener('click', () => {

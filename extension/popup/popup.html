@@ -21,6 +21,20 @@
         <span class="text" id="statusText"></span>
       </div>
 
+      <!-- P1: proactive setup guide shown only when the extension is not configured -->
+      <div class="guide-card" id="guideCard" hidden>
+        <div class="guide-title">欢迎使用 TagNest</div>
+        <div class="guide-desc">完成三步配对，即可开始一键收纳书签</div>
+        <ol class="guide-steps">
+          <li>填写服务器地址与 API 密钥</li>
+          <li>测试连接</li>
+          <li>保存配置</li>
+        </ol>
+        <button class="btn btn-primary guide-btn" id="guideGoBtn" type="button">
+          <span class="glyph">→</span><span>去配对</span>
+        </button>
+      </div>
+
       <div class="mode-badge" id="modeBadge" hidden></div>
 
       <!-- CS-P4-2 (C5-4): sync status — last sync, pending upload, coverage -->
