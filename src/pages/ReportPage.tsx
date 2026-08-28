@@ -112,8 +112,8 @@ export function ReportPage() {
                 <AiContribution
                   aiLinks={overview?.aiTagLinks ?? 0}
                   userLinks={overview?.userTagLinks ?? 0}
-                  weightedRate={overview?.contribution.weightedRate ?? 0}
-                  acceptRate={overview?.feedback.acceptanceRate ?? 0}
+                  weightedRate={overview?.contribution?.weightedRate ?? 0}
+                  acceptRate={overview?.feedback?.acceptanceRate ?? 0}
                 />
               </CardBody>
             </Card>

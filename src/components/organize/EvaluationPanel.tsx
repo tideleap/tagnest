@@ -26,10 +26,30 @@ const ENGINE_LABEL: Record<string, string> = {
   none: '未运行',
 };
 
+/**
+ * The type contract says these are always present, but the contract and the
+ * wire have drifted before (older deploys, degraded endpoints, cached shells
+ * mid-rollout). A missing `feedback` used to crash the whole app inside the
+ * error boundary; treat absent aggregates as "no data" instead.
+ */
+const EMPTY_FEEDBACK: AiOverview['feedback'] = {
+  total: 0,
+  accepted: 0,
+  rejected: 0,
+  modified: 0,
+  acceptanceRate: 0,
+  proposalTotal: 0,
+  proposalAccepted: 0,
+  hitRate: 0,
+};
+
 export function EvaluationPanel({ overview }: Props) {
   if (!overview) return null;
 
-  const { feedback, feedbackTrend, promptVersion, recentJobs } = overview;
+  const feedback = overview.feedback ?? EMPTY_FEEDBACK;
+  const feedbackTrend = overview.feedbackTrend ?? [];
+  const recentJobs = overview.recentJobs ?? [];
+  const promptVersion = overview.promptVersion;
   const hasData = feedback.total > 0 || feedback.proposalTotal > 0;
 
   return (
@@ -40,7 +60,7 @@ export function EvaluationPanel({ overview }: Props) {
           <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">整理效果评估</h2>
         </div>
         <Badge tone="brand" dot>
-          Prompt {promptVersion}
+          {promptVersion ? `Prompt ${promptVersion}` : 'Prompt —'}
         </Badge>
       </div>
 

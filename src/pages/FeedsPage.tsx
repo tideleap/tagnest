@@ -50,7 +50,11 @@ function formatWhen(iso: string | null): string {
 }
 
 export function FeedsPage() {
-  const { data: feeds, isLoading } = useFeeds();
+  const { data: feedsData, isLoading } = useFeeds();
+  // Wire contract: the endpoint returns an array. A degraded response (bare
+  // `{}` from a fallback handler) used to crash the page on `feeds.map` —
+  // coerce anything non-array to empty so the page degrades to its empty state.
+  const feeds = Array.isArray(feedsData) ? feedsData : [];
   const subscribe = useSubscribeFeed();
   const unsubscribe = useUnsubscribeFeed();
   const refresh = useRefreshFeed();

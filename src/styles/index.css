@@ -68,6 +68,16 @@
 }
 
 @layer utilities {
+  /*
+   * Skip layout/paint for off-screen content while keeping it findable
+   * (Ctrl+F), focusable and in DOM order. Used on grid-mode bookmark cards,
+   * where full virtualization would break keyboard order.
+   */
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 180px;
+  }
+
   .scrollbar-slim {
     scrollbar-width: thin;
     scrollbar-color: var(--color-line-strong) transparent;

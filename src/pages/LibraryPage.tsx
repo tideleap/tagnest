@@ -497,11 +497,14 @@ export function LibraryPage() {
             <CategoryView bookmarks={items} tags={tags ?? []} />
           ) : isGrid ? (
             // Grid density defers to CSS columns — virtualizing a responsive
-            // grid buys little and breaks keyboard order.
+            // grid buys little and breaks keyboard order. Off-screen cards
+            // skip layout/paint via content-visibility instead (DOM order,
+            // and thus tab order, is untouched).
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {items.map((b) => (
                 <li
                   key={b.id}
+                  className="cv-auto"
                   onDragOver={
                     dragEnabled
                       ? (e) => {

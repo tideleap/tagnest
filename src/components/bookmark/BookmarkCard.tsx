@@ -575,7 +575,7 @@ function BookmarkCardBase({
                   disabled={refreshSnapshot.isPending}
                   className={cx(
                     'absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full',
-                    'bg-black/50 text-white backdrop-blur-sm transition-opacity',
+                    'bg-black/50 text-white transition-opacity',
                     'opacity-0 focus:opacity-100 group-hover:opacity-100',
                     refreshSnapshot.isPending && 'opacity-100',
                   )}
