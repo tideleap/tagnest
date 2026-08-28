@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
   FolderOpen,
@@ -32,6 +32,8 @@ function Hero({
   loading?: boolean;
   failed?: boolean;
 }) {
+  const navigate = useNavigate();
+
   return (
     <section className="atelier-edge relative overflow-hidden rounded-2xl border border-line bg-surface/70 p-6 shadow-float backdrop-blur-sm sm:p-9">
       <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -68,17 +70,23 @@ function Hero({
 
           <div className="mt-7 flex flex-wrap gap-3">
             <Magnetic strength={0.35}>
-              <Button variant="primary" size="lg" iconLeft={<Plus size={16} aria-hidden />}>
-                <Link to="/library/inbox" className="contents">
-                  添加书签
-                </Link>
+              <Button
+                variant="primary"
+                size="lg"
+                iconLeft={<Plus size={16} aria-hidden />}
+                onClick={() => navigate('/library/inbox')}
+              >
+                添加书签
               </Button>
             </Magnetic>
             <Magnetic strength={0.35}>
-              <Button variant="secondary" size="lg" iconLeft={<Upload size={16} aria-hidden />}>
-                <Link to="/import" className="contents">
-                  导入书签
-                </Link>
+              <Button
+                variant="secondary"
+                size="lg"
+                iconLeft={<Upload size={16} aria-hidden />}
+                onClick={() => navigate('/import')}
+              >
+                导入书签
               </Button>
             </Magnetic>
           </div>
@@ -308,6 +316,7 @@ function TagCloud() {
  * Pro perk once the plan/upgrade surface exists).
  */
 function HealthCard() {
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch, isFetching } = useHealthReport();
   const issues = (data?.duplicateExtra ?? 0) + (data?.orphanTags.length ?? 0);
   const score = data?.score ?? 0;
@@ -366,10 +375,9 @@ function HealthCard() {
               size="sm"
               variant={issues > 0 ? 'primary' : 'secondary'}
               iconLeft={<ArrowUpRight size={15} aria-hidden />}
+              onClick={() => navigate('/organize')}
             >
-              <Link to="/organize" className="contents">
-                {issues > 0 ? '去清理' : '查看详情'}
-              </Link>
+              {issues > 0 ? '去清理' : '查看详情'}
             </Button>
           </div>
         </section>

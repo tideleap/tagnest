@@ -186,13 +186,11 @@
 /* ------------------------------------------------------------------ */
 .tilt {
   position: relative;
-  transform-style: preserve-3d;
   perspective: 1000px;
 }
 .tilt__inner {
   transition: transform 0.18s var(--ease-out-soft);
   transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
-  transform-style: preserve-3d;
   will-change: transform;
 }
 .tilt__glare {
