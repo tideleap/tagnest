@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 95 条（其中 2 条为跨文档别名），独立需求 93 项：✅ done 90 ／ ➖ superseded 2 ／ ⏸ blocked-external 1
+> 登记 95 条（其中 2 条为跨文档别名），独立需求 93 项：✅ done 89 ／ ➖ superseded 3 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -206,18 +206,18 @@ npm run backlog:write   # 重新生成下方状态表
 | `CS-P4-3` | 首次配对向导（options 三步引导：配置→测试→从云端建树） | P1 | ✅ done | 2/2 |  |
 | `CS-P5-1` | 新书签自动分类（enrichBookmark 挂 categorize，高置信度自动落库） | P1 | ✅ done | 2/2 |  |
 | `CS-P5-2` | categorize 轨道补齐 rebalanceWarning（新分类节点 ≥30% 提醒） | P1 | ✅ done | 1/1 |  |
-| `CS-P5-3` | 拖拽重分类（CategoryView 拖到分类节点改主分类 + 反馈） | P1 | ✅ done | 2/2 |  |
+| `CS-P5-3` | 拖拽重分类（CategoryView 拖到分类节点改主分类 + 反馈） | P1 | ➖ superseded | 1/1 | 拖拽重分类随 32fd85d（分类视图改造为网站导航风格）被有意移除：CategoryView 改为 NavigationTile 直达方块，不再承载改分类交互。useAssignCategory hook 与 /api/category/assign 端点保留（数据层完好），如未来需要手动归类可在批量操作中恢复。 |
 | `CS-P45-Q` | P4/P5 质量门槛（全量测试 + 构建） | P1 | ✅ done | 2/2 |  |
 | `CS-P6-A1` | 提升为整个书签栏：新增 promoteToBar 总开关（默认关，保留 TagNest 子文件夹为默认） | P2 | ✅ done | 1/1 |  |
 | `CS-P6-A2` | 提升模式管理根感知：reconcile 以书签栏根为管理根，逐操作备份 + 外科式回滚（绝不 removeTree 整栏） | P2 | ✅ done | 2/2 |  |
 | `CS-P6-A3` | 同步 folderPath 归因经 ownedFolderIds 限制（C4-2 安全：提升模式下不把用户整栏书签误当分类上行） | P2 | ✅ done | 1/1 |  |
 | `CS-P6-A4` | 提升模式 UI：options 开关 + category 目标位置提示 + popup 模式徽标 | P2 | ✅ done | 2/2 |  |
 | `CS-P6-A5` | 提升模式单测：构建/回滚外科安全 + flatten 限制 + preview mode 字段 | P2 | ✅ done | 1/1 |  |
-| `CS-P6-A6` | P6-A 质量门槛全绿（规划器 promote 断言 + 全量后端/前端/构建） | P2 | ✅ done | 2/2 | 后端 990 测试全绿、前端 106 全绿、typecheck 通过、vite build 成功；lint 仅 src/pages 有 32 条与 P6 无关的预存告警。 |
+| `CS-P6-A6` | P6-A 质量门槛全绿（规划器 promote 断言 + 全量后端/前端/构建） | P2 | ✅ done | 1/1 | 后端 990 测试全绿、前端 106 全绿、typecheck 通过、vite build 成功；lint 仅 src/pages 有 32 条与 P6 无关的预存告警。 原 file:dist/index.html 探针移除：dist/ 不入库，CI 干净环境必然失败；构建由 CI 的 build 步骤与本地门禁另行保障。 |
 | `CS-P6-B1` | Firefox 支持：manifest 增加 browser_specific_settings.gecko.id，移除无效 default_locale:null | P2 | ✅ done | 2/2 |  |
 | `CS-P6-B2` | 跨浏览器 API 兼容核对：仅引用 FF MV3 支持的 chrome.* 命名空间，无需 browser/chrome shim | P2 | ✅ done | 1/1 |  |
 | `CS-P6-B3` | manifest 校验测试（门禁）：无 default_locale:null / 含 gecko.id / background module / 仅 FF 支持权限 | P2 | ✅ done | 1/1 |  |
-| `CS-P6-B4` | 打包双浏览器产物：Firefox .xpi（web-ext build，0 error）+ Chrome .zip；manifest 双声明 scripts+service_worker | P2 | ✅ done | 5/5 |  |
+| `CS-P6-B4` | 打包双浏览器产物：Firefox .xpi + Chrome .zip（manifest 按 1cda106 拆分为双文件） | P2 | ✅ done | 4/4 | 原双声明方案在 1cda106 被拆分为 extension/manifest.json（Chrome, service_worker+type:module）与 extension/manifest.firefox.json（scripts+gecko.id）：Chrome MV3 拒绝 background 同时含 service_worker 与 scripts（错误 1227774043）。dist-ext 产物不入库，由 extension 构建脚本按需产出。 |
 | `CS-P6-B5` | innerHTML 安全化：共享 dom.js（el/clear/escapeHtml）+ 消除全部 UNSAFE_VAR_ASSIGNMENT + DOM 安全护栏测试 | P2 | ✅ done | 6/6 |  |
 
 **当前执行队列**：空 —— 所有需求已进入终态。

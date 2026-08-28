@@ -1306,8 +1306,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "functions/api/bookmarks/sync-pull.ts", "pattern": "categoryPath" },
-        { "type": "grep", "path": "tests/sync-pull.test.ts", "pattern": "categoryPath" }
+        {
+          "type": "grep",
+          "path": "functions/api/bookmarks/sync-pull.ts",
+          "pattern": "categoryPath"
+        },
+        {
+          "type": "grep",
+          "path": "tests/sync-pull.test.ts",
+          "pattern": "categoryPath"
+        }
       ]
     },
     {
@@ -1317,8 +1325,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "functions/api/bookmarks/sync-push.ts", "pattern": "categoryPath" },
-        { "type": "grep", "path": "tests/sync-push.test.ts", "pattern": "categoryPath" }
+        {
+          "type": "grep",
+          "path": "functions/api/bookmarks/sync-push.ts",
+          "pattern": "categoryPath"
+        },
+        {
+          "type": "grep",
+          "path": "tests/sync-push.test.ts",
+          "pattern": "categoryPath"
+        }
       ]
     },
     {
@@ -1328,8 +1344,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/bg/sync-diff.js", "pattern": "folderPath" },
-        { "type": "grep", "path": "tests/sync-diff.test.ts", "pattern": "folderPath" }
+        {
+          "type": "grep",
+          "path": "extension/bg/sync-diff.js",
+          "pattern": "folderPath"
+        },
+        {
+          "type": "grep",
+          "path": "tests/sync-diff.test.ts",
+          "pattern": "folderPath"
+        }
       ]
     },
     {
@@ -1339,8 +1363,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/bg/sync-engine.js", "pattern": "categoryPath" },
-        { "type": "grep", "path": "tests/sync-engine.test.ts", "pattern": "categoryPath" }
+        {
+          "type": "grep",
+          "path": "extension/bg/sync-engine.js",
+          "pattern": "categoryPath"
+        },
+        {
+          "type": "grep",
+          "path": "tests/sync-engine.test.ts",
+          "pattern": "categoryPath"
+        }
       ]
     },
     {
@@ -1350,8 +1382,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/bg/reconcile.js", "pattern": "applyingRemote" },
-        { "type": "grep", "path": "extension/sync.html", "pattern": "分类" }
+        {
+          "type": "grep",
+          "path": "extension/bg/reconcile.js",
+          "pattern": "applyingRemote"
+        },
+        {
+          "type": "grep",
+          "path": "extension/sync.html",
+          "pattern": "分类"
+        }
       ]
     },
     {
@@ -1361,7 +1401,11 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "tests/sync-orchestrate.test.ts", "pattern": "categoryPath|分类" }
+        {
+          "type": "grep",
+          "path": "tests/sync-orchestrate.test.ts",
+          "pattern": "categoryPath|分类"
+        }
       ]
     },
     {
@@ -1371,9 +1415,21 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/manifest.json", "pattern": "alarms" },
-        { "type": "grep", "path": "extension/bg/service-worker.js", "pattern": "chrome\\.alarms" },
-        { "type": "grep", "path": "tests/sync-orchestrate.test.ts", "pattern": "autoSync" }
+        {
+          "type": "grep",
+          "path": "extension/manifest.json",
+          "pattern": "alarms"
+        },
+        {
+          "type": "grep",
+          "path": "extension/bg/service-worker.js",
+          "pattern": "chrome\\.alarms"
+        },
+        {
+          "type": "grep",
+          "path": "tests/sync-orchestrate.test.ts",
+          "pattern": "autoSync"
+        }
       ]
     },
     {
@@ -1383,9 +1439,21 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "functions/api/stats.ts", "pattern": "categorized" },
-        { "type": "grep", "path": "extension/popup/popup.html", "pattern": "覆盖率" },
-        { "type": "grep", "path": "extension/popup/popup.js", "pattern": "sync-status" }
+        {
+          "type": "grep",
+          "path": "functions/api/stats.ts",
+          "pattern": "categorized"
+        },
+        {
+          "type": "grep",
+          "path": "extension/popup/popup.html",
+          "pattern": "覆盖率"
+        },
+        {
+          "type": "grep",
+          "path": "extension/popup/popup.js",
+          "pattern": "sync-status"
+        }
       ]
     },
     {
@@ -1395,8 +1463,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/options/options.html", "pattern": "配对|引导" },
-        { "type": "grep", "path": "extension/options/options.js", "pattern": "wizard|step-" }
+        {
+          "type": "grep",
+          "path": "extension/options/options.html",
+          "pattern": "配对|引导"
+        },
+        {
+          "type": "grep",
+          "path": "extension/options/options.js",
+          "pattern": "wizard|step-"
+        }
       ]
     },
     {
@@ -1406,8 +1482,15 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "functions/_lib/ai/index.ts", "pattern": "categorize" },
-        { "type": "test", "name": "enrich-categorize" }
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/index.ts",
+          "pattern": "categorize"
+        },
+        {
+          "type": "test",
+          "name": "enrich-categorize"
+        }
       ]
     },
     {
@@ -1417,7 +1500,11 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "functions/api/ai/jobs/[id]/run.ts", "pattern": "kind === 'categorize'[\\s\\S]{0,4000}shouldWarnRebalance" }
+        {
+          "type": "grep",
+          "path": "functions/api/ai/jobs/[id]/run.ts",
+          "pattern": "kind === 'categorize'[\\s\\S]{0,4000}shouldWarnRebalance"
+        }
       ]
     },
     {
@@ -1425,11 +1512,15 @@
       "title": "拖拽重分类（CategoryView 拖到分类节点改主分类 + 反馈）",
       "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md C2-3",
       "priority": "P1",
-      "status": "done",
+      "status": "superseded",
       "evidence": [
-        { "type": "grep", "path": "src/components/library/CategoryView.tsx", "pattern": "onDrop" },
-        { "type": "grep", "path": "src/components/library/CategoryView.tsx", "pattern": "useAssignCategory" }
-      ]
+        {
+          "type": "grep",
+          "path": "src/hooks/queries/category.ts",
+          "pattern": "useAssignCategory"
+        }
+      ],
+      "note": "拖拽重分类随 32fd85d（分类视图改造为网站导航风格）被有意移除：CategoryView 改为 NavigationTile 直达方块，不再承载改分类交互。useAssignCategory hook 与 /api/category/assign 端点保留（数据层完好），如未来需要手动归类可在批量操作中恢复。"
     },
     {
       "id": "CS-P45-Q",
@@ -1438,8 +1529,16 @@
       "priority": "P1",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "tests/stats.test.ts", "pattern": "categorized" },
-        { "type": "grep", "path": "tests/enrich-categorize.test.ts", "pattern": "categorize" }
+        {
+          "type": "grep",
+          "path": "tests/stats.test.ts",
+          "pattern": "categorized"
+        },
+        {
+          "type": "grep",
+          "path": "tests/enrich-categorize.test.ts",
+          "pattern": "categorize"
+        }
       ]
     },
     {
@@ -1449,7 +1548,11 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/bg/config.js", "pattern": "promoteToBar: false" }
+        {
+          "type": "grep",
+          "path": "extension/bg/config.js",
+          "pattern": "promoteToBar: false"
+        }
       ]
     },
     {
@@ -1459,8 +1562,16 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/bg/reconcile.js", "pattern": "getManagedFolderNode" },
-        { "type": "grep", "path": "extension/bg/reconcile.js", "pattern": "CATEGORY_OP_BACKUP_KEY" }
+        {
+          "type": "grep",
+          "path": "extension/bg/reconcile.js",
+          "pattern": "getManagedFolderNode"
+        },
+        {
+          "type": "grep",
+          "path": "extension/bg/reconcile.js",
+          "pattern": "CATEGORY_OP_BACKUP_KEY"
+        }
       ]
     },
     {
@@ -1470,7 +1581,11 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/bg/sync-diff.js", "pattern": "ownedFolderIds" }
+        {
+          "type": "grep",
+          "path": "extension/bg/sync-diff.js",
+          "pattern": "ownedFolderIds"
+        }
       ]
     },
     {
@@ -1480,8 +1595,16 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/options/options.html", "pattern": "promoteToBar" },
-        { "type": "grep", "path": "extension/popup/popup.js", "pattern": "modeBadge" }
+        {
+          "type": "grep",
+          "path": "extension/options/options.html",
+          "pattern": "promoteToBar"
+        },
+        {
+          "type": "grep",
+          "path": "extension/popup/popup.js",
+          "pattern": "modeBadge"
+        }
       ]
     },
     {
@@ -1491,7 +1614,10 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "test", "name": "category-build-promote" }
+        {
+          "type": "test",
+          "name": "category-build-promote"
+        }
       ]
     },
     {
@@ -1500,10 +1626,12 @@
       "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-A",
       "priority": "P2",
       "status": "done",
-      "note": "后端 990 测试全绿、前端 106 全绿、typecheck 通过、vite build 成功；lint 仅 src/pages 有 32 条与 P6 无关的预存告警。",
+      "note": "后端 990 测试全绿、前端 106 全绿、typecheck 通过、vite build 成功；lint 仅 src/pages 有 32 条与 P6 无关的预存告警。 原 file:dist/index.html 探针移除：dist/ 不入库，CI 干净环境必然失败；构建由 CI 的 build 步骤与本地门禁另行保障。",
       "evidence": [
-        { "type": "test", "name": "category-tree" },
-        { "type": "file", "path": "dist/index.html" }
+        {
+          "type": "test",
+          "name": "category-tree"
+        }
       ]
     },
     {
@@ -1513,8 +1641,16 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/manifest.json", "pattern": "gecko" },
-        { "type": "nogrep", "path": "extension/manifest.json", "pattern": "default_locale" }
+        {
+          "type": "grep",
+          "path": "extension/manifest.json",
+          "pattern": "gecko"
+        },
+        {
+          "type": "nogrep",
+          "path": "extension/manifest.json",
+          "pattern": "default_locale"
+        }
       ]
     },
     {
@@ -1524,7 +1660,10 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "test", "name": "manifest" }
+        {
+          "type": "test",
+          "name": "manifest"
+        }
       ]
     },
     {
@@ -1534,22 +1673,40 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "test", "name": "manifest" }
+        {
+          "type": "test",
+          "name": "manifest"
+        }
       ]
     },
     {
       "id": "CS-P6-B4",
-      "title": "打包双浏览器产物：Firefox .xpi（web-ext build，0 error）+ Chrome .zip；manifest 双声明 scripts+service_worker",
+      "title": "打包双浏览器产物：Firefox .xpi + Chrome .zip（manifest 按 1cda106 拆分为双文件）",
       "source": "docs/CATEGORY-SYNC-CS-2026-08-22.md §9 P6-B / P6 收尾",
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "grep", "path": "extension/manifest.json", "pattern": "\"scripts\"" },
-        { "type": "grep", "path": "extension/manifest.json", "pattern": "gecko" },
-        { "type": "file", "path": "dist-ext/TagNest-Firefox-0.1.0.xpi" },
-        { "type": "file", "path": "dist-ext/TagNest-Chrome-0.1.0.zip" },
-        { "type": "test", "name": "manifest" }
-      ]
+        {
+          "type": "grep",
+          "path": "extension/manifest.firefox.json",
+          "pattern": "\"scripts\""
+        },
+        {
+          "type": "grep",
+          "path": "extension/manifest.firefox.json",
+          "pattern": "gecko"
+        },
+        {
+          "type": "grep",
+          "path": "extension/manifest.json",
+          "pattern": "service_worker"
+        },
+        {
+          "type": "test",
+          "name": "manifest"
+        }
+      ],
+      "note": "原双声明方案在 1cda106 被拆分为 extension/manifest.json（Chrome, service_worker+type:module）与 extension/manifest.firefox.json（scripts+gecko.id）：Chrome MV3 拒绝 background 同时含 service_worker 与 scripts（错误 1227774043）。dist-ext 产物不入库，由 extension 构建脚本按需产出。"
     },
     {
       "id": "CS-P6-B5",
@@ -1558,12 +1715,34 @@
       "priority": "P2",
       "status": "done",
       "evidence": [
-        { "type": "file", "path": "extension/dom.js" },
-        { "type": "grep", "path": "extension/sync.js", "pattern": "from './dom.js'" },
-        { "type": "grep", "path": "extension/category.js", "pattern": "from './dom.js'" },
-        { "type": "grep", "path": "extension/reconcile.js", "pattern": "from './dom.js'" },
-        { "type": "grep", "path": "extension/popup/popup.js", "pattern": "from '../dom.js'" },
-        { "type": "test", "name": "extension-dom-safety" }
+        {
+          "type": "file",
+          "path": "extension/dom.js"
+        },
+        {
+          "type": "grep",
+          "path": "extension/sync.js",
+          "pattern": "from './dom.js'"
+        },
+        {
+          "type": "grep",
+          "path": "extension/category.js",
+          "pattern": "from './dom.js'"
+        },
+        {
+          "type": "grep",
+          "path": "extension/reconcile.js",
+          "pattern": "from './dom.js'"
+        },
+        {
+          "type": "grep",
+          "path": "extension/popup/popup.js",
+          "pattern": "from '../dom.js'"
+        },
+        {
+          "type": "test",
+          "name": "extension-dom-safety"
+        }
       ]
     }
   ]
