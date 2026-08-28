@@ -107,6 +107,8 @@
 
   /* ---- Motion ------------------------------------------------------ */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Slight overshoot for control thumbs (Switch slide, checkbox pop). */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* ---- Semantic colours --------------------------------------------
    * Values resolve from the palette defined in :root below, so a single

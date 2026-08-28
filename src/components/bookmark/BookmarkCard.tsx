@@ -401,12 +401,36 @@ function BookmarkCardBase({
       )}
     >
       <span className="sr-only">选择《{b.title}》</span>
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={(e) => onToggleSelect(b.id, (e.nativeEvent as MouseEvent).shiftKey)}
-        className="h-3.5 w-3.5 cursor-pointer rounded border border-line-strong accent-[var(--color-brand)]"
-      />
+      <span className="relative inline-flex h-4.5 w-4.5 shrink-0">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(e) => onToggleSelect(b.id, (e.nativeEvent as MouseEvent).shiftKey)}
+          className={cx(
+            'peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[5px]',
+            'border border-line-strong bg-surface shadow-raised transition-colors duration-150',
+            'hover:border-brand/60',
+            'checked:border-brand checked:bg-brand',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30',
+          )}
+        />
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className={cx(
+            'pointer-events-none absolute inset-0 m-auto h-3 w-3 text-on-brand',
+            'scale-50 opacity-0 transition-all duration-150 ease-spring',
+            'peer-checked:scale-100 peer-checked:opacity-100',
+          )}
+        >
+          <path d="M4 12.5l5 5L20 6.5" />
+        </svg>
+      </span>
     </label>
   );
 

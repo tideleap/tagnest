@@ -423,7 +423,10 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(seg.value)}
             title={seg.label}
             className={cx(
-              'inline-flex h-full items-center gap-1.5 rounded-sm font-medium transition-colors',
+              'inline-flex h-full items-center gap-1.5 rounded-sm font-medium',
+              'transition-all duration-200 ease-out-soft',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+              'active:scale-95',
               size === 'sm' ? 'px-2 text-2xs' : 'px-3 text-xs',
               selected
                 ? 'bg-surface text-ink shadow-raised'

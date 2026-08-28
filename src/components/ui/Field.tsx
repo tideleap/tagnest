@@ -266,13 +266,38 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
 
   return (
     <div className={cx('flex items-start gap-2.5', className)}>
-      <input
-        ref={ref}
-        id={fieldId}
-        type="checkbox"
-        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded-sm border border-line-strong accent-[var(--color-brand)]"
-        {...rest}
-      />
+      <span className="relative mt-0.5 inline-flex h-4.5 w-4.5 shrink-0">
+        <input
+          ref={ref}
+          id={fieldId}
+          type="checkbox"
+          className={cx(
+            'peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[5px]',
+            'border border-line-strong bg-surface transition-colors duration-150',
+            'hover:border-brand/60',
+            'checked:border-brand checked:bg-brand',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+          )}
+          {...rest}
+        />
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className={cx(
+            'pointer-events-none absolute inset-0 m-auto h-3 w-3 text-on-brand',
+            'scale-50 opacity-0 transition-all duration-150 ease-spring',
+            'peer-checked:scale-100 peer-checked:opacity-100',
+          )}
+        >
+          <path d="M4 12.5l5 5L20 6.5" />
+        </svg>
+      </span>
       <label htmlFor={fieldId} className="cursor-pointer select-none text-sm leading-5 text-ink">
         {label}
         {hint && <span className="mt-0.5 block text-xs text-ink-faint">{hint}</span>}
@@ -311,17 +336,53 @@ export function Switch({ checked, onChange, label, hint, disabled, labelHidden }
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cx(
-          'relative h-5.5 w-9.5 shrink-0 rounded-full transition-colors duration-200',
+          // 24×44 touch target. ON = brand track; OFF = recessed sunken track
+          // with a strong border so both states read instantly in dark themes.
+          'group relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          checked ? 'bg-brand' : 'bg-line-strong',
+          checked
+            ? 'border-brand bg-brand hover:bg-brand-hover'
+            : 'border-line-strong bg-sunken hover:border-brand/50',
         )}
       >
         <span
           className={cx(
-            'absolute top-0.5 h-4.5 w-4.5 rounded-full bg-surface shadow-raised transition-transform duration-200',
-            checked ? 'translate-x-4.5' : 'translate-x-0.5',
+            // Thumb: springs across the track; pressing squishes it wider
+            // (group-active:w-5.5) like a physical toggle.
+            'absolute top-0.5 flex h-5 w-5 items-center justify-center rounded-full',
+            'bg-surface shadow-raised transition-all duration-250 ease-spring',
+            'group-active:w-5.5',
+            checked
+              ? 'translate-x-5.5 border-transparent group-active:translate-x-5'
+              : 'translate-x-0.5 border-line-strong',
           )}
-        />
+        >
+          {/* ON mark: brand check pops in */}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className={cx(
+              'absolute h-3 w-3 text-brand transition-all duration-200 ease-spring',
+              checked ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+            )}
+          >
+            <path d="M4 12.5l5 5L20 6.5" />
+          </svg>
+          {/* OFF mark: faint dot fades out as the check takes over */}
+          <span
+            aria-hidden
+            className={cx(
+              'absolute h-1 w-1 rounded-full bg-ink-faint transition-all duration-200',
+              checked ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
+            )}
+          />
+        </span>
       </button>
     </div>
   );
