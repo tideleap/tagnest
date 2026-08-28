@@ -36,6 +36,7 @@ export * from './grouping';
 export * from './grouping-apply';
 export * from './prompt';
 export * from './providers';
+export * from './probe';
 export * from './engine';
 export * from './taxonomy-tree';
 export * from './url-cache';

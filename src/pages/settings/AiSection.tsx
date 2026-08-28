@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { CheckCircle2, PlugZap, Sparkles, XCircle } from 'lucide-react';
 import type { AiProvider } from '@shared/types';
 import { Button, Input, Select, Skeleton, Switch } from '@/components/ui';
-import { useAiSettings, useUpdateAiSettings } from '@/hooks/queries';
+import { useAiSettings, useTestAiConnection, useUpdateAiSettings } from '@/hooks/queries';
 import { aiReadiness } from '@/lib/ai-readiness';
 import { Card } from './Card';
 
@@ -37,11 +37,14 @@ export function AiSection() {
   const navigate = useNavigate();
   const { data, isLoading } = useAiSettings();
   const update = useUpdateAiSettings();
+  const probe = useTestAiConnection();
 
   const [apiKey, setApiKey] = useState('');
   const [provider, setProvider] = useState<AiProvider | null>(null);
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
+  /** Models discovered by the last successful probe; null = nothing fetched yet. */
+  const [discoveredModels, setDiscoveredModels] = useState<string[] | null>(null);
 
   if (isLoading || !data) {
     return (
@@ -66,6 +69,26 @@ export function AiSection() {
     autoSummarize: data.autoSummarize,
   });
   const modelReady = missing.length === 0;
+
+  const runProbe = () => {
+    setDiscoveredModels(null);
+    probe.mutate(
+      {
+        provider: currentProvider,
+        baseUrl: currentBaseUrl || null,
+        model: currentModel || null,
+        ...(apiKey ? { apiKey } : {}),
+      },
+      {
+        onSuccess: (result) => {
+          // A successful probe with a catalogue feeds the model picker.
+          if (result.ok && result.models.length > 0) setDiscoveredModels(result.models);
+        },
+      },
+    );
+  };
+
+  const probeResult = probe.data;
 
   return (
     <>
@@ -105,14 +128,22 @@ export function AiSection() {
           <Select
             label="服务商"
             value={currentProvider}
-            onChange={(e) => setProvider(e.target.value as AiProvider)}
+            onChange={(e) => {
+              setProvider(e.target.value as AiProvider);
+              probe.reset();
+              setDiscoveredModels(null);
+            }}
             options={PROVIDER_OPTIONS}
           />
 
           <Input
             label="接口地址"
             value={currentBaseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
+            onChange={(e) => {
+              setBaseUrl(e.target.value);
+              probe.reset();
+              setDiscoveredModels(null);
+            }}
             placeholder="https://api.openai.com/v1"
             disabled={currentProvider === 'none'}
           />
@@ -123,33 +154,105 @@ export function AiSection() {
             onChange={(e) => setModel(e.target.value)}
             placeholder="gpt-4o-mini"
             disabled={currentProvider === 'none'}
+            hint={
+              discoveredModels && discoveredModels.length > 0
+                ? '可从下方「可用模型」中选择，也可以继续手动填写'
+                : undefined
+            }
           />
+
+          {/* Discovered models — appears after a successful probe that found a
+              catalogue. Selecting one fills the model field above. */}
+          {discoveredModels && discoveredModels.length > 0 && (
+            <Select
+              label={`可用模型（${discoveredModels.length}）`}
+              value={discoveredModels.includes(currentModel) ? currentModel : ''}
+              onChange={(e) => setModel(e.target.value)}
+              options={[
+                { value: '', label: '选择模型…' },
+                ...discoveredModels.map((m) => ({ value: m, label: m })),
+              ]}
+              hint="来自该端点的模型列表，按名称排序"
+            />
+          )}
 
           <Input
             label="API Key"
             type="password"
             value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
+            onChange={(e) => {
+              setApiKey(e.target.value);
+              probe.reset();
+              setDiscoveredModels(null);
+            }}
             placeholder={data.hasApiKey ? '已保存（留空则不修改）' : 'sk-…'}
             hint="加密存储在服务端，写入后不会再返回给浏览器。"
             disabled={currentProvider === 'none'}
           />
 
-          <Button
-            variant="primary"
-            className="self-start"
-            loading={update.isPending}
-            onClick={() =>
-              update.mutate({
-                provider: currentProvider,
-                baseUrl: currentBaseUrl || null,
-                model: currentModel || null,
-                ...(apiKey ? { apiKey } : {}),
-              })
-            }
-          >
-            保存配置
-          </Button>
+          {/* Probe outcome — success surfaces the discovered model count,
+              failure shows the provider's reason verbatim. */}
+          {probeResult && (
+            <div
+              role="status"
+              className={
+                probeResult.ok
+                  ? 'flex items-start gap-2 rounded-md border border-positive bg-positive-soft px-3 py-2.5'
+                  : 'flex items-start gap-2 rounded-md border border-critical bg-critical-soft px-3 py-2.5'
+              }
+            >
+              {probeResult.ok ? (
+                <CheckCircle2 size={15} aria-hidden className="mt-px shrink-0 text-positive-ink" />
+              ) : (
+                <XCircle size={15} aria-hidden className="mt-px shrink-0 text-critical-ink" />
+              )}
+              <div className="min-w-0 text-xs leading-relaxed">
+                <p className={probeResult.ok ? 'font-medium text-positive-ink' : 'font-medium text-critical-ink'}>
+                  {probeResult.message}
+                </p>
+                {probeResult.checkedUrl && (
+                  <p className="mt-0.5 break-all text-ink-faint">检测地址：{probeResult.checkedUrl}</p>
+                )}
+              </div>
+            </div>
+          )}
+          {probe.isError && (
+            <div role="status" className="flex items-start gap-2 rounded-md border border-critical bg-critical-soft px-3 py-2.5">
+              <XCircle size={15} aria-hidden className="mt-px shrink-0 text-critical-ink" />
+              <p className="text-xs font-medium leading-relaxed text-critical-ink">
+                {probe.error?.message || '测试请求失败，请稍后重试'}
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              variant="primary"
+              loading={update.isPending}
+              onClick={() =>
+                update.mutate({
+                  provider: currentProvider,
+                  baseUrl: currentBaseUrl || null,
+                  model: currentModel || null,
+                  ...(apiKey ? { apiKey } : {}),
+                })
+              }
+            >
+              保存配置
+            </Button>
+            <Button
+              variant="secondary"
+              iconLeft={<PlugZap size={15} aria-hidden />}
+              loading={probe.isPending}
+              disabled={currentProvider === 'none'}
+              onClick={runProbe}
+            >
+              测试连接
+            </Button>
+          </div>
+          <p className="text-xs leading-relaxed text-ink-faint">
+            测试连接会验证地址与密钥是否可用，并自动抓取该端点的可用模型列表；测试不会保存配置。
+          </p>
         </div>
       </Card>
 

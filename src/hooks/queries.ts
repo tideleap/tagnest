@@ -42,6 +42,7 @@ export {
 export {
   useAiSettings,
   useUpdateAiSettings,
+  useTestAiConnection,
 } from './queries/ai';
 
 export {

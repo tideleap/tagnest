@@ -438,6 +438,28 @@ export interface AiSettings {
   managedEnabled: boolean;
 }
 
+/**
+ * Result of probing a user-supplied AI endpoint (`POST /api/ai/test-connection`).
+ *
+ * Provider-side failures are reported as `ok: false` inside a 200 response so
+ * the settings UI can render the reason directly; only malformed input yields
+ * an HTTP error. The API key is never echoed back.
+ */
+export interface AiProbeResult {
+  ok: boolean;
+  /** Human-readable outcome, e.g. "连接成功" or "API Key 无效或无权限". */
+  message: string;
+  /** Models discovered via the provider's list endpoint (may be empty). */
+  models: string[];
+  /** The endpoint that was actually probed (null when nothing was reachable). */
+  checkedUrl: string | null;
+  /**
+   * True when the key authenticated via a minimal inference call because the
+   * provider does not expose a model list — the UI should keep manual entry.
+   */
+  modelsUnavailable?: boolean;
+}
+
 /* ------------------------------------------------------------------ *
  * Billing / managed tier (Phase A scaffold)
  * ------------------------------------------------------------------ */
