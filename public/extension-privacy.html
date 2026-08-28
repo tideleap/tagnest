@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TagNest 一键收纳 · 隐私政策 / Privacy Policy</title>
+<meta name="description" content="TagNest 一键收纳浏览器扩展的隐私政策：我们收集什么、不收集什么、数据如何存储与传输。" />
+<style>
+  :root {
+    --brand: #4F46E5;
+    --brand-soft: #EEF2FF;
+    --ink: #1F2937;
+    --ink-soft: #4B5563;
+    --line: #E5E7EB;
+    --bg: #F9FAFB;
+    --card: #FFFFFF;
+    --ok: #059669;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { margin-bottom: 28px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 18px; color: var(--brand);
+  }
+  .logo .dot { width: 26px; height: 26px; border-radius: 8px; background: var(--brand);
+    display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+  h1 { font-size: 28px; margin: 18px 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-soft); font-size: 14px; }
+  .meta { color: var(--ink-soft); font-size: 13px; margin-top: 6px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 24px; margin: 18px 0;
+  }
+  h2 { font-size: 19px; margin: 0 0 12px; color: var(--ink); }
+  h3 { font-size: 15px; margin: 18px 0 8px; color: var(--ink); }
+  p { margin: 8px 0; color: var(--ink-soft); font-size: 14.5px; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; color: var(--ink-soft); font-size: 14.5px; }
+  strong { color: var(--ink); }
+  code {
+    background: var(--brand-soft); color: var(--brand); padding: 1px 6px;
+    border-radius: 5px; font-size: 13px; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .pill {
+    display: inline-block; background: var(--brand-soft); color: var(--brand);
+    padding: 2px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; margin-right: 6px;
+  }
+  .ok { color: var(--ok); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink); font-weight: 600; background: var(--bg); }
+  td { color: var(--ink-soft); }
+  .divider { border: 0; border-top: 1px solid var(--line); margin: 30px 0; }
+  footer { color: var(--ink-soft); font-size: 13px; margin-top: 30px; }
+  a { color: var(--brand); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo"><span class="dot">T</span>TagNest</span>
+    <h1>隐私政策 · Privacy Policy</h1>
+    <div class="sub">适用于「TagNest 一键收纳」浏览器扩展（Chrome / Edge / Firefox）</div>
+    <div class="meta">生效日期 / Effective date：2026-08-28 · 版本 1.0</div>
+  </header>
+
+  <div class="card">
+    <h2>一句话总结 / TL;DR</h2>
+    <p>这个扩展<strong>不收集、不上传、不分析</strong>你的任何浏览数据用于我们（开发者）的目的。它只做一件事：在你主动点击时，把当前网页的<strong>网址和标题</strong>（以及你可选填写的笔记）发送到<strong>你自己部署的 TagNest 实例</strong>。你的 API 密钥只保存在本机浏览器里。</p>
+    <p><span class="ok">✓ 无分析统计</span> <span class="ok">✓ 无第三方追踪</span> <span class="ok">✓ 无广告</span> <span class="ok">✓ 数据只发往你自己的服务器</span></p>
+  </div>
+
+  <div class="card">
+    <h2>1. 我们访问哪些数据 / What we access</h2>
+    <table>
+      <tr><th>数据</th><th>何时读取</th><th>用途</th></tr>
+      <tr><td>当前标签页的网址与标题</td><td>你点击「收藏当前页」或「收纳窗口」时</td><td>生成要保存的书签</td></tr>
+      <tr><td>页面上的选中文字</td><td>仅当你用快捷键收藏且页面上有选区时</td><td>存为该书签的笔记（可选）</td></tr>
+      <tr><td>浏览器书签树</td><td>仅当你主动触发「双向同步」并授予书签权限时</td><td>在浏览器书签与 TagNest 之间对账同步</td></tr>
+      <tr><td>你填写的服务器地址与 API 密钥</td><td>你在扩展设置页填写时</td><td>连接你自己的 TagNest 实例</td></tr>
+    </table>
+    <p>除上述场景外，扩展<strong>不会</strong>在后台读取、扫描或上传任何页面内容。</p>
+  </div>
+
+  <div class="card">
+    <h2>2. 数据发送到哪里 / Where data goes</h2>
+    <p>所有网络请求都<strong>只发往你在设置页填写的 TagNest 服务器地址</strong>（例如 <code>https://tagnest.pages.dev</code> 或你自己的部署地址），通过 HTTPS 传输，并以你的个人 API 密钥（<code>tnk_...</code>）鉴权。</p>
+    <p><strong>我们不运营任何数据收集服务器</strong>，扩展不会向开发者或任何第三方发送你的浏览数据、书签或密钥。</p>
+  </div>
+
+  <div class="card">
+    <h2>3. 数据如何存储 / How data is stored</h2>
+    <ul>
+      <li><strong>服务器地址与 API 密钥</strong>：仅保存在你本机浏览器的 <code>chrome.storage.local</code>，<strong>不会</strong>同步到浏览器云端，也不会离开你的设备（除了按你的指令发往你自己的 TagNest 服务器）。</li>
+      <li><strong>书签内容</strong>：保存在你自己的 TagNest 实例的数据库中，受该实例自身的隐私与访问控制约束。</li>
+      <li><strong>同步状态</strong>（上次同步时间、快照）保存在本机 <code>chrome.storage.local</code>，用于增量同步与回滚。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>4. 权限说明 / Permissions</h2>
+    <table>
+      <tr><th>权限</th><th>用途</th></tr>
+      <tr><td><code>activeTab</code> / <code>tabs</code></td><td>读取你要收藏的标签页的网址与标题</td></tr>
+      <tr><td><code>storage</code></td><td>在本机保存服务器地址、密钥与同步状态</td></tr>
+      <tr><td><code>scripting</code></td><td>仅在你主动收藏时读取当前页选区文字</td></tr>
+      <tr><td><code>alarms</code></td><td>按计划执行你订阅源的定时刷新（如启用）</td></tr>
+      <tr><td><code>bookmarks</code>（可选，按需授权）</td><td>仅在你使用「双向同步」时请求，用于读写浏览器书签栏中的 TagNest 文件夹</td></tr>
+    </table>
+    <p>扩展<strong>不声明任何主机权限（host permissions）</strong>，不在页面中注入脚本，所有网络请求均由后台 Service Worker 发出——这把你的攻击面降到最低。</p>
+  </div>
+
+  <div class="card">
+    <h2>5. 我们不做什么 / What we do NOT do</h2>
+    <ul>
+      <li>不收集、不上报任何使用统计或遥测数据；</li>
+      <li>不向任何第三方（广告、分析、数据经纪）共享你的数据；</li>
+      <li>不在页面中注入内容脚本以读取与收藏无关的信息；</li>
+      <li>不请求访问你的浏览历史、密码、表单内容等无关数据；</li>
+      <li>密钥无权访问 <code>/api/keys</code> 与 <code>/api/auth</code>，即使泄露也无法自助签发更多密钥。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>6. 你的控制 / Your control</h2>
+    <ul>
+      <li>随时在扩展设置页清除服务器地址与密钥；</li>
+      <li>在浏览器扩展管理页撤销任意权限或卸载扩展；</li>
+      <li>卸载后，本机 <code>chrome.storage.local</code> 中的扩展数据将被浏览器清除。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>7. 儿童隐私 / Children's privacy</h2>
+    <p>本扩展不面向 13 岁以下儿童，也不会有意收集儿童的个人信息。</p>
+  </div>
+
+  <div class="card">
+    <h2>8. 变更与联系 / Changes &amp; contact</h2>
+    <p>如本政策有重大变更，我们会更新本页并标注生效日期。继续使用扩展即视为接受更新后的政策。</p>
+    <p>如有疑问，请联系：<strong>privacy@ddxz6780.xyz</strong></p>
+  </div>
+
+  <hr class="divider" />
+
+  <div class="card">
+    <h2>English Summary</h2>
+    <p>This extension <strong>does not collect, upload, or analyze</strong> your browsing data for the developer's purposes. It only sends the <strong>URL and title</strong> of the page you choose to save (plus an optional note) to <strong>your own self-hosted TagNest instance</strong> over HTTPS. Your API key is stored only in your local browser storage and never synced to the cloud. The extension declares <strong>no host permissions</strong>, injects no content scripts, and makes no requests to any third party. There is no analytics, no tracking, and no ads.</p>
+    <p>Questions? Contact <strong>privacy@ddxz6780.xyz</strong>.</p>
+  </div>
+
+  <footer>
+    © 2026 TagNest · 本页面为「TagNest 一键收纳」浏览器扩展的官方隐私政策。
+  </footer>
+</div>
+</body>
+</html>
