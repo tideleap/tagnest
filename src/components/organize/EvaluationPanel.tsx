@@ -57,7 +57,7 @@ export function EvaluationPanel({ overview }: Props) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <BarChart3 size={17} className="shrink-0 text-brand-accent" aria-hidden />
-          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">整理效果评估</h2>
+          <h2 className="font-display text-panel font-semibold tracking-tight text-ink">整理效果评估</h2>
         </div>
         <Badge tone="brand" dot>
           {promptVersion ? `Prompt ${promptVersion}` : 'Prompt —'}
@@ -167,7 +167,7 @@ function TrendChart({ trend }: { trend: AiOverview['feedbackTrend'] }) {
         </div>
       </div>
 
-      <div className="flex h-16 items-end gap-[2px] overflow-hidden" role="img" aria-label="近 30 天接受与忽略趋势">
+      <div className="flex h-16 items-end gap-px overflow-hidden" role="img" aria-label="近 30 天接受与忽略趋势">
         {trend.map((d) => {
           const total = d.accepted + d.rejected;
           const heightPct = Math.round((total / peak) * 100);

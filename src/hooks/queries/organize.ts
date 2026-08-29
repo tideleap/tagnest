@@ -52,7 +52,7 @@ export function useAiOverview() {
 export function useAiEstimate(
   target: AiJobTarget,
   enabled = true,
-  kind: 'tagging' | 'categorize' = 'tagging',
+  kind: 'tagging' | 'categorize' | 'rename' = 'tagging',
 ) {
   return useQuery({
     queryKey: keys.aiEstimate(target, undefined, kind),
@@ -63,7 +63,7 @@ export function useAiEstimate(
   });
 }
 
-export function useAiSuggestions(jobId?: string | null, kind?: 'tag' | 'category') {
+export function useAiSuggestions(jobId?: string | null, kind?: 'tag' | 'category' | 'rename') {
   return useQuery({
     queryKey: keys.aiSuggestions(jobId, kind),
     queryFn: () =>
@@ -152,10 +152,11 @@ export interface DecideInput {
   /**
    * CategorySync (migration 0024): which queue the decision lands in.
    * 'tag' (default) writes `bookmark_tags`; 'category' writes the single
-   * primary placement (`bookmark_primary_category`). The server scopes the
-   * whole apply to one kind, so a mixed batch is impossible by construction.
+   * primary placement (`bookmark_primary_category`); 'rename' rewrites the
+   * bookmark title itself. The server scopes the whole apply to one kind, so
+   * a mixed batch is impossible by construction.
    */
-  kind?: 'tag' | 'category';
+  kind?: 'tag' | 'category' | 'rename';
 }
 
 /**
@@ -165,7 +166,9 @@ export interface DecideInput {
  * writes real tag links, so a stale library list would show the bookmark
  * without the tag the user just approved. For `kind='category'` decisions the
  * category tree and writeback mapping change too, so those caches refresh as
- * well.
+ * well. For `kind='rename'` decisions the bookmark *title* changes — which the
+ * library list, search index and sync layer all render — but tags and the
+ * category tree are untouched.
  */
 export function useDecideSuggestions() {
   const qc = useQueryClient();
@@ -181,25 +184,33 @@ export function useDecideSuggestions() {
       void qc.invalidateQueries({ queryKey: keys.aiOverview });
 
       const isCategory = input.kind === 'category';
+      const isRename = input.kind === 'rename';
 
       if (input.action === 'accept') {
         void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
-        void qc.invalidateQueries({ queryKey: keys.tags });
         void qc.invalidateQueries({ queryKey: keys.stats });
-        if (isCategory) {
-          // Accepting a category proposal moves the bookmark's primary
-          // placement — the tree counts and the writeback feed both change.
-          void qc.invalidateQueries({ queryKey: keys.categoryTree });
-          void qc.invalidateQueries({ queryKey: keys.categoryWriteback });
+        if (isRename) {
+          // A rename touches no tag data — only the title column — so the tag
+          // list / taxonomy / category caches are deliberately left alone.
         } else {
-          void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+          void qc.invalidateQueries({ queryKey: keys.tags });
+          if (isCategory) {
+            // Accepting a category proposal moves the bookmark's primary
+            // placement — the tree counts and the writeback feed both change.
+            void qc.invalidateQueries({ queryKey: keys.categoryTree });
+            void qc.invalidateQueries({ queryKey: keys.categoryWriteback });
+          } else {
+            void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
+          }
         }
 
         const created = result.tagsCreated > 0 ? `，新建 ${result.tagsCreated} 个标签` : '';
         toast.success(
           isCategory
             ? `已应用 ${result.accepted} 条分类`
-            : `已应用 ${result.accepted} 个标签${created}`,
+            : isRename
+              ? `已应用 ${result.accepted} 条命名`
+              : `已应用 ${result.accepted} 个标签${created}`,
         );
       } else {
         toast.success(`已忽略 ${result.rejected} 条建议`);
@@ -354,7 +365,7 @@ export function useOrganizeRun() {
       target: AiJobTarget,
       bookmarkIds?: string[],
       limit?: number,
-      kind: 'tagging' | 'categorize' = 'tagging',
+      kind: 'tagging' | 'categorize' | 'rename' = 'tagging',
       includeBrowserFolder?: boolean,
     ) => {
       cancelled.current = false;
@@ -442,6 +453,8 @@ export function useOrganizeRun() {
         void qc.invalidateQueries({ queryKey: keys.categoryTree });
         void qc.invalidateQueries({ queryKey: keys.categoryWriteback });
       }
+      // Rename writes only titles; a title-bearing surface is covered by
+      // bookmarksRoot below. Tags/category caches are untouched by design.
       if (autoApplied > 0) {
         void qc.invalidateQueries({ queryKey: keys.bookmarksRoot });
         void qc.invalidateQueries({ queryKey: keys.tags });

@@ -86,7 +86,7 @@ export function CategoryExportPanel() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <FileDown size={17} className="shrink-0 text-brand-accent" aria-hidden />
-          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">
+          <h2 className="font-display text-panel font-semibold tracking-tight text-ink">
             把分类导出到浏览器书签栏
           </h2>
         </div>

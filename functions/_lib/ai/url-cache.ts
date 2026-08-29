@@ -1,5 +1,5 @@
-import { CATEGORIZE_PROMPT_VERSION, PROMPT_VERSION } from './prompt';
-import type { ParsedCategory, ParsedTag } from './prompt';
+import { CATEGORIZE_PROMPT_VERSION, PROMPT_VERSION, RENAME_PROMPT_VERSION } from './prompt';
+import type { ParsedCategory, ParsedTag, ParsedRename } from './prompt';
 import type { CandidateSource } from './types';
 
 /**
@@ -107,6 +107,59 @@ export function makeKvCategoryCache(kv: KVNamespace): CategoryCache {
     async get(key) {
       try {
         return await kv.get<CategoryCacheEntry>(key, 'json');
+      } catch {
+        return null;
+      }
+    },
+    async put(key, entry) {
+      try {
+        await kv.put(key, JSON.stringify(entry), { expirationTtl: CACHE_TTL_SECONDS });
+      } catch {
+        /* a failed write just means a future miss — never an error */
+      }
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Rename mode (structured-organise Phase B) — third cache namespace.
+ *
+ * The cached shape (a cleaned title) differs from both tagging and
+ * categorize, and `RENAME_PROMPT_VERSION` is tracked separately, so
+ * rename keys use the `ai:rename:` prefix. One caveat baked into the
+ * entry: a URL's *original title* can legitimately change between runs
+ * (the user edited it, or a sync pulled a new one), so the cached answer
+ * is only a suggestion — the engine compares it against the current
+ * title and falls through to "unchanged" when they already match.
+ * ------------------------------------------------------------------ */
+
+/** The cached rename output for one bookmark (a `ParsedRename`). */
+export type RenameCacheEntry = ParsedRename;
+
+/** Minimal async key-value surface for rename results — KV-backed in production. */
+export interface RenameCache {
+  get(key: string): Promise<RenameCacheEntry | null>;
+  put(key: string, entry: RenameCacheEntry): Promise<void>;
+}
+
+/**
+ * Builds the rename cache key. Shape: `ai:rename:<promptVersion>:<model>:<sha256(url)>`.
+ */
+export async function renameCacheKeyFor(url: string, model: string): Promise<string> {
+  const hash = await sha256Hex(normalizeUrlForCache(url));
+  const safeModel = model.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
+  return `ai:rename:${RENAME_PROMPT_VERSION}:${safeModel}:${hash}`;
+}
+
+/**
+ * Wraps a KV namespace as a `RenameCache`. Same defensive posture as the
+ * other caches: a KV hiccup degrades to a miss, never to a failed rename run.
+ */
+export function makeKvRenameCache(kv: KVNamespace): RenameCache {
+  return {
+    async get(key) {
+      try {
+        return await kv.get<RenameCacheEntry>(key, 'json');
       } catch {
         return null;
       }

@@ -13,7 +13,8 @@ import { MAX_JOB_ITEMS, estimateJob } from '../../../_lib/ai';
  * Query params mirror `POST /api/ai/jobs`:
  *   `target`  'untagged' | 'all' | 'ids' (default 'untagged')
  *   `ids`     comma-separated bookmark ids, required when target=ids
- *   `kind`    'tagging' (default) | 'categorize' — CategorySync scope rules
+ *   `kind`    'tagging' (default) | 'categorize' | 'rename' — per-track scope
+ *             rules (rename runs every live bookmark, same as tagging)
  */
 export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -24,7 +25,8 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     throw badRequest('整理范围无效');
   }
 
-  const kind = url.searchParams.get('kind') === 'categorize' ? 'categorize' : 'tagging';
+  const rawKind = url.searchParams.get('kind');
+  const kind = rawKind === 'categorize' || rawKind === 'rename' ? rawKind : 'tagging';
 
   const explicitIds =
     target === 'ids'

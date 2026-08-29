@@ -35,9 +35,10 @@ interface Props {
   /**
    * CategorySync: which organiser track this panel drives. 'tagging' (default)
    * proposes loose labels; 'categorize' assigns each bookmark a single primary
-   * category. The cost forecast and the scope copy both follow the track.
+   * category; 'rename' proposes a cleaner title per bookmark. The cost
+   * forecast and the scope copy both follow the track.
    */
-  kind?: 'tagging' | 'categorize';
+  kind?: 'tagging' | 'categorize' | 'rename';
 }
 
 /** How many bookmarks the trial run samples. One run chunk — small enough to
@@ -66,6 +67,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
   const scopeSize = target === 'untagged' ? untagged : total;
 
   const isCategorize = kind === 'categorize';
+  const isRename = kind === 'rename';
 
   // The forecast only makes sense while idle; a running job already has real
   // counters, and fetching mid-run would just churn the cache. Keyed by kind so
@@ -85,8 +87,8 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Sparkles size={17} className="shrink-0 text-brand-accent" aria-hidden />
-          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">
-            {isCategorize ? '精确分类' : '批量整理'}
+          <h2 className="font-display text-panel font-semibold tracking-tight text-ink">
+            {isCategorize ? '精确分类' : isRename ? '命名清理' : '批量整理'}
           </h2>
           <EngineBadge overview={overview} engine={run.engine} />
         </div>
@@ -117,7 +119,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
               disabled={noEngine || scopeSize === 0}
               onClick={() => void run.start(target)}
             >
-              {isCategorize ? '开始分类' : '开始整理'}
+              {isCategorize ? '开始分类' : isRename ? '开始清理' : '开始整理'}
             </Button>
           </div>
         )}
@@ -130,18 +132,29 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
           value={target}
           onChange={(value) => onTargetChange(value as AiJobTarget)}
           segments={[
-            { value: 'untagged', label: isCategorize ? `未分类（${untagged}）` : `未打标签（${untagged}）` },
+            {
+              value: 'untagged',
+              label: isCategorize
+                ? `未分类（${untagged}）`
+                : isRename
+                  ? `全部书签（${total}）`
+                  : `未打标签（${untagged}）`,
+            },
             { value: 'all', label: `全部书签（${total}）` },
           ]}
         />
         <p className="text-2xs text-ink-faint">
-          {isCategorize
-            ? target === 'untagged'
-              ? `AI 只为还没有主分类的书签指定唯一归属，当前共 ${untagged} 条。`
-              : `重新为全部 ${total} 条书签指定主分类，已有归属会被新建议覆盖（需确认）。`
-            : target === 'untagged'
-              ? `AI 只分析还没有任何标签的书签，当前共 ${untagged} 条。`
-              : `重新分析全部 ${total} 条书签，已有标签不会被覆盖，只会补充建议。`}
+          {isRename
+            ? // Rename scans every live bookmark — private ones stay excluded
+              // server-side; the untagged scope has no meaning for titles.
+              `AI 检查全部 ${total} 条书签的标题，只建议清理无信息或冗余的命名，不会动品牌词。`
+            : isCategorize
+              ? target === 'untagged'
+                ? `AI 只为还没有主分类的书签指定唯一归属，当前共 ${untagged} 条。`
+                : `重新为全部 ${total} 条书签指定主分类，已有归属会被新建议覆盖（需确认）。`
+              : target === 'untagged'
+                ? `AI 只分析还没有任何标签的书签，当前共 ${untagged} 条。`
+                : `重新分析全部 ${total} 条书签，已有标签不会被覆盖，只会补充建议。`}
         </p>
       </div>
 
@@ -245,9 +258,13 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
         </Notice>
       )}
 
-      {/* A fallback is not an error, but it must not be invisible either. */}
+      {/* A fallback is not an error, but it must not be invisible either.
+          Rename has no local fallback: with no model there is nothing to do. */}
       {run.modelError && !run.error && (
-        <Notice tone="info">模型未参与：{run.modelError}（已使用域名兜底标签继续）</Notice>
+        <Notice tone="info">
+          模型未参与：{run.modelError}
+          {isRename ? '' : '（已使用域名兜底标签继续）'}
+        </Notice>
       )}
 
       {/* Surface bookmarks that only got the fallback so they are never

@@ -1,7 +1,12 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
 import { badRequest, json, readJson } from '../../../_lib/http';
-import { countPending, decideCategorySuggestions, decideSuggestions } from '../../../_lib/ai';
+import {
+  countPending,
+  decideCategorySuggestions,
+  decideRenameSuggestions,
+  decideSuggestions,
+} from '../../../_lib/ai';
 
 /** Ceiling for one accept/reject call. Keeps the D1 batch a sane size. */
 const MAX_DECISIONS = 500;
@@ -20,7 +25,9 @@ const MAX_DECISIONS = 500;
  * `kind` (CategorySync migration 0024) selects which queue the decision lands in:
  *   - 'tag' (default) → `decideSuggestions` writes `bookmark_tags`;
  *   - 'category'      → `decideCategorySuggestions` writes the single
- *                       `bookmark_primary_category` placement instead (PRD §5.2).
+ *                       `bookmark_primary_category` placement instead (PRD §5.2);
+ *   - 'rename'        → `decideRenameSuggestions` rewrites `bookmarks.title`
+ *                       (Phase B conservative title cleanup).
  * The review UI filters by kind, so it always knows which one it is applying.
  *
  * Accepted tags are written with `source = 'ai'` and their confidence, which
@@ -44,7 +51,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const action = String(body.action ?? '');
   if (action !== 'accept' && action !== 'reject') throw badRequest('操作类型无效');
 
-  const kind = body.kind === 'category' ? 'category' : 'tag';
+  const kind = body.kind === 'category' ? 'category' : body.kind === 'rename' ? 'rename' : 'tag';
 
   // A rename only makes sense on a single TAG accept; cap length to match tags.
   const renameTo =
@@ -74,13 +81,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   }
 
   if (ids.length === 0) {
-    throw badRequest(kind === 'category' ? '没有可处理的分类建议' : '没有可处理的标签建议');
+    const emptyHint =
+      kind === 'category'
+        ? '没有可处理的分类建议'
+        : kind === 'rename'
+          ? '没有可处理的命名建议'
+          : '没有可处理的标签建议';
+    throw badRequest(emptyHint);
   }
 
   if (kind === 'category') {
     const outcome = await decideCategorySuggestions(ctx.env, userId, ids, action);
     const pending = await countPending(ctx.env, userId);
     return json({ ...outcome, pending });
+  }
+
+  if (kind === 'rename') {
+    const outcome = await decideRenameSuggestions(ctx.env, userId, ids, action);
+    const pending = await countPending(ctx.env, userId);
+    return json({ ...outcome, pending, tagsCreated: 0 });
   }
 
   // Edit-before-accept is single-suggestion only; pass the new spelling so

@@ -9,7 +9,7 @@ import {
   resolveScope,
   toApiJob,
 } from '../../../_lib/ai';
-import { CATEGORIZE_PROMPT_VERSION, PROMPT_VERSION } from '../../../_lib/ai/prompt';
+import { CATEGORIZE_PROMPT_VERSION, PROMPT_VERSION, RENAME_PROMPT_VERSION } from '../../../_lib/ai/prompt';
 
 /**
  * Batch organiser runs.
@@ -48,8 +48,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // CategorySync: `kind` selects the organiser track. 'tagging' (default) keeps
   // the legacy loose-label behaviour; 'categorize' runs the single-placement
   // pipeline (PRD §5.1 — reuses this endpoint rather than a new /api/ai/categorize).
+  // Rename mode (Phase B) adds 'rename': conservative title cleanup.
   const kind = String(body.kind ?? 'tagging');
-  if (kind !== 'tagging' && kind !== 'categorize') {
+  if (kind !== 'tagging' && kind !== 'categorize' && kind !== 'rename') {
     throw badRequest('任务类型无效');
   }
 
@@ -84,6 +85,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     // `untagged` means "no primary category yet".
     const includeBrowserFolder = body.includeBrowserFolder === true;
     ids = await resolveCategorizeScope(ctx.env, userId, target, explicitIds, includeBrowserFolder);
+  } else if (kind === 'rename') {
+    // Rename scope: every live bookmark is fair game — a title can need
+    // cleanup regardless of whether it has tags or a placement. Private
+    // bookmarks stay excluded by the shared clause inside `resolveScope`.
+    ids = await resolveScope(ctx.env, userId, target === 'untagged' ? 'all' : target, explicitIds);
   } else {
     ids = await resolveScope(ctx.env, userId, target, explicitIds);
   }
@@ -92,19 +98,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // An empty scope is a dead end, not something a retry fixes — say which case
   // it is so the UI can explain rather than show a generic failure.
   if (ids.length === 0) {
-    throw badRequestCode(
-      'ai_scope_empty',
-      kind === 'categorize'
-        ? target === 'untagged'
-          ? '没有待分类的书签，全部书签都已有主分类'
-          : '所选范围内没有可分类的书签'
-        : target === 'untagged'
-          ? '没有待整理的书签，全部书签都已有标签'
-          : '所选范围内没有可整理的书签',
-    );
+    const scopeHint =
+      kind === 'rename'
+        ? '所选范围内没有可清理命名的书签'
+        : kind === 'categorize'
+          ? target === 'untagged'
+            ? '没有待分类的书签，全部书签都已有主分类'
+            : '所选范围内没有可分类的书签'
+          : target === 'untagged'
+            ? '没有待整理的书签，全部书签都已有标签'
+            : '所选范围内没有可整理的书签';
+    throw badRequestCode('ai_scope_empty', scopeHint);
   }
 
-  const promptVersion = kind === 'categorize' ? CATEGORIZE_PROMPT_VERSION : PROMPT_VERSION;
+  const promptVersion =
+    kind === 'categorize'
+      ? CATEGORIZE_PROMPT_VERSION
+      : kind === 'rename'
+        ? RENAME_PROMPT_VERSION
+        : PROMPT_VERSION;
   const job = await createJob(ctx.env, userId, kind, { target, ids }, promptVersion);
   return json({ job: toApiJob(job) }, { status: 201 });
 };

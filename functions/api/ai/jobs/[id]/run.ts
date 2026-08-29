@@ -6,9 +6,9 @@ import { createLogger } from '../../../../_lib/logger';
 import {
   RUN_CHUNK,
   aggregateCategoryTopics,
+  aggregateTopics,
   autoApply,
   autoApplyCategories,
-  aggregateTopics,
   applyTagHierarchy,
   categorizeBookmarks,
   countJobNewTags,
@@ -21,8 +21,11 @@ import {
   loadFewShotExamples,
   loadVocabulary,
   makeKvCategoryCache,
+  makeKvRenameCache,
   makeKvTagCache,
+  renameBookmarks,
   saveCategorySuggestions,
+  saveRenameSuggestions,
   saveSuggestions,
   shouldWarnRebalance,
   suggestForBookmarks,
@@ -189,6 +192,67 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       engine: outcome.engine,
       modelError: outcome.modelError,
       topics: aggregateCategoryTopics(outcome.results),
+    };
+    return json(result);
+  }
+
+  // ---- Rename track (structured-organise Phase B): conservative title
+  // cleanup. Same job loop, but the engine needs neither vocabulary nor
+  // feedback (no tree to normalise against) and there is no auto-apply —
+  // title changes always wait for review.
+  if (job.kind === 'rename') {
+    const outcome = await renameBookmarks(inputs, {
+      config,
+      renameCache: ctx.env.AI_CACHE ? makeKvRenameCache(ctx.env.AI_CACHE) : undefined,
+    });
+
+    const written = await saveRenameSuggestions(ctx.env, userId, jobId, outcome.results);
+
+    // Meter the hosted tier per bookmark analysed; best-effort.
+    if (effective?.managed && outcome.engine === 'model') {
+      try {
+        await consumeAiCredit(ctx.env, userId, slice.length, 'ai.job.rename', jobId);
+      } catch {
+        /* meter is best-effort */
+      }
+    }
+
+    const processed = job.processed + slice.length;
+    const finished = processed >= ids.length;
+    const failed = Boolean(outcome.fatal);
+
+    await updateJob(ctx.env, userId, jobId, {
+      processed,
+      suggested: job.suggested + written,
+      failed: job.failed + missing,
+      engine: outcome.engine,
+      status: failed ? 'failed' : finished ? 'done' : 'running',
+      error: failed ? outcome.modelError : null,
+    });
+
+    log.info('ai.job.chunk', {
+      userId,
+      jobId,
+      kind: 'rename',
+      processed,
+      total: ids.length,
+      suggested: written,
+      unchanged: outcome.unchanged,
+      engine: outcome.engine,
+      fatal: outcome.fatal,
+    });
+
+    const updated = await getJob(ctx.env, userId, jobId);
+
+    const result: AiJobRunResult = {
+      job: toApiJob(updated ?? job),
+      done: finished || failed,
+      suggested: written,
+      autoApplied: 0,
+      rebalanceWarning: false,
+      uncovered: 0,
+      engine: outcome.engine,
+      modelError: outcome.modelError,
     };
     return json(result);
   }

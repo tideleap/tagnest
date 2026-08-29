@@ -4,10 +4,14 @@ import {
   BATCH_SIZE,
   buildCategorizePrompt,
   buildCoarsePrompt,
+  buildRenamePrompt,
   buildTaggingPrompt,
   parseCategorizeResponse,
   parseCoarseResponse,
+  parseRenameResponse,
   parseTaggingResponse,
+  MAX_CATEGORY_DEPTH,
+  makeParsedCategory,
   type CategorizeExample,
   type Example,
   type ParsedCategory,
@@ -19,8 +23,11 @@ import { attachParentTags, synthesizeTaxonomy, type TaxonomyNode } from './taxon
 import {
   cacheKeyFor,
   categoryCacheKeyFor,
+  renameCacheKeyFor,
   type CategoryCache,
   type CategoryCacheEntry,
+  type RenameCache,
+  type RenameCacheEntry,
   type TagCache,
   type TagCacheEntry,
 } from './url-cache';
@@ -36,7 +43,7 @@ import {
 } from './scoring';
 import { feedbackMultiplier, renameByFeedback, type FeedbackProfile } from './feedback';
 import { hostOf } from '../urlkey';
-import type { AiConfig, CandidateSource, EnrichInput, LocalConfig, RawCandidate, TagCandidate, Vocabulary } from './types';
+import type { AiConfig, CandidateSource, EnrichInput, LocalConfig, RawCandidate, TagCandidate, VocabEntry, Vocabulary } from './types';
 import type { AiTopicCount } from '../../../shared/types';
 
 /**
@@ -638,66 +645,103 @@ async function categorizeGroup(
 /**
  * Normalises a raw model placement against the user's tree (C1-3).
  *
- * Rules, each deliberate:
- *  - Both levels pass the 4-pass `resolveTagName` normalisation, so spelling
+ * Structured-organise upgrade: the model now reports a full `path` array of up
+ * to three segments (root → leaf). Rules, each deliberate:
+ *  - Every level passes the 4-pass `resolveTagName` normalisation, so spelling
  *    variants land on existing nodes instead of splitting the tree.
- *  - **Lift**: if the model named a nested node as the top level (e.g.
- *    "前端开发" which lives under "开发技术"), the ancestor chain is prepended.
- *    The stored placement derives its path by walking `parent_id`, so the
- *    suggestion must show that same path — never a shorter one.
- *  - **Consistency**: a resolved subcategory is kept only when it is an
- *    existing child of the resolved top level, or a brand-new node (which is
- *    flagged `isNew` and enters review). An existing node with a different
- *    parent is dropped rather than silently re-homed.
- *  - Depth is capped at 3 levels (mapping rule R6).
+ *  - **Lift**: if the model named a nested node at any level (e.g. "前端开发"
+ *    which lives under "开发技术"), the ancestor chain is prepended so the
+ *    stored path matches what `parent_id` walking produces — never a shorter
+ *    or different one.
+ *  - **Parent-chain consistency**: each resolved level must be an existing
+ *    child of the previously resolved level, or a brand-new node (flagged
+ *    `isNew`, enters review). An existing node with a different parent is
+ *    dropped together with everything after it, rather than silently
+ *    re-homing it.
+ *  - **New-node cut-off**: once a level had to be created, every following
+ *    level must also be new — a deep existing node can never be claimed as
+ *    the child of a node that does not exist yet.
+ *  - Depth is capped at `MAX_CATEGORY_DEPTH` (3); deeper segments are dropped.
+ *
+ * Legacy two-field placements (`{category, subcategory}`) still flow through
+ * here unchanged: they arrive as a two-segment path.
  */
 export function normalizePlacement(
-  parsed: Pick<ParsedCategory, 'category' | 'subcategory'>,
+  parsed: Pick<ParsedCategory, 'path'> & Partial<Pick<ParsedCategory, 'category' | 'subcategory'>>,
   vocab: Vocabulary,
 ): { path: string[]; leafTagId: string | null; isNew: boolean; reuseFactor: number } | null {
-  const top = resolveTagName(parsed.category, vocab);
-  if (!top) return null;
+  // Structured shape first; legacy cache entries (pre-2026-08-29) only carry
+  // the flat two-field view, so derive a path from it rather than dropping
+  // the placement.
+  let segments = parsed.path;
+  if ((!segments || segments.length === 0) && parsed.category) {
+    segments = [parsed.category, ...(parsed.subcategory ? parsed.subcategory.split(' > ') : [])]
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (!segments || segments.length === 0) return null;
 
   const byId = new Map(vocab.entries.map((e) => [e.id, e]));
 
-  let path: string[] = [top.name];
-  let leafTagId = top.tagId;
-  let isNew = top.tagId === null;
-  let reuseFactor = top.confidenceFactor;
+  const path: string[] = [];
+  let leafTagId: string | null = null;
+  let isNew = false;
+  let reuseFactor = 1;
+  /** `undefined` before the first level; afterwards the id of the previous level. */
+  let prevTagId: string | null | undefined = undefined;
+  /** Set once a level had to be created; every later level must be new too. */
+  let createdSoFar = false;
 
-  // Lift a nested "top level" onto its real ancestor chain.
-  if (top.tagId) {
-    const ancestors: string[] = [];
-    let cursor = byId.get(top.tagId);
-    while (cursor?.parentId && ancestors.length < 2) {
-      const parent = byId.get(cursor.parentId);
-      if (!parent) break;
-      ancestors.unshift(parent.name);
-      cursor = parent;
+  for (const segment of segments) {
+    if (path.length >= MAX_CATEGORY_DEPTH) break;
+    const resolved = resolveTagName(segment, vocab);
+    if (!resolved) continue;
+
+    if (resolved.tagId) {
+      const entry = byId.get(resolved.tagId);
+      // Consistency: an existing node is only kept when its real parent is the
+      // previously resolved level (or it is a root when nothing is resolved yet).
+      const parentOk =
+        prevTagId === undefined
+          ? (entry?.parentId ?? null) === null
+          : entry?.parentId === prevTagId;
+      // Cut-off: after a created level, a deep existing node cannot follow.
+      if (!createdSoFar && (parentOk || prevTagId === undefined)) {
+        if (prevTagId === undefined && entry && entry.parentId) {
+          // Lift: the model named a nested node as the top level — prepend its
+          // real ancestor chain so the stored path matches `parent_id` walking.
+          const ancestors: string[] = [];
+          let cursor: VocabEntry | undefined = entry;
+          while (cursor?.parentId && ancestors.length < MAX_CATEGORY_DEPTH - 1) {
+            const parent = byId.get(cursor.parentId);
+            if (!parent) break;
+            ancestors.unshift(parent.name);
+            cursor = parent;
+          }
+          path.push(...ancestors);
+        }
+        path.push(resolved.name);
+        leafTagId = resolved.tagId;
+        reuseFactor = Math.min(reuseFactor, resolved.confidenceFactor);
+        prevTagId = resolved.tagId;
+        continue;
+      }
+      // Parent mismatch (or post-creation claim) — drop this level and
+      // everything after it rather than re-homing the subtree.
+      break;
     }
-    if (ancestors.length > 0) path = [...ancestors, ...path];
+
+    // A brand-new node under the previously resolved level — allowed, but
+    // everything after it must be new as well.
+    path.push(resolved.name);
+    leafTagId = null;
+    isNew = true;
+    reuseFactor = Math.min(reuseFactor, resolved.confidenceFactor);
+    prevTagId = null;
+    createdSoFar = true;
   }
 
-  if (parsed.subcategory) {
-    const sub = resolveTagName(parsed.subcategory, vocab);
-    if (sub) {
-      let keep = false;
-      if (sub.tagId && top.tagId) {
-        keep = byId.get(sub.tagId)?.parentId === top.tagId;
-      } else if (!sub.tagId) {
-        // A new child under the resolved top level — allowed, review-flagged.
-        keep = true;
-      }
-      if (keep && path.length < 3) {
-        path.push(sub.name);
-        leafTagId = sub.tagId;
-        if (!sub.tagId) isNew = true;
-        // The weaker resolution governs: a path is only as solid as its weakest node.
-        reuseFactor = Math.min(reuseFactor, sub.confidenceFactor);
-      }
-    }
-  }
-
+  if (path.length === 0) return null;
   return { path, leafTagId, isNew, reuseFactor };
 }
 
@@ -873,16 +917,20 @@ export async function categorizeBookmarks(
       // spelling, so resolution merges it with the right existing nodes.
       let working = modelParsed;
       if (feedback) {
-        const rawPath = [modelParsed.category, modelParsed.subcategory].filter(Boolean).join(' > ');
+        const rawPath = modelParsed.path.join(' > ');
         const renamed = renameByFeedback(rawPath, feedback);
         if (renamed !== rawPath) {
           const parts = renamed.split('>').map((p) => p.trim()).filter(Boolean);
-          working = {
-            ...modelParsed,
-            category: parts[0] ?? modelParsed.category,
-            subcategory: parts.length > 1 ? parts.slice(1).join(' > ') : null,
-            reason: `按你以往偏好改用「${renamed}」`,
-          };
+          const rebuilt = makeParsedCategory(
+            parts.length > 0 ? parts : modelParsed.path,
+            modelParsed,
+          );
+          if (rebuilt) {
+            working = {
+              ...rebuilt,
+              reason: `按你以往偏好改用「${renamed}」`,
+            };
+          }
         }
       }
 
@@ -909,36 +957,35 @@ export async function categorizeBookmarks(
     if (!candidate) {
       const fb = domainFallbackTag(input);
       if (fb) {
-        const normalized = normalizePlacement({ category: fb.name, subcategory: null }, vocab);
+        const normalized = normalizePlacement({ path: [fb.name] }, vocab);
         const path = normalized && normalized.path.length > 0 ? normalized.path : [fb.name];
-        const parsedFb: ParsedCategory & { source: CandidateSource } = {
-          category: fb.name,
-          subcategory: null,
+        const parsedFb = makeParsedCategory([fb.name], {
           confidence: fb.confidence,
           reason: fb.reason,
           isNew: false,
           needsReview: true,
-          source: 'fallback',
-        };
-        const scored = scorePlacement(
-          parsedFb,
-          normalized ?? { path, leafTagId: null, isNew: false, reuseFactor: 1 },
-          input,
-          inputs,
-          index,
-          vocab,
-          feedback,
-        );
-        candidate = {
-          path,
-          tagId: normalized?.leafTagId ?? null,
-          confidence: scored?.confidence ?? fb.confidence,
-          source: 'fallback',
-          reason: fb.reason,
-          isNew: normalized?.isNew ?? true,
-          needsReview: true,
-        };
-        uncovered += 1;
+        });
+        if (parsedFb) {
+          const scored = scorePlacement(
+            { ...parsedFb, source: 'fallback' as const },
+            normalized ?? { path, leafTagId: null, isNew: false, reuseFactor: 1 },
+            input,
+            inputs,
+            index,
+            vocab,
+            feedback,
+          );
+          candidate = {
+            path,
+            tagId: normalized?.leafTagId ?? null,
+            confidence: scored?.confidence ?? fb.confidence,
+            source: 'fallback',
+            reason: fb.reason,
+            isNew: normalized?.isNew ?? true,
+            needsReview: true,
+          };
+        }
+        if (candidate) uncovered += 1;
       }
     }
 
@@ -970,4 +1017,236 @@ export function aggregateCategoryTopics(results: CategorizeResult[]): AiTopicCou
   return [...counts.entries()]
     .map(([topic, count]) => ({ topic, count }))
     .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+}
+
+/* ------------------------------------------------------------------ *
+ * Rename mode (structured-organise Phase B)
+ *
+ * Renaming mirrors `categorizeBookmarks` in robustness but is much
+ * simpler: there is no tree to normalise against, no scoring, no
+ * fallback engine. A rename suggestion only exists when the model
+ * actually proposes a *different* title — the conservative prompt makes
+ * `unchanged` a first-class outcome, and every `unchanged`/identical
+ * row is dropped here so the review queue only holds real edits.
+ * ------------------------------------------------------------------ */
+
+/** A single rename proposal, ready for the review queue. */
+export interface RenameCandidate {
+  /** Current bookmark title. */
+  original: string;
+  /** Proposed cleaned title (guaranteed non-empty, ≠ original). */
+  title: string;
+  /** Short justification shown in the review UI. */
+  reason: string;
+}
+
+export interface RenameResult {
+  bookmarkId: string;
+  /** Null when the title needs no change (model said unchanged or agreed). */
+  rename: RenameCandidate | null;
+}
+
+export interface RenameOutcome {
+  results: RenameResult[];
+  engine: EngineKind;
+  modelError: string | null;
+  fatal: boolean;
+  /** Bookmarks whose titles were already fine — surfaced in run stats. */
+  unchanged: number;
+}
+
+export interface RenameOptions {
+  /** Null when no model is available; without a model there is nothing to do. */
+  config: AiConfig | null;
+  fetchImpl?: typeof fetch;
+  /**
+   * Per-URL rename cache (`ai:rename:` namespace). Optional exactly like
+   * the other caches: absent ⇒ always call the model.
+   */
+  renameCache?: RenameCache;
+}
+
+/**
+ * Calls the model for one rename batch with the same retry + repair-turn
+ * discipline as the other modes: transient failures retry, fatal errors
+ * stop, and a response that parses to nothing earns one strict-JSON
+ * repair turn before giving up.
+ */
+async function callRenameWithRetryAndRepair(
+  config: AiConfig,
+  prompt: string,
+  batchSize: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ items: import('./prompt').ParsedRenameItem[]; fatal: boolean; error: string | null }> {
+  const result = await withRetry(
+    () => callProvider(config, prompt, fetchImpl),
+    (outcome) => {
+      if (outcome.ok) return 'ok';
+      if (isFatal(outcome.error)) return 'stop';
+      if (isRetryable(outcome.error)) return 'retry';
+      return 'stop';
+    },
+  );
+
+  if (!result.ok) {
+    return { items: [], fatal: isFatal(result.error), error: result.error?.message ?? '模型调用失败' };
+  }
+
+  let items = parseRenameResponse(result.text, batchSize);
+  if (items.length === 0) {
+    const repairOutcome = await callProvider(
+      config,
+      `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
+      fetchImpl,
+    );
+    if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
+      const repaired = parseRenameResponse(repairOutcome.text, batchSize);
+      if (repaired.length > 0) items = repaired;
+    }
+  }
+  return { items, fatal: false, error: null };
+}
+
+/**
+ * Renames one group of bookmarks with the same precise-compensation policy as
+ * the other modes: a partial response re-sends only the missing bookmarks (up
+ * to COMPENSATE_DEPTH), so a truncated answer does not silently skip titles.
+ */
+async function renameGroup(
+  group: BookmarkInput[],
+  localIndices: number[],
+  depth: number,
+  opts: { config: AiConfig; fetchImpl?: typeof fetch },
+): Promise<{ items: Map<number, import('./prompt').ParsedRenameItem>; fatal: boolean; error: string | null }> {
+  const out = new Map<number, import('./prompt').ParsedRenameItem>();
+  if (group.length === 0) return { items: out, fatal: false, error: null };
+
+  const prompt = buildRenamePrompt(group);
+  const { items, fatal, error } = await callRenameWithRetryAndRepair(
+    opts.config,
+    prompt,
+    group.length,
+    opts.fetchImpl,
+  );
+  if (fatal) return { items: out, fatal: true, error };
+
+  for (const item of items) {
+    const li = localIndices[item.index];
+    if (li !== undefined) out.set(li, item);
+  }
+
+  const missing = localIndices.filter((li) => !out.has(li));
+  if (missing.length > 0 && missing.length < localIndices.length && depth < COMPENSATE_DEPTH) {
+    const missingInputs = missing.map((li) => group[localIndices.indexOf(li)]);
+    const sub = await renameGroup(missingInputs, missing, depth + 1, opts);
+    if (sub.fatal) return { items: out, fatal: true, error: sub.error };
+    for (const [li, item] of sub.items) out.set(li, item);
+  }
+  return { items: out, fatal: false, error: null };
+}
+
+/**
+ * Produces a rename proposal for every input bookmark.
+ *
+ * Mirrors `categorizeBookmarks` in robustness: never throws; a failing model
+ * degrades to "no suggestions" and reports why; a fatally misconfigured model
+ * stops the job via `fatal`. Deterministic guards keep junk out of the queue:
+ *  - `unchanged` rows become no-suggestion (the model approved the title);
+ *  - rows whose proposed title equals the current one become no-suggestion;
+ *  - cached entries are re-checked against the *current* title, so a title
+ *    edited since the cache was written is never "renamed" back.
+ */
+export async function renameBookmarks(
+  inputs: BookmarkInput[],
+  options: RenameOptions,
+): Promise<RenameOutcome> {
+  if (inputs.length === 0) {
+    return { results: [], engine: 'none', modelError: null, fatal: false, unchanged: 0 };
+  }
+
+  const { config } = options;
+
+  const renames = new Map<number, RenameCacheEntry>();
+  let modelContributed = false;
+  let modelError: string | null = null;
+  let fatal = false;
+
+  // Renaming is content-first like the other modes: `autoTag` is the master
+  // switch for AI organisation. Without a config there is nothing to propose.
+  const wantModel = Boolean(config && config.autoTag);
+
+  if (wantModel && config) {
+    // Rename cares about title + URL + description; a full page fetch adds
+    // latency without helping title cleanup, so enrichment is skipped here.
+    const applyItem = (globalIndex: number, entry: RenameCacheEntry) => {
+      modelContributed = true;
+      renames.set(globalIndex, entry);
+    };
+
+    // Cache-first: URLs already cleaned under this prompt version + model skip
+    // the model entirely. Lookups run in parallel — one round trip.
+    const cache = options.renameCache;
+    const pending: Array<{ input: BookmarkInput; globalIndex: number; key: string }> = [];
+    if (cache) {
+      const keys = await Promise.all(inputs.map((input) => renameCacheKeyFor(input.url, config.model)));
+      const hits = await Promise.all(keys.map((key) => cache.get(key)));
+      inputs.forEach((input, index) => {
+        const hit = hits[index];
+        if (hit) applyItem(index, hit);
+        else pending.push({ input, globalIndex: index, key: keys[index] });
+      });
+    } else {
+      inputs.forEach((input, index) => pending.push({ input, globalIndex: index, key: '' }));
+    }
+
+    for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+      const slice = pending.slice(start, start + BATCH_SIZE);
+      const sliceInputs = slice.map((p) => p.input);
+
+      const groupResult = await renameGroup(sliceInputs, sliceInputs.map((_, k) => k), 0, {
+        config,
+        fetchImpl: options.fetchImpl,
+      });
+      if (groupResult.fatal) {
+        fatal = true;
+        if (groupResult.error) modelError = groupResult.error;
+        break;
+      }
+
+      for (const [localIdx, item] of groupResult.items) {
+        const globalIndex = slice[localIdx].globalIndex;
+        if (!item.rename) continue;
+        const entry: RenameCacheEntry = { ...item.rename };
+        applyItem(globalIndex, entry);
+        // Write-back: remember this URL's cleaned title. Cache even unchanged
+        // verdicts — a "this title is fine" answer is worth remembering so a
+        // re-run never re-bills the decision.
+        if (cache) await cache.put(slice[localIdx].key, entry);
+      }
+    }
+  } else if (!config) {
+    modelError = '未配置可用的模型，跳过命名清理';
+  }
+
+  let unchanged = 0;
+  const results: RenameResult[] = inputs.map((input, index) => {
+    let candidate: RenameCandidate | null = null;
+
+    const parsed = renames.get(index);
+    if (parsed && !parsed.unchanged) {
+      const title = parsed.title.trim();
+      // Only a *different* non-empty title is a real suggestion.
+      if (title && title !== input.title.trim()) {
+        candidate = { original: input.title, title, reason: parsed.reason };
+      }
+    }
+    if (!candidate) unchanged += 1;
+
+    return { bookmarkId: input.id, rename: candidate };
+  });
+
+  let engine: EngineKind = 'none';
+  if (modelContributed) engine = 'model';
+
+  return { results, engine, modelError, fatal, unchanged };
 }

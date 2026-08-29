@@ -25,6 +25,23 @@ const MAGIC_RADIUS = /^rounded-\[/;
 const MAGIC_SHADOW = /^shadow-\[/;
 const SEMI_SURFACE = /^bg-surface\//;
 
+/**
+ * Colour utilities resolved from CSS custom properties at runtime
+ * (e.g. `bg-[var(--tag-dot)]` from tagColorVars) are part of the dynamic
+ * theming contract, not magic values. The bracket value sits after the
+ * utility prefix (bg-/text-/ring-…), so we test for `var(`/`--` right
+ * after the opening bracket rather than at the start of the token.
+ */
+const DYNAMIC_VARIABLE = /-\[(var\(|--)/;
+
+/**
+ * Legitimate frosted-glass overlays pair a semi-transparent surface with
+ * `backdrop-blur` on the same element. The rule evaluates one token at a
+ * time, so glass usage cannot be seen here — instead callers pass the full
+ * fragment and we skip SEMI_SURFACE when a sibling token provides the blur.
+ */
+const LEGIT_GLASS_BLUR = /backdrop-blur/;
+
 /** Pull a className string out of a Literal or TemplateLiteral node. */
 function classFragments(valueNode) {
   if (!valueNode) return [];
@@ -65,8 +82,9 @@ export default {
     },
   },
   create(context) {
-    function check(token, node) {
+    function check(token, node, isGlass = false) {
       if (!token) return;
+      if (DYNAMIC_VARIABLE.test(token)) return;
       if (
         MAGIC_COLOUR.test(token) ||
         MAGIC_SPACING.test(token) ||
@@ -74,7 +92,7 @@ export default {
         MAGIC_SHADOW.test(token)
       ) {
         context.report({ node, messageId: 'magicValue', data: { cls: token } });
-      } else if (SEMI_SURFACE.test(token)) {
+      } else if (SEMI_SURFACE.test(token) && !isGlass) {
         context.report({ node, messageId: 'semiSurface', data: { cls: token } });
       }
     }
@@ -84,7 +102,12 @@ export default {
         if (!node.name || node.name.name !== 'className') return;
         const fragments = classFragments(node.value);
         fragments.forEach((fragment) => {
-          tokensOf(fragment).forEach((token) => check(token, node.value));
+          // A backdrop-blur sibling legitimises the semi-transparent surface
+          // (frosted glass); suppress SEMI_SURFACE for the whole fragment.
+          const isGlass = LEGIT_GLASS_BLUR.test(fragment);
+          tokensOf(fragment).forEach((token) =>
+            check(token, node.value, isGlass),
+          );
         });
       },
     };

@@ -300,6 +300,44 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         .filter((row) => row.name !== '');
     }
 
+    // undoRenameJob row fetch — shape: SELECT s.id AS sid, s.bookmark_id,
+    // s.tag_name AS new_title, s.topic AS original_title, b.title AS live_title
+    // ... KIND = 'RENAME' AND S.STATUS = 'ACCEPTED'. Params: [userId, userId, jobId].
+    if (sql.startsWith('SELECT S.ID AS SID, S.BOOKMARK_ID, S.TAG_NAME AS NEW_TITLE')) {
+      const userId = String(params[0]);
+      const jobId = String(params[2]);
+      return state.tag_suggestions
+        .filter(
+          (s) =>
+            s.user_id === userId &&
+            s.job_id === jobId &&
+            s.status === 'accepted' &&
+            (s.kind ?? 'tag') === 'rename',
+        )
+        .map((s) => {
+          const b = state.bookmarks.find((x) => x.id === s.bookmark_id);
+          return {
+            sid: s.id,
+            bookmark_id: s.bookmark_id,
+            new_title: s.tag_name,
+            original_title: s.topic ?? null,
+            live_title: b?.title ?? '',
+          };
+        });
+    }
+
+    // saveRenameSuggestions — CURRENT-title lookup (dedupe anchor / undo basis).
+    // Shape: SELECT TITLE FROM BOOKMARKS B WHERE B.ID = ? AND B.USER_ID = ? ...
+    // Checked before resolveScope's `SELECT ID FROM BOOKMARKS` listing branch.
+    if (sql.startsWith('SELECT TITLE FROM BOOKMARKS B WHERE B.ID = ?')) {
+      const bookmarkId = String(params[0]);
+      const userId = String(params[1]);
+      const b = state.bookmarks.find(
+        (x) => x.id === bookmarkId && x.user_id === userId && x.deleted_at === null,
+      );
+      return b ? [{ title: b.title }] : [];
+    }
+
     // resolveScope: explicit ids
     if (sql.startsWith('SELECT ID FROM BOOKMARKS') && sql.includes('ID IN')) {
       const userId = String(params[0]);
@@ -484,7 +522,11 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     if (sql.startsWith('SELECT S.ID, S.BOOKMARK_ID, S.TAG_NAME, S.TAG_ID, S.CONFIDENCE, S.SOURCE')) {
       const userId = String(params[0]);
       const ids = params.slice(1).map(String);
-      const kind = sql.includes("S.KIND = 'CATEGORY'") ? 'category' : 'tag';
+      const kind = sql.includes("S.KIND = 'CATEGORY'")
+        ? 'category'
+        : sql.includes("S.KIND = 'RENAME'")
+          ? 'rename'
+          : 'tag';
       return state.tag_suggestions
         .filter(
           (s) =>
@@ -503,6 +545,35 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
             confidence: s.confidence,
             source: s.source,
             job_id: s.job_id,
+            bookmark_url: b?.url ?? '',
+            bookmark_title: b?.title ?? '',
+          };
+        });
+    }
+
+    // decideRenameSuggestions row fetch — shape: SELECT s.id, s.bookmark_id,
+    // s.tag_name, s.topic, s.reason ... JOIN BOOKMARKS B ... KIND = 'RENAME'.
+    // Params (queryInChunks): [userId, ...ids]. Returns the LIVE bookmark title
+    // so the store can enforce its edit-wins guard.
+    if (sql.startsWith('SELECT S.ID, S.BOOKMARK_ID, S.TAG_NAME, S.TOPIC, S.REASON')) {
+      const userId = String(params[0]);
+      const ids = params.slice(1).map(String);
+      return state.tag_suggestions
+        .filter(
+          (s) =>
+            s.user_id === userId &&
+            s.status === 'pending' &&
+            (s.kind ?? 'tag') === 'rename' &&
+            ids.includes(s.id),
+        )
+        .map((s) => {
+          const b = state.bookmarks.find((x) => x.id === s.bookmark_id);
+          return {
+            id: s.id,
+            bookmark_id: s.bookmark_id,
+            tag_name: s.tag_name,
+            topic: s.topic ?? null,
+            reason: s.reason,
             bookmark_url: b?.url ?? '',
             bookmark_title: b?.title ?? '',
           };
@@ -726,7 +797,11 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     if (sql.startsWith("UPDATE TAG_SUGGESTIONS SET STATUS = 'PENDING', DECIDED_AT = NULL")) {
       const userId = String(params[0]);
       const jobId = String(params[1]);
-      const kind = sql.includes("KIND = 'CATEGORY'") ? 'category' : 'tag';
+      const kind = sql.includes("KIND = 'CATEGORY'")
+        ? 'category'
+        : sql.includes("KIND = 'RENAME'")
+          ? 'rename'
+          : 'tag';
       const checkSuperseded = kind === 'tag';
       let changes = 0;
       for (const s of state.tag_suggestions) {
@@ -773,6 +848,43 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return before - state.tag_suggestions.length;
     }
 
+    // decideRenameSuggestions / undoRenameJob — title rewrite (params:
+    // [newTitle, ts, bookmarkId, userId]). Distinguished from the other
+    // BOOKMARKS updates by the TITLE = ? lead column.
+    if (sql.startsWith('UPDATE BOOKMARKS SET TITLE = ?')) {
+      const newTitle = String(params[0]);
+      const ts = String(params[1]);
+      const bookmarkId = String(params[2]);
+      const userId = String(params[3]);
+      const b = state.bookmarks.find((x) => x.id === bookmarkId && x.user_id === userId);
+      if (!b) return 0;
+      b.title = newTitle;
+      b.updated_at = ts;
+      return 1;
+    }
+
+    // saveRenameSuggestions — delete this bookmark's pending RENAME proposals
+    // (delete-then-insert). Matched on the KIND = 'RENAME' literal before the
+    // generic tag/category delete branch below.
+    if (
+      sql.startsWith('DELETE FROM TAG_SUGGESTIONS WHERE BOOKMARK_ID = ?') &&
+      sql.includes("KIND = 'RENAME'")
+    ) {
+      const bookmarkId = String(params[0]);
+      const userId = String(params[1]);
+      const before = state.tag_suggestions.length;
+      state.tag_suggestions = state.tag_suggestions.filter(
+        (s) =>
+          !(
+            s.bookmark_id === bookmarkId &&
+            s.user_id === userId &&
+            (s.kind ?? 'tag') === 'rename' &&
+            s.status === 'pending'
+          ),
+      );
+      return before - state.tag_suggestions.length;
+    }
+
     // saveSuggestions / saveCategorySuggestions: DELETE pending for a bookmark,
     // scoped by kind so a tagging run never wipes category proposals (and vice versa).
     if (sql.startsWith('DELETE FROM TAG_SUGGESTIONS') && sql.includes('STATUS =')) {
@@ -792,13 +904,27 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return before - state.tag_suggestions.length;
     }
 
-    // saveSuggestions / saveCategorySuggestions: INSERT ... SELECT ... WHERE NOT EXISTS (...)
+    // saveSuggestions / saveCategorySuggestions / saveRenameSuggestions:
+    // INSERT ... SELECT ... WHERE NOT EXISTS (...).
     if (sql.startsWith('INSERT INTO TAG_SUGGESTIONS') && sql.includes('WHERE NOT EXISTS')) {
+      const isRename = sql.includes("'RENAME', 'PENDING'");
       const isCategory = sql.includes("'CATEGORY', 'PENDING'");
-      const kind = isCategory ? 'category' : 'tag';
+      const kind = isRename ? 'rename' : isCategory ? 'category' : 'tag';
+      // Rename binds (id, user, bookmark, job, tag_name, confidence, reason,
+      // topic, ts, bookmark2, tagName2) — tag_id is a literal NULL and source
+      // is the literal 'model', so every parameter after tag_name shifts down
+      // one slot. Tag/category bind (id, user, bookmark, job, tag_name, tag_id,
+      // confidence, source, reason, topic, needs_review, feedback_boosted, ts).
       const bookmarkId = String(params[2]);
       const tagName = String(params[4]);
-      const tagId = params[5] == null ? null : String(params[5]);
+      const tagId = isRename ? null : params[5] == null ? null : String(params[5]);
+      const confidence = isRename ? Number(params[5]) : Number(params[6]);
+      const source = isRename ? 'model' : String(params[7]);
+      const reason = ((isRename ? params[6] : params[8]) as string | null) ?? null;
+      const topic = ((isRename ? params[7] : params[9]) as string | null) ?? null;
+      const needsReview = isRename ? 0 : params[10] == null ? 0 : Number(params[10]);
+      const feedbackBoosted = isRename ? 0 : params[11] == null ? 0 : Number(params[11]);
+      const createdAt = String(isRename ? params[8] : params[12]);
       if (isCategory) {
         // Guard 1: bookmark already placed exactly on this category node.
         // (SQL `bpc.tag_id = ?` never matches NULL, so a null tagId passes through.)
@@ -808,8 +934,9 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         ) {
           return 0;
         }
-      } else if (tagId && state.bookmark_tags.some((bt) => bt.bookmark_id === bookmarkId && bt.tag_id === tagId)) {
-        // Guard 1: bookmark already carries this tag.
+      } else if (!isRename && tagId && state.bookmark_tags.some((bt) => bt.bookmark_id === bookmarkId && bt.tag_id === tagId)) {
+        // Guard 1: bookmark already carries this tag. (Rename has no tag
+        // placement — its only Guard 1 is the equal-title skip in the store.)
         return 0;
       }
       // Guard 2: a rejected suggestion of the SAME KIND with this name already exists.
@@ -828,16 +955,16 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         job_id: params[3] == null ? null : String(params[3]),
         tag_name: tagName,
         tag_id: tagId,
-        confidence: Number(params[6]),
-        source: String(params[7]),
-        reason: (params[8] as string | null) ?? null,
-        topic: (params[9] as string | null) ?? null,
-        needs_review: params[10] == null ? 0 : Number(params[10]),
-        feedback_boosted: params[11] == null ? 0 : Number(params[11]),
+        confidence,
+        source,
+        reason,
+        topic,
+        needs_review: needsReview,
+        feedback_boosted: feedbackBoosted,
         kind,
         status: 'pending',
         decided_at: null,
-        created_at: String(params[12]),
+        created_at: createdAt,
       });
       return 1;
     }

@@ -94,7 +94,7 @@ export function FeedsPage() {
       />
 
       <Reveal as="section" delay={80} className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
-        <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">添加订阅</h2>
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">添加订阅</h2>
         <Input
           label="订阅源地址"
           placeholder="https://example.com/feed.xml"
@@ -133,7 +133,7 @@ export function FeedsPage() {
 
       <Reveal as="section" delay={140} className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">我的订阅</h2>
+          <h2 className="font-display text-panel font-semibold tracking-tight text-ink">我的订阅</h2>
           <Button
             variant="ghost"
             size="sm"

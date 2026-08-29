@@ -233,7 +233,7 @@ function RecentBookmarks() {
   }
   if (isError || items.length === 0) {
     return (
-      <p className="rounded-xl border border-line bg-surface/60 px-4 py-6 text-center text-sm text-ink-faint">
+      <p className="rounded-xl border border-line bg-surface px-4 py-6 text-center text-sm text-ink-faint">
         还没有书签，添加第一条开始搭建秩序。
       </p>
     );
@@ -487,7 +487,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-line/60 bg-surface/50 py-4">
+      <div className="overflow-hidden rounded-2xl border border-line/60 bg-surface py-4">
         <KineticText duration={30} separator={<Sparkles size={14} className="text-brand-accent" aria-hidden />}>
           {['书签', '标签', 'AI 整理', '网页快照', '时间线', '集合', '检索', '归档'].map((w) => (
             <span key={w} className="flex items-center gap-2.5 text-sm font-medium tracking-wide text-ink-soft">

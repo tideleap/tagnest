@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, ExternalLink, FolderTree, Pencil, Sparkles, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  ExternalLink,
+  FolderTree,
+  Pencil,
+  PenLine,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import type { AiSuggestion } from '@shared/types';
 import { Badge, Button, ConfirmDialog, EmptyState, SegmentedControl, Skeleton } from '@/components/ui';
 import { cx } from '@/lib/cx';
@@ -44,11 +53,11 @@ interface Props {
   /**
    * CategorySync (C2-2): which proposal queue this view is reviewing. 'tag'
    * (default) shows loose-label proposals; 'category' shows single-placement
-   * category paths. The value is forwarded on every accept/reject so the
-   * server writes to the right store (`bookmark_tags` vs
-   * `bookmark_primary_category`).
+   * category paths; 'rename' shows title clean-ups. The value is forwarded on
+   * every accept/reject so the server writes to the right store
+   * (`bookmark_tags` vs `bookmark_primary_category` vs `bookmarks.title`).
    */
-  kind?: 'tag' | 'category';
+  kind?: 'tag' | 'category' | 'rename';
 }
 
 interface Group {
@@ -176,9 +185,13 @@ function groupByTopic(suggestions: AiSuggestion[]): TopicGroup[] {
 export function SuggestionReview({ suggestions, loading, failed, onRetry, kind = 'tag' }: Props) {
   const decide = useDecideSuggestions();
   const isCategory = kind === 'category';
+  const isRename = kind === 'rename';
   // Locally hidden groups: the server round trip is fast but not instant, and
   // a card that lingers after a click reads as a broken button.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // The rename track is always grouped by bookmark: every bookmark holds at
+  // most one title proposal, and the topic/hierarchy views carry tag/queue
+  // semantics that have no meaning for titles.
   const [grouping, setGrouping] = useState<'bookmark' | 'topic' | 'hierarchy'>('bookmark');
   const [confirmAll, setConfirmAll] = useState(false);
 
@@ -279,16 +292,18 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
         icon={<Sparkles size={22} />}
         title="没有待确认的建议"
         description={
-          isCategory
-            ? '运行一次「精确分类」，AI 会在这里列出它为每条书签推荐的唯一分类路径，确认后才会写入。'
-            : '运行一次整理，AI 会在这里列出它为每条书签推荐的标签，确认后才会写入。'
+          isRename
+            ? '运行一次「命名清理」，AI 会在这里列出它建议改写的标题（原标题 → 新标题），确认后才会写入。拿不准的标题不会被提出建议。'
+            : isCategory
+              ? '运行一次「精确分类」，AI 会在这里列出它为每条书签推荐的唯一分类路径，确认后才会写入。'
+              : '运行一次整理，AI 会在这里列出它为每条书签推荐的标签，确认后才会写入。'
         }
       />
     );
   }
 
   const totalTags = visible.length;
-  const unit = isCategory ? '分类' : '标签';
+  const unit = isCategory ? '分类' : isRename ? '命名' : '标签';
 
   return (
     <div className="flex flex-col gap-3">
@@ -312,14 +327,16 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
           ]}
         />
         <div className="ml-auto flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={decide.isPending || safeIds.length === 0}
-            onClick={() => applyByIds(safeIds)}
-          >
-            安全应用（≥80%，{safeIds.length}）
-          </Button>
+          {!isRename && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={decide.isPending || safeIds.length === 0}
+              onClick={() => applyByIds(safeIds)}
+            >
+              安全应用（≥80%，{safeIds.length}）
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -340,7 +357,18 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
         </div>
       </div>
 
-      {grouping === 'topic' ? (
+      {isRename ? (
+        <BookmarkGroupList
+          groups={groups}
+          acceptOne={acceptOne}
+          rejectOne={rejectOne}
+          renameOne={renameOne}
+          applyByIds={applyByIds}
+          rejectByIds={rejectByIds}
+          decidePending={decide.isPending}
+          isRename={isRename}
+        />
+      ) : grouping === 'topic' ? (
         <TopicGroupList
           groups={topicGroups}
           acceptOne={acceptOne}
@@ -349,6 +377,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
           applyByIds={applyByIds}
           rejectByIds={rejectByIds}
           decidePending={decide.isPending}
+          isRename={isRename}
         />
       ) : grouping === 'hierarchy' ? (
         <HierarchyGroupList
@@ -359,6 +388,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
           applyByIds={applyByIds}
           rejectByIds={rejectByIds}
           decidePending={decide.isPending}
+          isRename={isRename}
         />
       ) : (
         <BookmarkGroupList
@@ -369,6 +399,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
           applyByIds={applyByIds}
           rejectByIds={rejectByIds}
           decidePending={decide.isPending}
+          isRename={isRename}
         />
       )}
 
@@ -379,11 +410,22 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
           setConfirmAll(false);
           applyByIds(allIds);
         }}
-        title={isCategory ? '确认应用全部分类建议' : '确认应用全部标签建议'}
+        title={
+          isRename
+            ? '确认应用全部命名建议'
+            : isCategory
+              ? '确认应用全部分类建议'
+              : '确认应用全部标签建议'
+        }
         tone="default"
         confirmLabel="全部应用"
         message={
-          isCategory ? (
+          isRename ? (
+            <span>
+              将改写 <b>{allIds.length}</b> 条书签的标题。每条改写都可以在任务历史中一键撤销
+              （撤销会恢复原标题；之后人工改过的标题不会被覆盖）。
+            </span>
+          ) : isCategory ? (
             <span>
               将为 <b>{allIds.length}</b> 条书签写入唯一主分类。确认后这些建议会立即写入，
               且无法一次性撤销。
@@ -412,6 +454,7 @@ function BookmarkGroupList({
   renameOne,
   applyByIds,
   rejectByIds,
+  isRename,
 }: {
   groups: Group[];
   acceptOne: (item: AiSuggestion) => void;
@@ -420,6 +463,7 @@ function BookmarkGroupList({
   applyByIds: (ids: string[]) => void;
   rejectByIds: (ids: string[]) => void;
   decidePending: boolean;
+  isRename: boolean;
 }) {
   return (
     <ul className="flex flex-col gap-2">
@@ -486,6 +530,7 @@ function BookmarkGroupList({
                   onAccept={() => acceptOne(item)}
                   onReject={() => rejectOne(item)}
                   onRename={(name) => renameOne(item, name)}
+                  isRenameRow={isRename}
                 />
               </li>
             ))}
@@ -496,14 +541,14 @@ function BookmarkGroupList({
   );
 }
 
-function TopicGroupList({
-  groups,
+function TopicGroupList({  groups,
   acceptOne,
   rejectOne,
   renameOne,
   applyByIds,
   rejectByIds,
   decidePending,
+  isRename,
 }: {
   groups: TopicGroup[];
   acceptOne: (item: AiSuggestion) => void;
@@ -512,6 +557,7 @@ function TopicGroupList({
   applyByIds: (ids: string[]) => void;
   rejectByIds: (ids: string[]) => void;
   decidePending: boolean;
+  isRename: boolean;
 }) {
   return (
     <ul className="flex flex-col gap-3">
@@ -554,6 +600,7 @@ function TopicGroupList({
                   onAccept={() => acceptOne(item)}
                   onReject={() => rejectOne(item)}
                   onRename={(name) => renameOne(item, name)}
+                  isRenameRow={isRename}
                 />
               </li>
             ))}
@@ -572,6 +619,7 @@ function HierarchyGroupList({
   applyByIds,
   rejectByIds,
   decidePending,
+  isRename,
 }: {
   groups: HierarchyGroup[];
   acceptOne: (item: AiSuggestion) => void;
@@ -580,6 +628,7 @@ function HierarchyGroupList({
   applyByIds: (ids: string[]) => void;
   rejectByIds: (ids: string[]) => void;
   decidePending: boolean;
+  isRename: boolean;
 }) {
   return (
     <ul className="flex flex-col gap-3">
@@ -650,6 +699,7 @@ function HierarchyGroupList({
                           onAccept={() => acceptOne(item)}
                           onReject={() => rejectOne(item)}
                           onRename={(name) => renameOne(item, name)}
+                          isRenameRow={isRename}
                         />
                       </li>
                     ))}
@@ -688,6 +738,7 @@ function HierarchyGroupList({
                           onAccept={() => acceptOne(item)}
                           onReject={() => rejectOne(item)}
                           onRename={(name) => renameOne(item, name)}
+                          isRenameRow={isRename}
                         />
                       </li>
                     ))}
@@ -707,11 +758,15 @@ function TagProposal({
   onAccept,
   onReject,
   onRename,
+  isRenameRow = false,
 }: {
   item: AiSuggestion;
   onAccept: () => void;
   onReject: () => void;
   onRename: (name: string) => void;
+  /** Rename queue row: `topic` is the ORIGINAL title, `tagName` the proposed
+   *  one — rendered as a before → after comparison instead of a tag pill. */
+  isRenameRow?: boolean;
 }) {
   const [decided, setDecided] = useState<'accept' | 'reject' | null>(null);
   const [editing, setEditing] = useState(false);
@@ -725,11 +780,28 @@ function TagProposal({
   const isCategoryRow = item.kind === 'category';
 
   if (decided) {
+    if (isRenameRow) {
+      return (
+        <span
+          className={cx(
+            'inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs',
+            decided === 'accept'
+              ? 'bg-positive-soft text-positive-ink'
+              : 'bg-sunken text-ink-faint',
+          )}
+        >
+          {decided === 'accept' ? <Check size={12} /> : <X size={12} />}
+          {item.topic ?? item.bookmarkTitle} → {label}
+        </span>
+      );
+    }
     return (
       <span
         className={cx(
           'inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs',
-          decided === 'accept' ? 'bg-positive-soft text-positive-ink' : 'bg-sunken text-ink-faint',
+          decided === 'accept'
+            ? 'bg-positive-soft text-positive-ink'
+            : 'bg-sunken text-ink-faint',
         )}
       >
         {decided === 'accept' ? <Check size={12} /> : <X size={12} />}
@@ -737,6 +809,121 @@ function TagProposal({
       </span>
     );
   }
+
+  // --- Rename row: before → after title comparison -------------------------
+  if (isRenameRow) {
+    const original = item.topic ?? item.bookmarkTitle;
+    const proposed = item.tagName;
+
+    if (editing) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-1 py-0.5">
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const name = draft.trim();
+                if (name && name !== proposed) {
+                  setLabel(name);
+                  setDecided('accept');
+                  onRename(name);
+                } else {
+                  setEditing(false);
+                }
+              } else if (e.key === 'Escape') {
+                setEditing(false);
+              }
+            }}
+            className="w-40 rounded bg-canvas px-1.5 py-0.5 text-2xs text-ink outline-none ring-1 ring-line focus:ring-brand"
+            aria-label="编辑新标题"
+          />
+          <button
+            type="button"
+            aria-label="确认修改"
+            className="rounded p-1 text-positive-ink transition-colors hover:bg-positive-soft"
+            onClick={() => {
+              const name = draft.trim();
+              if (name && name !== proposed) {
+                setLabel(name);
+                setDecided('accept');
+                onRename(name);
+              } else {
+                setEditing(false);
+              }
+            }}
+          >
+            <Check size={12} />
+          </button>
+          <button
+            type="button"
+            aria-label="取消修改"
+            className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover"
+            onClick={() => setEditing(false)}
+          >
+            <X size={12} />
+          </button>
+        </span>
+      );
+    }
+
+    return (
+      <span
+        title={item.reason ?? undefined}
+        className={cx(
+          'inline-flex flex-col items-start gap-0.5 rounded-md border pl-2 pr-1 text-2xs',
+          low ? 'border-dashed border-caution/60 text-ink-soft' : 'border-line text-ink',
+        )}
+      >
+        <span className="flex flex-wrap items-center gap-1">
+          <PenLine size={11} aria-hidden className="shrink-0 text-brand-accent" />
+          <span className="max-w-[12rem] truncate text-ink-faint line-through">{original}</span>
+          <span aria-hidden className="text-ink-faint">→</span>
+          <span className="max-w-[14rem] truncate font-medium">{proposed}</span>
+          <span className="tabular-nums text-ink-faint">{percent}%</span>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(proposed);
+              setEditing(true);
+            }}
+            aria-label="编辑新标题"
+            className="ml-0.5 rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDecided('accept');
+              onAccept();
+            }}
+            aria-label="接受新标题"
+            className="rounded p-1 text-ink-faint transition-colors hover:bg-positive-soft hover:text-positive-ink"
+          >
+            <Check size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDecided('reject');
+              onReject();
+            }}
+            aria-label="保留原标题"
+            className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <X size={12} />
+          </button>
+        </span>
+        {item.reason && (
+          <span className="max-w-[18rem] text-2xs leading-tight text-ink-faint">{item.reason}</span>
+        )}
+      </span>
+    );
+  }
+
+  // --- Tag / category rows (unchanged behaviour) ---------------------------
 
   if (editing) {
     return (
@@ -811,7 +998,7 @@ function TagProposal({
         {item.feedbackBoosted && (
           <span
             title="根据你的历史偏好，这条建议被提升了置信度"
-            className="inline-flex items-center gap-0.5 rounded bg-positive-soft px-1 text-[10px] text-positive-ink"
+            className="inline-flex items-center gap-0.5 rounded bg-positive-soft px-1 text-2xs text-positive-ink"
           >
             <Sparkles size={10} aria-hidden />
             已学习
@@ -852,7 +1039,7 @@ function TagProposal({
         </button>
       </span>
       {item.reason && (
-        <span className="max-w-[14rem] text-[10px] leading-tight text-ink-faint">{item.reason}</span>
+        <span className="max-w-[14rem] text-2xs leading-tight text-ink-faint">{item.reason}</span>
       )}
     </span>
   );

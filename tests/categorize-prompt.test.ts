@@ -31,9 +31,8 @@ describe('buildCategorizePrompt — single-placement semantics (C1-1/C1-2)', () 
     const prompt = buildCategorizePrompt(inputs, vocab);
     expect(prompt).toContain('有且只有一个归属');
     expect(prompt).toContain('这不是打标签');
-    // The schema carries the single-placement shape.
-    expect(prompt).toContain('"category":"一级分类"');
-    expect(prompt).toContain('"subcategory":"二级分类或null"');
+    // The schema carries the path-array single-placement shape.
+    expect(prompt).toContain('"path":["一级分类","二级分类","三级分类"]');
     // No multi-tag schema may leak into the categorize prompt.
     expect(prompt).not.toContain('"tags":[');
   });

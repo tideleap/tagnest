@@ -4,7 +4,7 @@ import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_
 import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
 import { recordFeedback, type FeedbackRecord } from './feedback';
-import type { CategorizeResult, SuggestionResult } from './engine';
+import type { CategorizeResult, RenameResult, SuggestionResult } from './engine';
 
 /**
  * Persistence for the AI tagging workflow: job progress and pending suggestions.
@@ -433,8 +433,10 @@ export interface SuggestionRow {
   /**
    * CategorySync (migration 0024): 'tag' rows propose a loose label; 'category'
    * rows propose a single primary placement whose `tagName` is the full path.
+   * Rename mode (Phase B) adds 'rename' rows: `tagName` is the NEW title,
+   * `topic` carries the ORIGINAL title it would replace (the undo basis).
    */
-  kind: 'tag' | 'category';
+  kind: 'tag' | 'category' | 'rename';
   createdAt: string;
 }
 
@@ -444,7 +446,7 @@ export async function listPendingSuggestions(
   userId: string,
   limit = 200,
   jobId?: string | null,
-  kind?: 'tag' | 'category' | null,
+  kind?: 'tag' | 'category' | 'rename' | null,
 ): Promise<SuggestionRow[]> {
   const jobClause = jobId ? 'AND s.job_id = ?' : '';
   const kindClause = kind ? 'AND s.kind = ?' : '';
@@ -478,7 +480,12 @@ export async function listPendingSuggestions(
     topic: (row.topic as string | null) ?? null,
     needsReview: Number(row.needs_review ?? 0) === 1,
     feedbackBoosted: Number(row.feedback_boosted ?? 0) === 1,
-    kind: String(row.kind ?? 'tag') === 'category' ? 'category' : 'tag',
+    kind:
+      String(row.kind ?? 'tag') === 'category'
+        ? 'category'
+        : String(row.kind ?? 'tag') === 'rename'
+          ? 'rename'
+          : 'tag',
     createdAt: String(row.created_at),
   }));
 }
@@ -1558,6 +1565,264 @@ export async function undoCategorizeJob(
 
   return {
     removedPlacements: Number((del.meta as { changes?: number } | undefined)?.changes ?? 0),
+    restoredSuggestions: Number((restore.meta as { changes?: number } | undefined)?.changes ?? 0),
+  };
+}
+
+/* ================================================================== *
+ * Rename mode (structured-organise Phase B)
+ *
+ * A rename proposal lives in `tag_suggestions` with `kind = 'rename'`:
+ *   - `tag_name`  → the NEW title (what accept will write);
+ *   - `topic`     → the ORIGINAL title it would replace — the undo basis.
+ * `topic` is reused deliberately: rename rows never carry topic
+ * semantics (no clustering, no distribution), so a stale title rides
+ * for free and `undoRenameJob` can restore `bookmarks.title` without a
+ * new column or migration. Rows are always created from a live bookmark
+ * read (the engine input), so the original title is current at
+ * proposal time; undo validates the live title still matches before
+ * restoring, so an edit made between accept and undo is never clobbered.
+ * ================================================================== */
+
+/** Upper bound for a stored title (new or original) — mirrors the prompt cap. */
+const RENAME_TITLE_MAX = 100;
+
+/**
+ * Replaces the pending RENAME suggestions for the given bookmarks.
+ *
+ * Mirrors `saveCategorySuggestions` but scoped to `kind = 'rename'`: the delete
+ * only touches rename rows, and the insert stores the new title in `tag_name`
+ * and the current (original) title in `topic`. Bookmarks whose current title
+ * already equals the proposal are skipped — the engine filters too, but the
+ * title could have changed between engine and save.
+ */
+export async function saveRenameSuggestions(
+  env: Env,
+  userId: string,
+  jobId: string | null,
+  results: RenameResult[],
+): Promise<number> {
+  const statements: D1PreparedStatement[] = [];
+  const ts = nowIso();
+  let written = 0;
+
+  for (const result of results) {
+    const candidate = result.rename;
+    if (!candidate) continue;
+
+    // Load the CURRENT title: it is both the dedupe anchor and the undo basis.
+    // `b` alias is REQUIRED: PRIVATE_BOOKMARK_CLAUSE references b.is_private / b.id.
+    const row = await env.DB.prepare(
+      `SELECT title FROM bookmarks b
+        WHERE b.id = ? AND b.user_id = ? AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}`,
+    )
+      .bind(result.bookmarkId, userId)
+      .first<{ title: string | null }>();
+    const currentTitle = String(row?.title ?? '').trim();
+    if (!currentTitle || currentTitle === candidate.title.trim()) continue;
+
+    statements.push(
+      env.DB.prepare(
+        `DELETE FROM tag_suggestions
+          WHERE bookmark_id = ? AND user_id = ? AND kind = 'rename' AND status = 'pending'`,
+      ).bind(result.bookmarkId, userId),
+    );
+
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO tag_suggestions
+           (id, user_id, bookmark_id, job_id, tag_name, tag_id, confidence, source, reason,
+            topic, needs_review, feedback_boosted, kind, status, created_at)
+         SELECT ?, ?, ?, ?, ?, NULL, ?, 'model', ?, ?, 0, 0, 'rename', 'pending', ?
+          WHERE NOT EXISTS (
+            SELECT 1 FROM tag_suggestions s
+             WHERE s.bookmark_id = ? AND s.kind = 'rename'
+               AND s.tag_name = ? COLLATE NOCASE AND s.status = 'rejected'
+          )`,
+      ).bind(
+        newId(),
+        userId,
+        result.bookmarkId,
+        jobId,
+        candidate.title.trim().slice(0, RENAME_TITLE_MAX),
+        0.9,
+        candidate.reason,
+        currentTitle.slice(0, RENAME_TITLE_MAX),
+        ts,
+        result.bookmarkId,
+        candidate.title.trim(),
+      ),
+    );
+    written += 1;
+  }
+
+  if (statements.length > 0) {
+    const BATCH_STATEMENT_LIMIT = 100;
+    for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
+      await env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+    }
+  }
+  return written;
+}
+
+/**
+ * Accepts or rejects RENAME suggestions.
+ *
+ * Accept rewrites `bookmarks.title` (the extension's sync-pull reconciler then
+ * propagates the change into the browser bookmark tree via `chrome.bookmarks.update`).
+ * The bookmark's `updated_at` is bumped so the title change enters the
+ * sync-pull incremental stream, exactly like a category accept. Rename rows
+ * participate in the unified `markDecided` flow but never touch `bookmark_tags`
+ * or `bookmark_primary_category`.
+ */
+export async function decideRenameSuggestions(
+  env: Env,
+  userId: string,
+  ids: string[],
+  action: 'accept' | 'reject',
+): Promise<{ accepted: number; rejected: number }> {
+  if (ids.length === 0) return { accepted: 0, rejected: 0 };
+
+  const rows = await queryInChunks<Record<string, unknown>, Record<string, unknown>>(
+    env.DB,
+    ids,
+    [userId],
+    (ph) =>
+      `SELECT s.id, s.bookmark_id, s.tag_name, s.topic, s.reason,
+              b.url AS bookmark_url, b.title AS bookmark_title
+         FROM tag_suggestions s
+         JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
+        WHERE s.user_id = ? AND s.status = 'pending' AND s.kind = 'rename' AND s.id IN (${ph})`,
+    (r) => r,
+  );
+
+  if (rows.length === 0) return { accepted: 0, rejected: 0 };
+
+  const ts = nowIso();
+  const foundIds = rows.map((r) => String(r.id));
+
+  if (action === 'reject') {
+    await markDecided(env, userId, foundIds, 'rejected', ts);
+    return { accepted: 0, rejected: foundIds.length };
+  }
+
+  // Accept: rewrite each bookmark's title, skipping rows whose live title no
+  // longer matches the original recorded at proposal time (the user edited it
+  // while the proposal sat in the queue — their edit outranks the model).
+  const applied: string[] = [];
+  const statements: D1PreparedStatement[] = [];
+  for (const row of rows) {
+    const newTitle = String(row.tag_name ?? '').trim().slice(0, RENAME_TITLE_MAX);
+    const originalTitle = String(row.topic ?? '').trim();
+    const liveTitle = String(row.bookmark_title ?? '').trim();
+    if (!newTitle || !originalTitle || liveTitle !== originalTitle) continue;
+
+    statements.push(
+      env.DB.prepare(`UPDATE bookmarks SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?`).bind(
+        newTitle,
+        ts,
+        String(row.bookmark_id),
+        userId,
+      ),
+    );
+    applied.push(String(row.bookmark_id));
+  }
+
+  const BATCH_LIMIT = 90;
+  for (let i = 0; i < statements.length; i += BATCH_LIMIT) {
+    await env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
+  }
+
+  // Title-only changes never touch the placement tree, but other browsers must
+  // still see them — the updated_at bump above is what carries the change into
+  // the sync-pull incremental stream (C5-2).
+
+  await markDecided(env, userId, foundIds, 'accepted', ts);
+
+  // Feedback: record each accepted rename as a 'modified' event keyed by the
+  // original title, so future runs learn which boilerplate the user trims.
+  if (applied.length > 0) {
+    const feedback: FeedbackRecord[] = rows
+      .filter((r) => applied.includes(String(r.bookmark_id)))
+      .map((r) => {
+        const domain = hostOf(String(r.bookmark_url ?? ''));
+        return {
+          bookmarkId: String(r.bookmark_id),
+          tagName: `rename:${String(r.topic ?? '')}`,
+          action: 'modified' as const,
+          finalTagId: null,
+          source: 'model',
+          confidence: null,
+          domain,
+          context: String(r.reason ?? '').slice(0, 24) || String(r.tag_name ?? ''),
+        };
+      });
+    try {
+      await recordFeedback(env, userId, feedback);
+    } catch {
+      /* feedback is advisory — never fail the apply */
+    }
+  }
+
+  return { accepted: applied.length, rejected: 0 };
+}
+
+/**
+ * Undoes the title rewrites one rename job produced (mirrors `undoCategorizeJob`).
+ *
+ * Restores `bookmarks.title` from the ORIGINAL recorded in each accepted
+ * suggestion's `topic` column — but only when the live title still matches the
+ * accepted proposal, so a manual edit made after accepting is never clobbered.
+ * Accepted rename suggestions return to `pending` so the user can decide again.
+ */
+export async function undoRenameJob(
+  env: Env,
+  userId: string,
+  jobId: string,
+): Promise<{ restoredTitles: number; restoredSuggestions: number }> {
+  // Load accepted rename rows joined to their live bookmark titles.
+  const rows = await env.DB.prepare(
+    `SELECT s.id AS sid, s.bookmark_id, s.tag_name AS new_title, s.topic AS original_title,
+            b.title AS live_title
+       FROM tag_suggestions s
+       JOIN bookmarks b ON b.id = s.bookmark_id AND b.user_id = ? AND b.deleted_at IS NULL
+      WHERE s.user_id = ? AND s.job_id = ? AND s.kind = 'rename' AND s.status = 'accepted'`,
+  )
+    .bind(userId, userId, jobId)
+    .all<Record<string, unknown>>();
+
+  const ts = nowIso();
+  const restoreStatements: D1PreparedStatement[] = [];
+  for (const row of rows.results) {
+    const newTitle = String(row.new_title ?? '').trim();
+    const originalTitle = String(row.original_title ?? '').trim();
+    const liveTitle = String(row.live_title ?? '').trim();
+    // Only restore when the live title is still exactly what the accept wrote;
+    // a manual edit since then wins.
+    if (!originalTitle || !newTitle || liveTitle !== newTitle) continue;
+    restoreStatements.push(
+      env.DB.prepare(`UPDATE bookmarks SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?`).bind(
+        originalTitle,
+        ts,
+        String(row.bookmark_id),
+        userId,
+      ),
+    );
+  }
+
+  for (let i = 0; i < restoreStatements.length; i += 90) {
+    await env.DB.batch(restoreStatements.slice(i, i + 90));
+  }
+
+  const restore = await env.DB.prepare(
+    `UPDATE tag_suggestions SET status = 'pending', decided_at = NULL
+      WHERE user_id = ? AND job_id = ? AND kind = 'rename' AND status = 'accepted'`,
+  )
+    .bind(userId, jobId)
+    .run();
+
+  return {
+    restoredTitles: restoreStatements.length,
     restoredSuggestions: Number((restore.meta as { changes?: number } | undefined)?.changes ?? 0),
   };
 }

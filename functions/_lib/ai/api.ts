@@ -44,6 +44,6 @@ export function toApiSuggestion(row: SuggestionRow): AiSuggestion {
     createdAt: row.createdAt,
     category: null,
     subcategory: null,
-    kind: row.kind,
+    kind: row.kind === 'category' ? 'category' : row.kind === 'rename' ? 'rename' : 'tag',
   };
 }

@@ -21,6 +21,8 @@ const TABS: { to: string; label: string; icon: LucideIcon }[] = [
  *  - Solid bg-surface/95 instead of .glass: backdrop-filter forces the
  *    compositor to resample the scrolling background every frame, which
  *    smears/flickers the icons on mobile Chrome and Safari mid-scroll.
+ *    The /95 opacity is deliberate (a hint of page showing through) and the
+ *    element is a floating bar, not a card — hence the eslint-disable below.
  *  - min-h-14 instead of h-14: the iPhone home-indicator safe area is added
  *    INSIDE the bar by pad-safe-b, and a fixed height would crush the
  *    icon+label stack on devices with a 34px inset.
@@ -33,6 +35,7 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="快捷导航"
+      // eslint-disable-next-line tagnest/no-magic-tokens -- floating bar, not a card; intentional near-solid surface
       className="pad-safe-b fixed inset-x-3 bottom-3 z-30 flex min-h-14 items-stretch rounded-2xl bg-surface/95 shadow-float transform-gpu md:hidden"
     >
       {TABS.slice(0, 2).map((tab) => (

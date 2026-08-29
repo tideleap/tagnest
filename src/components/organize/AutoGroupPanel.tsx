@@ -33,7 +33,7 @@ export function AutoGroupPanel() {
     <section className="spotlight flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
       <div className="flex items-center gap-2">
         <FolderTree size={15} className="text-brand-accent" aria-hidden />
-        <h3 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">自动建组</h3>
+        <h3 className="font-display text-panel font-semibold tracking-tight text-ink">自动建组</h3>
         <span className="ml-auto" />
         <Button
           variant="secondary"

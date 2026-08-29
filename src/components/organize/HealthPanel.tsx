@@ -92,7 +92,7 @@ export function HealthPanel() {
       {/* Score header */}
       <div className="flex items-center gap-3">
         <Activity size={15} className="text-brand-accent" aria-hidden />
-        <h3 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">书签库健康</h3>
+        <h3 className="font-display text-panel font-semibold tracking-tight text-ink">书签库健康</h3>
         <span className="ml-auto flex items-center gap-2">
           <span
             className={cx(

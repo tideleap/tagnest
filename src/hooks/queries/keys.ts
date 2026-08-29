@@ -30,8 +30,9 @@ export const keys = {
   aiAliases: ['ai-aliases'] as const,
   /** Pending proposals; scoped by run and kind so "review what I just made"
    *  is cacheable per queue. CategorySync (migration 0024): the unified queue
-   *  holds 'tag' and 'category' rows, and each view must refetch its own. */
-  aiSuggestions: (jobId?: string | null, kind?: 'tag' | 'category') =>
+   *  holds 'tag' and 'category' rows, and each view must refetch its own.
+   *  Rename track ('rename') rides the same table with its own kind. */
+  aiSuggestions: (jobId?: string | null, kind?: 'tag' | 'category' | 'rename') =>
     ['ai-suggestions', jobId ?? 'all', kind ?? 'all'] as const,
   aiSuggestionsRoot: ['ai-suggestions'] as const,
   /** AI batch-run history; the jobs list is its own cache so cancelling one
@@ -40,7 +41,7 @@ export const keys = {
   aiJob: (id: string) => ['ai-job', id] as const,
   /** A1 — pre-run cost forecast, keyed by scope (and organiser kind) so
    *  switching ranges refetches. */
-  aiEstimate: (target: string, ids?: string[], kind?: 'tagging' | 'categorize') =>
+  aiEstimate: (target: string, ids?: string[], kind?: 'tagging' | 'categorize' | 'rename') =>
     ['ai-estimate', target, ids?.join(',') ?? '', kind ?? 'tagging'] as const,
   /** Root key so a finished run can invalidate every scope's forecast at once. */
   aiEstimateRoot: ['ai-estimate'] as const,

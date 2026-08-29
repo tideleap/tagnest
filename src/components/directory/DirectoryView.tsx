@@ -412,11 +412,11 @@ function DirectoryCard({ bookmark: b }: { bookmark: PublicBookmark }) {
           />
         </div>
         {b.description || b.note ? (
-          <p className="mt-1 line-clamp-1 text-[11px] leading-snug text-ink-soft">
+          <p className="mt-1 line-clamp-1 text-2xs leading-snug text-ink-soft">
             {b.description || b.note}
           </p>
         ) : null}
-        <p className="mt-0.5 truncate text-[11px] tabular-nums text-ink-faint">
+        <p className="mt-0.5 truncate text-2xs tabular-nums text-ink-faint">
           {displayHost(b.url)}
         </p>
       </div>

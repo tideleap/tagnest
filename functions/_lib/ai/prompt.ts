@@ -60,8 +60,14 @@ export const PROMPT_VERSION = '2026-08-21';
  * still correct. Categorize jobs stamp this version instead, and its cache
  * namespace (`ai:cat:…`) is separate anyway because the cached shape differs
  * (single placement vs. tag list).
+ *
+ * 2026-08-29 — structured-organise upgrade: the schema moved from two flat
+ * fields (category + subcategory) to a full `path` array supporting up to
+ * three levels, matching the folder trees the extension builds. Bumping the
+ * version invalidates every `ai:cat:` entry written by the old prompt, which
+ * is required — old cached entries carry the two-field shape only.
  */
-export const CATEGORIZE_PROMPT_VERSION = '2026-08-22';
+export const CATEGORIZE_PROMPT_VERSION = '2026-08-29';
 
 export interface PromptOptions {
   maxTags: number;
@@ -513,20 +519,61 @@ export interface CategorizeExample {
   description?: string;
   category: string;
   subcategory?: string | null;
+  /** Optional third level, rendered as the deepest path segment. */
+  subsubcategory?: string | null;
   reason: string;
 }
 
-/** One bookmark's single placement, as the model reports it. */
+/**
+ * One bookmark's single placement, as the model reports it.
+ *
+ * The structured-organise upgrade (2026-08) promoted `path` to the primary
+ * field: it is the full ancestry of the placement, deepest last, up to
+ * three levels ("开发技术 > 前端开发 > React"). `category` and `subcategory`
+ * remain derived compatibility fields — `category` is always `path[0]`,
+ * `subcategory` folds levels 2+ together — so every downstream consumer
+ * (engine rename loop, scoring, cache) keeps working unchanged. Builders of
+ * a placement MUST go through {@link makeParsedCategory} to keep both
+ * representations in sync.
+ */
 export interface ParsedCategory {
-  /** Top-level category (一级分类). */
+  /** Full ancestry of the placement, root first, leaf last. 1-3 segments. */
+  path: string[];
+  /** Top-level category (一级分类) — derived alias of `path[0]`. */
   category: string;
-  /** Second-level category (二级分类); null when the top level is enough. */
+  /**
+   * Second-level category (二级分类); null when the top level is enough.
+   * When the path runs three levels deep this folds levels 2 and 3 with
+   * " > " so legacy two-field consumers see a lossless-ish view.
+   */
   subcategory: string | null;
   confidence: number;
   reason: string;
   /** True when the model could not reuse the existing tree and proposes a new node. */
   isNew: boolean;
   needsReview: boolean;
+}
+
+/** Hard cap on placement depth — mirrors the folder trees the extension builds. */
+export const MAX_CATEGORY_DEPTH = 3;
+
+/**
+ * Builds a `ParsedCategory` from a raw path, deriving the legacy
+ * `category`/`subcategory` compatibility fields from it. The single
+ * construction point that keeps the two representations consistent.
+ */
+export function makeParsedCategory(
+  path: string[],
+  rest: Pick<Omit<ParsedCategory, 'path' | 'category' | 'subcategory'>, 'confidence' | 'reason' | 'isNew' | 'needsReview'>,
+): ParsedCategory | null {
+  const cleaned = path
+    .map((p) => (typeof p === 'string' ? p.trim().slice(0, MAX_TAG_LENGTH) : ''))
+    .filter((p) => p.length > 0);
+  if (cleaned.length === 0) return null;
+  const clipped = cleaned.slice(0, MAX_CATEGORY_DEPTH);
+  const category = clipped[0];
+  const subcategory = clipped.length > 1 ? clipped.slice(1).join(' > ') : null;
+  return { path: clipped, category, subcategory, ...rest };
 }
 
 export interface ParsedCategorizeItem {
@@ -543,6 +590,7 @@ const DEFAULT_CATEGORIZE_EXAMPLES: CategorizeExample[] = [
     description: 'Learn how to think in React with a searchable product table example.',
     category: '开发技术',
     subcategory: '前端开发',
+    subsubcategory: 'React',
     reason: 'React 官方教程',
   },
   {
@@ -570,8 +618,8 @@ function renderCategorizeExamples(examples: CategorizeExample[]): string {
     lines.push(`标题：${ex.title}`);
     lines.push(`网址：${ex.url}`);
     if (ex.description) lines.push(`描述：${ex.description}`);
-    const path = ex.subcategory ? `${ex.category} > ${ex.subcategory}` : ex.category;
-    lines.push(`分类：${path}（${ex.reason}）`);
+    const segments = [ex.category, ex.subcategory, ex.subsubcategory].filter(Boolean) as string[];
+    lines.push(`分类：${segments.join(' > ')}（${ex.reason}）`);
     lines.push('');
   }
   return lines.join('\n');
@@ -581,8 +629,10 @@ function renderCategorizeExamples(examples: CategorizeExample[]): string {
  * Builds one categorize prompt covering a batch of bookmarks (C1-1/C1-2).
  *
  * Differences from `buildTaggingPrompt`, each deliberate:
- *  - The task is *placement*, not labelling: exactly one `{category,
- *    subcategory}` per bookmark, never a list (fixes G1).
+ *  - The task is *placement*, not labelling: exactly one path per bookmark,
+ *    never a list (fixes G1). The structured-organise upgrade widened the
+ *    path from two flat fields to up to three levels so placements can match
+ *    the folder trees the extension builds.
  *  - The decision must come from page content — title + URL + description +
  *    fetched excerpt — not from whatever tags happen to exist (fixes G2).
  *  - The existing tree is presented as the *target* structure; new nodes are
@@ -617,30 +667,32 @@ export function buildCategorizePrompt(
       '核心原则：',
       '- 依据页面内容（标题、网址、描述、正文摘要）判断归属，而不是依据书签上已有的标签。',
       '- 优先从「已有分类树」中选择节点；确无合适节点时才建议新分类（isNew 填 true）。',
-      '- 一级分类要稳定、宽泛、可长期复用（如「开发技术」「在线工具」「人工智能」）；二级子类更具体（如「前端开发」「论文」）。',
-      '- 内容只够判断一级时，subcategory 填 null，不要硬造二级。',
+      '- 归属路径最多三级：一级要稳定、宽泛、可长期复用（如「开发技术」「在线工具」「人工智能」）；二级更具体（如「前端开发」「论文」）；三级最具体，用于把大子类继续收敛（如「前端开发」下的「React」「CSS」）。',
+      '- 内容只够判断一级或二级时，后面几段填 null，不要硬造层级；一般 1-2 级就够，三级仅当三级名称确实比二级更有辨识度时才用。',
+      '- 文件夹命名规范：用中文（专有名词保留原文，如 React、Python）；名称 ≤ 12 字；去掉「官网」「网站」「首页」这类无信息后缀；优先复用已有节点，不要为同一主题创建多个近义文件夹。',
       '- 同一公司、同一项目或同一业务系统的页面应归到同一分类下，不要拆散。',
-      '- 用中文，专有名词保留原文（React、Python、Docker、LLM）。',
       '- 分类名 ≤ 24 字；理由 ≤ 24 字。',
     ].join('\n'),
     '',
     [
       '输出格式：仅输出一个 JSON 对象，不要代码块、不要解释。',
-      'schema: {"results":[{"i":1,"category":"一级分类","subcategory":"二级分类或null","confidence":0.85,"reason":"不超过24字的理由","isNew":false,"needsReview":false}]}',
+      'schema: {"results":[{"i":1,"path":["一级分类","二级分类","三级分类"],"confidence":0.85,"reason":"不超过24字的理由","isNew":false,"needsReview":false}]}',
       '',
       '字段说明：',
       '- i: 书签序号，从 1 开始，与输入顺序一致。',
-      '- category: 一级分类，必填。',
-      '- subcategory: 二级分类；无法判断或不需要时填 null。',
+      '- path: 归属路径数组，从一级到三级，最具体的一层放最后。只够判断一级时填 ["一级分类"]，够判断两级时填 ["一级分类","二级分类"]。至少一段，最多三段。',
       '- confidence: 0-1，对归属有多大把握。内容信息不足时如实给低分。',
       '- reason: 不超过 24 字的归属理由。',
-      '- isNew: 该分类节点不在「已有分类树」中、需要新建时填 true。',
+      '- isNew: 路径中存在「已有分类树」之外的节点、需要新建时填 true。',
       '- needsReview: 对归属没有把握时填 true，进入人工确认。',
     ].join('\n'),
   ];
 
   if (known.length > 0) {
-    lines.push('', '已有分类树（括号内为书签数，「>」表示父子层级；请优先归入已有节点，选择最具体的层级）：');
+    lines.push(
+      '',
+      '已有分类树（括号内为书签数，「>」表示父子层级；请优先归入已有节点，选择最具体的层级，最深可到三级）：',
+    );
     lines.push(...known.map((line) => `- ${line}`));
   } else {
     lines.push('', '该用户还没有任何分类，请建立一套简洁（≤10 个一级分类）、可长期复用的分类体系。');
@@ -660,51 +712,43 @@ export function buildCategorizePrompt(
 /**
  * Normalises one model row into a `ParsedCategory`.
  *
- * Tolerates two common shape variants besides the documented one:
- *  - `path: ["开发技术", "前端开发"]` — models that read the tree as a path;
- *  - `category: "开发技术 > 前端开发"` — models that fold the path into one
- *    string. Both are split into (category, subcategory) so downstream code
- *    sees one shape only.
+ * The documented shape is a `path` array (1-3 segments, deepest last). Two
+ * legacy shape variants are still tolerated so older cached replies and
+ * drifting models keep working:
+ *  - flat fields `{category, subcategory}`;
+ *  - `category: "开发技术 > 前端开发"` — the path folded into one string.
+ * Every variant is funnelled through {@link makeParsedCategory}, which derives
+ * the legacy `category`/`subcategory` view from the canonical `path`.
  */
 function parseCategoryRow(row: Record<string, unknown>): ParsedCategory | null {
-  let category = '';
-  let subcategory: string | null = null;
+  let segments: string[] = [];
 
   const rawPath = row.path;
   if (Array.isArray(rawPath)) {
-    // Path-array variant: first element is the top level, last is the deepest.
-    const parts = rawPath
+    // Documented variant: a full path array, deepest last.
+    segments = rawPath
       .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-      .map((p) => p.trim().slice(0, MAX_TAG_LENGTH));
-    if (parts.length > 0) {
-      category = parts[0];
-      // The tree is capped at three levels; anything deeper collapses onto the
-      // second level so the placement stays representable.
-      subcategory = parts.length > 1 ? parts.slice(1).join(' > ').slice(0, MAX_TAG_LENGTH) : null;
-    }
+      .map((p) => p.trim());
   }
 
-  if (!category && typeof row.category === 'string') {
-    const raw = row.category.trim();
-    if (raw.includes('>')) {
+  const rawCategory = typeof row.category === 'string' ? row.category.trim() : '';
+  if (segments.length === 0 && rawCategory) {
+    if (rawCategory.includes('>')) {
       // Folded-path variant: "开发技术 > 前端开发".
-      const parts = raw
+      segments = rawCategory
         .split('>')
         .map((p) => p.trim())
         .filter(Boolean);
-      category = (parts[0] ?? '').slice(0, MAX_TAG_LENGTH);
-      subcategory =
-        parts.length > 1 ? parts.slice(1).join(' > ').slice(0, MAX_TAG_LENGTH) : null;
     } else {
-      category = raw.slice(0, MAX_TAG_LENGTH);
+      segments = [rawCategory];
+      // Legacy flat-field shape: an explicit subcategory widens the path.
+      if (typeof row.subcategory === 'string' && row.subcategory.trim()) {
+        segments.push(row.subcategory.trim());
+      }
     }
   }
 
-  if (!category) return null;
-
-  if (subcategory === null && typeof row.subcategory === 'string' && row.subcategory.trim()) {
-    subcategory = row.subcategory.trim().slice(0, MAX_TAG_LENGTH);
-  }
+  if (segments.length === 0) return null;
 
   const confidenceRaw = Number(row.confidence);
   const confidence = Number.isFinite(confidenceRaw) ? Math.min(1, Math.max(0, confidenceRaw)) : 0.6;
@@ -714,14 +758,12 @@ function parseCategoryRow(row: Record<string, unknown>): ParsedCategory | null {
       ? row.reason.trim().slice(0, MAX_REASON_LENGTH)
       : '模型分类';
 
-  return {
-    category,
-    subcategory,
+  return makeParsedCategory(segments, {
     confidence,
     reason,
     isNew: row.isNew === true,
     needsReview: row.needsReview === true,
-  };
+  });
 }
 
 /**
@@ -755,6 +797,152 @@ export function parseCategorizeResponse(raw: string | null, batchSize: number): 
     if (index < 0 || index >= batchSize) continue;
 
     out.push({ index, category: parseCategoryRow(row) });
+  }
+
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Rename mode (structured-organise Phase B)
+ *
+ * Categorizing decides *where* a bookmark lives; renaming decides *what
+ * it is called there*. Real-world bookmark titles are full of boilerplate
+ * — marketing slogans after a pipe, "首页/登录" placeholders, 200-char
+ * SEO dumps — and the fix is deliberately conservative: the model may
+ * only trim and repair, never rewrite semantics or translate. An
+ * `unchanged` row is a first-class outcome so "this title is fine" never
+ * forces a pointless suggestion.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Version tag for the *rename* prompt (structured-organise Phase B).
+ *
+ * Tracked separately from `PROMPT_VERSION` and `CATEGORIZE_PROMPT_VERSION`
+ * for the same cache-hygiene reason: rename jobs stamp this onto their
+ * `ai_jobs.prompt_version` rows and namespace their URL-cache entries
+ * under `ai:rename:`, so evolving this prompt never re-bills unrelated
+ * tagging or categorize work.
+ */
+export const RENAME_PROMPT_VERSION = '2026-08-29';
+
+/** Hard cap on a cleaned bookmark title (conservative-cleanup scale). */
+export const MAX_RENAME_LENGTH = 40;
+
+/** One bookmark's cleaned title, as the model reports it. */
+export interface ParsedRename {
+  title: string;
+  reason: string;
+  /** True when the model judged the original title already fine. */
+  unchanged: boolean;
+}
+
+export interface ParsedRenameItem {
+  /** Zero-based index back into the batch. */
+  index: number;
+  /** Null when the model returned no usable answer for this bookmark. */
+  rename: ParsedRename | null;
+}
+
+/**
+ * Builds one rename prompt covering a batch of bookmarks (Phase B2).
+ *
+ * The rules encode the user-confirmed "命名尺度保守清理" scale: strip
+ * information-free suffixes, repair placeholder titles with the brand
+ * word from the hostname, cap length, keep brand/product terms and the
+ * original language — and when in doubt, don't touch the title at all.
+ */
+export function buildRenamePrompt(inputs: EnrichInput[]): string {
+  const lines: string[] = [
+    [
+      '你是个人书签归档助手。任务：清理书签标题，让书签列表整齐、可读、可长期维护。',
+      '',
+      '这是一次「保守清理」，不是重写。原则按优先级排列：',
+      '- 拿不准就不改：unchanged 填 true，title 填原标题。宁可少改，不要误改。',
+      '- 保留品牌词、产品名、专有名词与原文语言；不翻译、不解释、不堆砌关键词。',
+      '- 去掉无信息后缀：当「|」「·」「-」「—」等分隔符后的尾段只是站名、口号或重复信息时删除（如「GitHub · Where the world builds software」→「GitHub」）；尾段有实际信息量时保留（如「Vite - 下一代前端构建工具」→ 不改）。',
+      '- 无信息标题（如「首页」「登录」「用户中心」「index」「welcome」「Untitled」）改为品牌词或「品牌词 + 简短说明」；品牌词从网址主机名提取（如 github.com → GitHub）。',
+      '- 超长标题压缩到 ≤ 40 字符：优先删尾部冗余，再删口号性语句，保留核心描述。',
+      '- 同一批里同一网站的多个书签，标题风格保持一致。',
+      '',
+      '输出格式：仅输出一个 JSON 对象，不要代码块、不要解释。',
+      'schema: {"results":[{"i":1,"title":"清理后的标题或原标题","reason":"不超过16字的理由","unchanged":false}]}',
+      '',
+      '字段说明：',
+      '- i: 书签序号，从 1 开始，与输入顺序一致。',
+      '- title: 清理后的标题；决定不改时填原标题。不超过 40 字符。',
+      '- reason: 不超过 16 字的修改理由；未修改时填「无需修改」。',
+      '- unchanged: 标题本就规范、无需修改时填 true。',
+      '',
+      '参考示例：',
+      '- 「GitHub · Where the world builds software」→「GitHub」（去掉无信息口号尾段）',
+      '- 「首页」→「Vite：下一代前端构建工具」（无信息名，从网址补品牌词与说明）',
+      '- 「React 官方文档」→ 不改（unchanged: true，标题已规范）',
+      '',
+      '待清理书签：',
+    ].join('\n'),
+  ];
+  inputs.forEach((input, index) => {
+    lines.push(renderBookmark(input, index));
+  });
+  lines.push('', '仅输出一个 JSON 对象，不要代码块、不要解释。');
+  return lines.join('\n');
+}
+
+/**
+ * Normalises one model row into a `ParsedRename`.
+ *
+ * `unchanged` rows pass through (the engine turns them into "no
+ * suggestion"); rows without any title degrade to null. The 40-char cap
+ * is a hard slice here — deterministic, so the engine never sees an
+ * oversized title even when the model ignores the prompt budget.
+ */
+function parseRenameRow(row: Record<string, unknown>): ParsedRename | null {
+  const rawTitle = typeof row.title === 'string' ? row.title.trim() : '';
+  if (!rawTitle) return null;
+
+  const reason =
+    typeof row.reason === 'string' && row.reason.trim()
+      ? row.reason.trim().slice(0, MAX_REASON_LENGTH)
+      : '规范命名';
+
+  return {
+    title: rawTitle.slice(0, MAX_RENAME_LENGTH),
+    reason,
+    unchanged: row.unchanged === true,
+  };
+}
+
+/**
+ * Parses a rename batch response (Phase B3 consumer).
+ *
+ * Shares the robust `extractJsonValue` layer with the other parsers:
+ * fences, prose, full-width brackets and trailing commas are all
+ * tolerated. Malformed rows degrade to `rename: null` for that bookmark —
+ * the engine counts it as "no rename suggestion", never a batch failure.
+ */
+export function parseRenameResponse(raw: string | null, batchSize: number): ParsedRenameItem[] {
+  if (!raw) return [];
+
+  const parsed = extractJsonValue(raw);
+  if (parsed === null) return [];
+
+  const results = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { results?: unknown }).results;
+  if (!Array.isArray(results)) return [];
+
+  const out: ParsedRenameItem[] = [];
+
+  for (const entry of results) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as { i?: unknown } & Record<string, unknown>;
+
+    const rawIndex = Number(row.i);
+    if (!Number.isFinite(rawIndex)) continue;
+    const index = Math.trunc(rawIndex) - 1;
+    if (index < 0 || index >= batchSize) continue;
+
+    out.push({ index, rename: parseRenameRow(row) });
   }
 
   return out;

@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import type { AiJobEstimate } from '../../../shared/types';
-import { BATCH_SIZE, buildCategorizePrompt, buildCoarsePrompt, buildTaggingPrompt } from './prompt';
+import { BATCH_SIZE, buildCategorizePrompt, buildCoarsePrompt, buildRenamePrompt, buildTaggingPrompt } from './prompt';
 import { MAX_OUTPUT_TOKENS, RETRY_MAX_ATTEMPTS } from './providers';
 import { isModelReady, loadConfigRow, loadVocabulary } from './config';
 import { MAX_JOB_ITEMS, RUN_CHUNK, loadBookmarkInputs, resolveCategorizeScope, resolveScope } from './store';
@@ -77,6 +77,18 @@ export function representativeCategorizeOutput(batchSize: number): string {
 }
 
 /**
+ * Representative model OUTPUT for one rename batch (structured-organise Phase
+ * B). One cleaned-title object per bookmark — slightly longer than reality so
+ * the forecast overestimates rather than underestimates.
+ */
+export function representativeRenameOutput(batchSize: number): string {
+  const item =
+    '{"i":1,"title":"这是一个具有代表性的清理后标题示例","reason":"不超过十六字的修改理由","unchanged":false}';
+  const items = Array.from({ length: Math.max(1, batchSize) }, () => item).join(',');
+  return `{"results":[${items}]}`;
+}
+
+/**
  * Assumed wall-clock seconds per model call, for the happy-path time forecast.
  * A 10-bookmark batch typically answers in 3–8s; 8s errs toward overestimating
  * the wait (the safe direction for setting expectations).
@@ -94,14 +106,21 @@ export async function estimateJob(
   userId: string,
   target: JobScope['target'],
   explicitIds: string[] = [],
-  kind: 'tagging' | 'categorize' = 'tagging',
+  kind: 'tagging' | 'categorize' | 'rename' = 'tagging',
 ): Promise<AiJobEstimate> {
   // CategorySync: the categorize track resolves scope differently (skips
   // browser_folder placements, treats `untagged` as "no primary category").
+  // Rename scans every live bookmark — `untagged` has no title semantics, so
+  // it promotes to `all` (mirroring jobs/index.ts) to keep the forecast honest.
   const ids =
     kind === 'categorize'
       ? await resolveCategorizeScope(env, userId, target, explicitIds)
-      : await resolveScope(env, userId, target, explicitIds);
+      : await resolveScope(
+          env,
+          userId,
+          kind === 'rename' && target === 'untagged' ? 'all' : target,
+          explicitIds,
+        );
   const bookmarks = ids.length;
   const batches = Math.ceil(bookmarks / BATCH_SIZE);
   const chunks = Math.ceil(bookmarks / RUN_CHUNK);
@@ -130,6 +149,14 @@ export async function estimateJob(
         MAX_OUTPUT_TOKENS,
       );
       estimatedOutputTokens = perBatchOutput * batches;
+    } else if (kind === 'rename') {
+      const prompt = buildRenamePrompt(inputs);
+      estimatedInputTokens = tokensFromChars(prompt.length) * batches;
+      const perBatchOutput = Math.min(
+        tokensFromChars(representativeRenameOutput(inputs.length).length),
+        MAX_OUTPUT_TOKENS,
+      );
+      estimatedOutputTokens = perBatchOutput * batches;
     } else {
       const prompt = buildTaggingPrompt(inputs, vocab, {
         maxTags: row.maxTags,
@@ -152,11 +179,11 @@ export async function estimateJob(
   }
 
   // Happy-path call count: one model call per batch. Tagging with two-pass adds
-  // one coarse call per batch; categorize is always a single pass. The worst
-  // case multiplies by the retry ceiling — a consistently-failing provider
-  // could burn that many attempts before the engine gives up, so the user
-  // should see the upper bound they are authorising.
-  const callsPerBatch = kind === 'categorize' ? 1 : row.twoPass ? 2 : 1;
+  // one coarse call per batch; categorize and rename are always a single pass.
+  // The worst case multiplies by the retry ceiling — a consistently-failing
+  // provider could burn that many attempts before the engine gives up, so the
+  // user should see the upper bound they are authorising.
+  const callsPerBatch = kind === 'tagging' && row.twoPass ? 2 : 1;
   const estimatedCalls = batches * callsPerBatch;
   const maxModelCalls = estimatedCalls * RETRY_MAX_ATTEMPTS;
   const estimatedSeconds = estimatedCalls * SECONDS_PER_CALL;

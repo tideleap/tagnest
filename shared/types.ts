@@ -582,9 +582,11 @@ export interface AiSuggestion {
    * CategorySync (migration 0024): 'tag' rows propose a loose label written to
    * `bookmark_tags`; 'category' rows propose a single primary placement written
    * to `bookmark_primary_category`, with `tagName` carrying the full path
-   * ("开发技术 > 前端开发"). Defaults to 'tag' for pre-0024 rows.
+   * ("开发技术 > 前端开发"). Structured-organise Phase B adds 'rename' rows:
+   * `tagName` carries the NEW title and `topic` the ORIGINAL it replaces.
+   * Defaults to 'tag' for pre-0024 rows.
    */
-  kind?: 'tag' | 'category';
+  kind?: 'tag' | 'category' | 'rename';
 }
 
 /** Result of applying the automatic three-level hierarchy to the tag set. */

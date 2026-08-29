@@ -12,7 +12,7 @@ export function Card({
   return (
     <Reveal as="section" className="mb-4">
       <div className="spotlight rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
-        <h2 className="font-display text-[0.95rem] font-semibold tracking-tight text-ink">
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">
           {title}
         </h2>
         {description && (

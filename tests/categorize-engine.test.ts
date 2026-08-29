@@ -128,7 +128,7 @@ describe('categorizeBookmarks — basics', () => {
 
 describe('normalizePlacement — tree anchoring (C1-3)', () => {
   it('lifts a nested node named as top level onto its ancestor chain', () => {
-    const n = normalizePlacement({ category: '前端开发', subcategory: null }, vocab);
+    const n = normalizePlacement({ path: ['前端开发'] }, vocab);
     expect(n?.path).toEqual(['开发技术', '前端开发']);
     expect(n?.leafTagId).toBe('fe');
     expect(n?.isNew).toBe(false);
@@ -136,24 +136,52 @@ describe('normalizePlacement — tree anchoring (C1-3)', () => {
 
   it('keeps a resolved subcategory only under its real parent', () => {
     // 前端开发 lives under 开发技术, not under 在线工具 → dropped, not re-homed.
-    const n = normalizePlacement({ category: '在线工具', subcategory: '前端开发' }, vocab);
+    const n = normalizePlacement({ path: ['在线工具', '前端开发'] }, vocab);
     expect(n?.path).toEqual(['在线工具']);
     expect(n?.leafTagId).toBe('tools');
   });
 
   it('allows a new subcategory under an existing top level and flags isNew', () => {
-    const n = normalizePlacement({ category: '开发技术', subcategory: '移动开发' }, vocab);
+    const n = normalizePlacement({ path: ['开发技术', '移动开发'] }, vocab);
     expect(n?.path).toEqual(['开发技术', '移动开发']);
     expect(n?.leafTagId).toBeNull();
     expect(n?.isNew).toBe(true);
   });
 
   it('normalises spelling variants onto existing nodes', () => {
-    const n = normalizePlacement({ category: 'frontend', subcategory: null }, vocab);
+    const n = normalizePlacement({ path: ['frontend'] }, vocab);
     // No alias registered for 'frontend' → treated as new, canonical spelling kept.
     expect(n?.isNew).toBe(true);
-    const exact = normalizePlacement({ category: '开发技术', subcategory: null }, vocab);
+    const exact = normalizePlacement({ path: ['开发技术'] }, vocab);
     expect(exact?.leafTagId).toBe('dev');
+  });
+
+  it('accepts a full three-level path over an existing two-level chain', () => {
+    const n = normalizePlacement({ path: ['开发技术', '前端开发'] }, vocab);
+    expect(n?.path).toEqual(['开发技术', '前端开发']);
+    expect(n?.leafTagId).toBe('fe');
+  });
+
+  it('drops levels after a created node (new-node cut-off)', () => {
+    // 前端开发 exists but under 开发技术, not under a brand-new top level —
+    // the deep existing node may not be claimed by a created subtree.
+    const n = normalizePlacement({ path: ['生活', '前端开发'] }, vocab);
+    expect(n?.path).toEqual(['生活']);
+    expect(n?.leafTagId).toBeNull();
+    expect(n?.isNew).toBe(true);
+  });
+
+  it('keeps a three-level chain when each level nests under the previous', () => {
+    // 三级链：开发技术 > 前端开发 + 新建的 React（新节点之后不能再挂已有节点）。
+    const n = normalizePlacement({ path: ['开发技术', '前端开发', 'React'] }, vocab);
+    expect(n?.path).toEqual(['开发技术', '前端开发', 'React']);
+    expect(n?.leafTagId).toBeNull();
+    expect(n?.isNew).toBe(true);
+  });
+
+  it('caps the path at three levels (MAX_CATEGORY_DEPTH)', () => {
+    const n = normalizePlacement({ path: ['开发技术', '前端开发', 'React', 'Hooks'] }, vocab);
+    expect(n?.path).toHaveLength(3);
   });
 });
 
@@ -244,6 +272,7 @@ describe('categorizeBookmarks — category cache', () => {
 
   it('serves a cached placement without calling the model', async () => {
     const entry: CategoryCacheEntry = {
+      path: ['在线工具'],
       category: '在线工具',
       subcategory: null,
       confidence: 0.9,
@@ -259,6 +288,26 @@ describe('categorizeBookmarks — category cache', () => {
     );
     expect(mockedCall).not.toHaveBeenCalled();
     expect(out.engine).toBe('model');
+    expect(out.results[0].category?.path).toEqual(['在线工具']);
+  });
+
+  it('derives a path from a legacy two-field cache entry', async () => {
+    // Entries written before the 2026-08-29 prompt carry no `path` field.
+    const legacy = {
+      category: '在线工具',
+      subcategory: null,
+      confidence: 0.9,
+      reason: '缓存',
+      isNew: false,
+      needsReview: false,
+      source: 'model' as const,
+    };
+    const cache = makeCache(legacy);
+    const out = await categorizeBookmarks(
+      [{ id: 'b1', url: 'https://figma.com', title: 'Figma' }],
+      { vocab, config: modelConfig, categoryCache: cache },
+    );
+    expect(mockedCall).not.toHaveBeenCalled();
     expect(out.results[0].category?.path).toEqual(['在线工具']);
   });
 

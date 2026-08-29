@@ -143,7 +143,7 @@ export function BookmarkEditor({ id }: { id: string }) {
             placeholder="记下为什么保存这条，以后会用得上。"
           />
 
-          <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface/60 px-4 py-3.5">
+          <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface px-4 py-3.5">
             <Switch
               checked={isFavorite}
               onChange={setIsFavorite}

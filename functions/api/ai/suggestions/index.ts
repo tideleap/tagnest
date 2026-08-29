@@ -27,7 +27,8 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const jobId = url.searchParams.get('jobId');
 
   const rawKind = url.searchParams.get('kind');
-  const kind = rawKind === 'tag' || rawKind === 'category' ? rawKind : null;
+  const kind =
+    rawKind === 'tag' || rawKind === 'category' || rawKind === 'rename' ? rawKind : null;
 
   const [rows, total] = await Promise.all([
     listPendingSuggestions(ctx.env, userId, limit, jobId, kind),
@@ -39,6 +40,8 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const suggestions = rows.map((row) => {
     // A category row's tagName already IS the full path ("开发技术 > 前端开发"),
     // so split it rather than re-deriving; a tag row gets the classifier path.
+    // A rename row carries the NEW title in tagName and the ORIGINAL in topic;
+    // no hierarchy applies.
     if (row.kind === 'category') {
       const parts = row.tagName.split('>').map((p) => p.trim()).filter(Boolean);
       return {
@@ -46,6 +49,9 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
         category: parts[0] ?? null,
         subcategory: parts[1] ?? null,
       };
+    }
+    if (row.kind === 'rename') {
+      return { ...toApiSuggestion(row), category: null, subcategory: null };
     }
     const path = classifyTag(row.tagName);
     return {

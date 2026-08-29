@@ -12,6 +12,9 @@ import { useEffect, useRef } from 'react';
  * Performance contract:
  *   - DPR capped at 2, particle count scaled to viewport area.
  *   - rAF loop pauses when the tab is hidden.
+ *   - resize is coalesced through rAF: mobile keyboards opening/closing fire
+ *     a burst of resize events and each uncoalesced run rebuilds the whole
+ *     mote array mid-storm.
  *   - prefers-reduced-motion → a single static frame, no animation.
  *   - pointer position is read from a ref (no React re-renders per move).
  */
@@ -183,8 +186,20 @@ export function Atmosphere() {
       }
     };
 
+    // rAF-coalesced resize: the last event in a burst wins, and canvas
+    // reallocation + mote rebuild happen at most once per frame.
+    let resizeRaf = 0;
+    const onResize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        resize();
+        if (reduce) drawStatic();
+      });
+    };
+
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', onResize);
     window.addEventListener('pointermove', onMove, { passive: true });
     window.addEventListener('pointerout', onLeave);
     document.addEventListener('visibilitychange', onVisibility);
@@ -203,8 +218,9 @@ export function Atmosphere() {
 
     return () => {
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(resizeRaf);
       window.clearTimeout(colorTimer);
-      window.removeEventListener('resize', resize);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerout', onLeave);
       document.removeEventListener('visibilitychange', onVisibility);

@@ -129,7 +129,7 @@ export function ImportPage() {
 
           <Reveal delay={140}>
           <section className="rounded-xl border border-line bg-surface/85 p-5 backdrop-blur-sm">
-            <h2 className="mb-2 font-display text-[0.95rem] font-semibold tracking-tight text-ink">怎么导出浏览器书签？</h2>
+            <h2 className="mb-2 font-display text-panel font-semibold tracking-tight text-ink">怎么导出浏览器书签？</h2>
             <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-ink-soft">
               <li>
                 <strong className="font-medium text-ink">Chrome / Edge：</strong>
