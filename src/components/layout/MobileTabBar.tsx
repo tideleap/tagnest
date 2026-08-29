@@ -16,6 +16,16 @@ const TABS: { to: string; label: string; icon: LucideIcon }[] = [
  *
  * The add button sits in the middle because that is where a thumb naturally
  * rests, and adding is the action people repeat most.
+ *
+ * Rendering notes (scroll artifacts on phones):
+ *  - Solid bg-surface/95 instead of .glass: backdrop-filter forces the
+ *    compositor to resample the scrolling background every frame, which
+ *    smears/flickers the icons on mobile Chrome and Safari mid-scroll.
+ *  - min-h-14 instead of h-14: the iPhone home-indicator safe area is added
+ *    INSIDE the bar by pad-safe-b, and a fixed height would crush the
+ *    icon+label stack on devices with a 34px inset.
+ *  - transform-gpu: own compositor layer so the bar never repaints together
+ *    with the scrolling page (no tearing while fling-scrolling).
  */
 export function MobileTabBar() {
   const setQuickAddOpen = useOverlay((s) => s.setQuickAddOpen);
@@ -23,7 +33,7 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="快捷导航"
-      className="pad-safe-b glass fixed inset-x-3 bottom-3 z-30 flex h-14 items-stretch rounded-2xl shadow-float md:hidden"
+      className="pad-safe-b fixed inset-x-3 bottom-3 z-30 flex min-h-14 items-stretch rounded-2xl bg-surface/95 shadow-float transform-gpu md:hidden"
     >
       {TABS.slice(0, 2).map((tab) => (
         <TabLink key={tab.to} {...tab} />
