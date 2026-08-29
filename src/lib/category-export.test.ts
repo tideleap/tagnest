@@ -12,7 +12,8 @@ import { describe, it, expect } from 'vitest';
 import {
   toNetscapeBookmarksHtml,
   buildExportFilename,
-  EXPORT_ROOT_TITLE,
+  BOOKMARKS_BAR_TITLE,
+  normalizeBookmarkTitle,
   type ExportRow,
 } from './category-export';
 
@@ -33,21 +34,51 @@ describe('toNetscapeBookmarksHtml — header & envelope', () => {
     const html = toNetscapeBookmarksHtml([], { generatedAt: GEN });
     expect(html.startsWith('<!DOCTYPE NETSCAPE-Bookmark-file-1>')).toBe(true);
     expect(html).toContain('<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">');
-    expect(html).toContain('<TITLE>' + EXPORT_ROOT_TITLE + '</TITLE>');
-    expect(html).toContain('<H1>' + EXPORT_ROOT_TITLE + '</H1>');
+    // The outermost title is now the browser's bookmark-bar label, the import
+    // landing target — not the legacy "TagNest 分类" root.
+    expect(html).toContain('<TITLE>' + BOOKMARKS_BAR_TITLE + '</TITLE>');
+    expect(html).toContain('<H1>' + BOOKMARKS_BAR_TITLE + '</H1>');
     expect(html).toContain('<DL><p>');
     // Closes the root <DL><p> with CRLF (so the file imports cleanly on
     // Windows, where some importers are strict about line endings).
     expect(html).toMatch(/\r\n<\/DL><p>\r\n$/);
   });
 
-  it('respects a custom rootTitle', () => {
+  it('wraps every export in 书签栏 > ✨ AI 整理 <时间戳> (session layer)', () => {
     const html = toNetscapeBookmarksHtml([], {
       generatedAt: GEN,
-      rootTitle: '我的 TagNest 整理',
+      sessionTitle: '✨ AI 整理 2026/8/23 13:35:35',
     });
-    expect(html).toContain('<TITLE>我的 TagNest 整理</TITLE>');
-    expect(html).toContain('<H1>我的 TagNest 整理</H1>');
+    // Both envelope folders are emitted, nested.
+    expect(html).toContain('<H1>' + BOOKMARKS_BAR_TITLE + '</H1>');
+    expect(html).toContain('>✨ AI 整理 2026/8/23 13:35:35</H3>');
+    // The session folder sits *inside* the bookmarks bar folder.
+    const barIdx = html.indexOf('>' + BOOKMARKS_BAR_TITLE + '</H3>');
+    const sessIdx = html.indexOf('>✨ AI 整理 2026/8/23 13:35:35</H3>');
+    expect(barIdx).toBeGreaterThan(0);
+    expect(sessIdx).toBeGreaterThan(barIdx);
+  });
+
+  it('auto-generates the session title with the ✨ AI 整理 prefix when omitted', () => {
+    const html = toNetscapeBookmarksHtml([], { generatedAt: GEN });
+    // The session folder name begins with the prefix and carries a stamp.
+    const m = html.match(/>(\u2728 AI 整理 [^<]+)<\/H3>/);
+    expect(m).not.toBeNull();
+    expect(m?.[1]).toMatch(/^✨ AI 整理 \d{4}\/\d{1,2}\/\d{1,2} \d{1,2}:\d{2}:\d{2}$/);
+  });
+
+  it('omits the bookmarks-bar layer when bookmarksBar:false (session becomes root)', () => {
+    const html = toNetscapeBookmarksHtml([], {
+      generatedAt: GEN,
+      bookmarksBar: false,
+      sessionTitle: 'MY SESSION',
+    });
+    // Root title is the session title, not "书签栏".
+    expect(html).toContain('<TITLE>MY SESSION</TITLE>');
+    expect(html).toContain('<H1>MY SESSION</H1>');
+    expect(html).not.toContain('>' + BOOKMARKS_BAR_TITLE + '</H3>');
+    // No 书签栏 folder opening <DL> pair should appear.
+    expect(html).not.toMatch(/>书签栏<\/H3>/);
   });
 });
 
@@ -64,7 +95,7 @@ describe('toNetscapeBookmarksHtml — flat case', () => {
   it('renders a multi-level folder chain level-1 → level-2 → bookmark', () => {
     const html = toNetscapeBookmarksHtml(
       [row({ categoryPath: ['开发技术', '前端开发'] })],
-      { generatedAt: GEN },
+      { generatedAt: GEN, normalizeTitles: false },
     );
     expect(html).toContain('<H3 ADD_DATE="1700000000" LAST_MODIFIED="1700000000">开发技术</H3>');
     expect(html).toContain('<H3 ADD_DATE="1700000000" LAST_MODIFIED="1700000000">前端开发</H3>');
@@ -170,12 +201,75 @@ describe('toNetscapeBookmarksHtml — escaping', () => {
     expect(href).not.toMatch(/&[^a-z#]/i); // bare & not followed by a named/numeric entity
   });
 
-  it('falls back to the URL when the title is empty', () => {
+  it('falls back to the URL when the title is empty AND normalization is off', () => {
     const html = toNetscapeBookmarksHtml(
       [row({ title: '', url: 'https://fallback.example/', categoryPath: ['X'] })],
-      { generatedAt: GEN },
+      { generatedAt: GEN, normalizeTitles: false },
     );
     expect(html).toContain('>https://fallback.example/</A>');
+  });
+});
+
+describe('toNetscapeBookmarksHtml — title normalization (default on)', () => {
+  it('turns an empty title into "首页 | 站点" using the host label', () => {
+    const html = toNetscapeBookmarksHtml(
+      [row({ title: '', url: 'https://amap.example/', categoryPath: ['地图'] })],
+      { generatedAt: GEN },
+    );
+    expect(html).toContain('>首页 | amap</A>');
+  });
+
+  it('turns a bare-host title into "首页 | 站点"', () => {
+    const html = toNetscapeBookmarksHtml(
+      [row({ title: 'github.com', url: 'https://github.com/', categoryPath: ['代码'] })],
+      { generatedAt: GEN },
+    );
+    expect(html).toContain('>首页 | github</A>');
+  });
+
+  it('turns a generic placeholder title into "首页 | 站点"', () => {
+    const html = toNetscapeBookmarksHtml(
+      [row({ title: '首页', url: 'https://figma.example/', categoryPath: ['设计'] })],
+      { generatedAt: GEN },
+    );
+    expect(html).toContain('>首页 | figma</A>');
+  });
+
+  it('keeps a meaningful title verbatim (no host label appended)', () => {
+    const html = toNetscapeBookmarksHtml(
+      [row({ title: 'React 官方文档', url: 'https://react.dev/', categoryPath: ['开发'] })],
+      { generatedAt: GEN },
+    );
+    expect(html).toContain('>React 官方文档</A>');
+    expect(html).not.toContain('首页 |');
+  });
+
+  it('keeps a title that already contains the site label (no double label)', () => {
+    const html = toNetscapeBookmarksHtml(
+      [row({ title: 'GitHub 趋势榜', url: 'https://github.com/trending', categoryPath: ['代码'] })],
+      { generatedAt: GEN },
+    );
+    expect(html).toContain('>GitHub 趋势榜</A>');
+    expect(html).not.toContain('首页 |');
+  });
+});
+
+describe('normalizeBookmarkTitle — unit', () => {
+  it('rescues empty / generic / bare-host titles into "首页 | 站点"', () => {
+    expect(normalizeBookmarkTitle('', 'https://amap.example/')).toBe('首页 | amap');
+    expect(normalizeBookmarkTitle('首页', 'https://amap.example/')).toBe('首页 | amap');
+    expect(normalizeBookmarkTitle('Home', 'https://amap.example/')).toBe('首页 | amap');
+    expect(normalizeBookmarkTitle('github.com', 'https://github.com/')).toBe('首页 | github');
+  });
+
+  it('falls back to the URL when the host is unusable', () => {
+    expect(normalizeBookmarkTitle('', 'not-a-url')).toBe('not-a-url');
+    expect(normalizeBookmarkTitle('', '')).toBe('未命名书签');
+  });
+
+  it('preserves meaningful titles and collapses internal whitespace', () => {
+    expect(normalizeBookmarkTitle('  React   官方文档  ', 'https://react.dev/')).toBe('React 官方文档');
+    expect(normalizeBookmarkTitle('GitHub 趋势榜', 'https://github.com/trending')).toBe('GitHub 趋势榜');
   });
 });
 
@@ -201,7 +295,7 @@ describe('toNetscapeBookmarksHtml — empty input', () => {
     expect(html).not.toContain('>未分类</H3>');
     // Still has the root <H3> wrapping everything (so the import creates
     // a single top-level folder the user can rename / move).
-    expect(html).toContain('<H1>' + EXPORT_ROOT_TITLE + '</H1>');
+    expect(html).toContain('<H1>' + BOOKMARKS_BAR_TITLE + '</H1>');
   });
 });
 

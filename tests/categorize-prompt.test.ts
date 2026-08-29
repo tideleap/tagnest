@@ -84,6 +84,28 @@ describe('buildCategorizePrompt — single-placement semantics (C1-1/C1-2)', () 
   });
 });
 
+describe('buildCategorizePrompt — two-level-first placement (2026-08-29 upgrade)', () => {
+  it('instructs a 领域 > 具体网站/产品 two-level placement as the default', () => {
+    const prompt = buildCategorizePrompt(inputs, vocab);
+    // The core bias: two levels (领域 > 网站) is the norm, not three.
+    expect(prompt).toContain('归属路径以【两级为主】');
+    expect(prompt).toContain('一级是稳定、宽泛、可长期复用的【领域】');
+    expect(prompt).toContain('二级是该书签所属的具体【网站 / 产品 / 主题】');
+    // Explicit anti-instruction: do not force-fill three levels.
+    expect(prompt).toContain('绝大多数书签应归到「领域 > 网站」两级');
+    // The path schema guidance recommends the two-segment shape.
+    expect(prompt).toContain('["领域","具体网站/产品"]');
+    // Level 2 must name the concrete site so the user knows what it is.
+    expect(prompt).toContain('看到名字就知道是哪个站点');
+  });
+
+  it('still permits a third level only when a real sub-module split exists', () => {
+    const prompt = buildCategorizePrompt(inputs, vocab);
+    expect(prompt).toContain('仅在二级之下确实还需细分');
+    expect(prompt).toContain('确有必要才填三级');
+  });
+});
+
 describe('parseCategorizeResponse — documented schema', () => {
   it('parses a full single-placement row', () => {
     const raw = JSON.stringify({

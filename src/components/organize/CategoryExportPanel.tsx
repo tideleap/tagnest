@@ -70,6 +70,7 @@ export function CategoryExportPanel() {
       }));
       const html = toNetscapeBookmarksHtml(rows, {
         generatedAt: Math.floor(Date.now() / 1000),
+        normalizeTitles: true,
       });
       downloadBlob(buildExportFilename(), html, 'text/html');
     } catch (e) {
@@ -116,13 +117,13 @@ export function CategoryExportPanel() {
         </li>
         <li>
           <span className="mr-1 font-mono text-ink-soft">3.</span>
-          导入会落到「其他书签」根；从那里把 <span className="font-medium text-ink-soft">TagNest 分类</span> 文件夹拖到「书签栏」即可
+          导入会落到「其他书签」根；从那里把 <span className="font-medium text-ink-soft">书签栏 › ✨ AI 整理 …</span> 文件夹整体拖到「书签栏」即可，或只保留需要的子文件夹
         </li>
       </ol>
 
       <p className="flex items-center gap-1.5 text-2xs text-ink-faint">
         <ExternalLink size={11} aria-hidden />
-        提示：重复导入会在「其他书签」里累积同名文件夹，导入前可先手动删除旧版本
+        提示：每次导出都是独立的「✨ AI 整理 …」会话文件夹，重复导入只会增加新会话，不再累积同名文件夹；旧的会话拖到书签栏后手动删掉即可
       </p>
 
       {error && (
