@@ -41,7 +41,7 @@ describe('distinctBudget', () => {
 });
 
 describe('governTaxonomy — minimum support (P0-2)', () => {
-  it('drops every brand-new singleton tag', () => {
+  it('demotes under-supported singleton tags instead of deleting them (2026-08-30 fix)', () => {
     const inputs = [1, 2, 3, 4, 5].map((i) => input(`b${i}`, `site${i}.com`));
     const tags = new Map([
       [0, [cand('孤标签甲')]],
@@ -51,16 +51,36 @@ describe('governTaxonomy — minimum support (P0-2)', () => {
       [4, [cand('孤标签戊')]],
     ]);
     const gov = governTaxonomy(tags, buildVocabulary([]), inputs);
-    // Every bookmark must still end up with ≥1 tag (domain fallback), but the
-    // singleton names themselves are gone.
-    for (const [index, cands] of gov.tags) {
-      expect(cands.length).toBeGreaterThanOrEqual(1);
-      for (const c of cands) {
-        expect(['孤标签甲', '孤标签乙', '孤标签丙', '孤标签丁', '孤标签戊']).not.toContain(c.name);
-      }
-      expect(index).toBeDefined();
+    // The model's verdicts stay visible — every bookmark keeps its own tag,
+    // demoted to reduced confidence so the review queue decides.
+    const names = [...gov.tags.values()].flatMap((c) => c.map((x) => x.name));
+    for (const n of ['孤标签甲', '孤标签乙', '孤标签丙', '孤标签丁', '孤标签戊']) {
+      expect(names).toContain(n);
     }
-    expect(gov.metrics.dropped).toBeGreaterThan(0);
+    // All five were demoted (not merged, not dropped).
+    expect(gov.metrics.demoted).toBe(5);
+    expect(gov.metrics.dropped).toBe(0);
+    expect(gov.demotedKeys.size).toBe(5);
+    // Confidence reduced by the demotion factor (0.8 → 0.48).
+    for (const cands of gov.tags.values()) {
+      expect(cands[0].confidence).toBeCloseTo(0.48, 5);
+      expect(cands[0].reason).toContain('人工确认');
+    }
+  });
+
+  it('hard-drops not-kept new names below the demote confidence floor', () => {
+    const inputs = [1, 2, 3].map((i) => input(`b${i}`, `site${i}.com`));
+    const tags = new Map([
+      [0, [cand('低信心噪音', 0.2)]],
+      [1, [cand('低信心噪音乙', 0.2)]],
+      [2, [cand('低信心噪音丙', 0.2)]],
+    ]);
+    const gov = governTaxonomy(tags, buildVocabulary([]), inputs);
+    const names = [...gov.tags.values()].flatMap((c) => c.map((x) => x.name));
+    // Below the 0.5 demote floor: gone, and each bookmark falls back.
+    expect(names).not.toContain('低信心噪音');
+    expect(gov.metrics.dropped).toBe(3);
+    expect(gov.metrics.demoted).toBe(0);
   });
 
   it('keeps a new tag whose batch support reaches the minimum', () => {
@@ -206,8 +226,12 @@ describe('governTaxonomy — determinism & performance', () => {
     const t0 = performance.now();
     const gov = governTaxonomy(tags, buildVocabulary([]), inputs);
     const ms = performance.now() - t0;
-    // Budget applies to model names; host fallback names are exempt.
-    expect(gov.quality.distinct - gov.quality.fallbackNames).toBeLessThanOrEqual(distinctBudget(1000));
+    // Budget applies to model names; host fallback names are exempt, and
+    // demoted names stay visible by design (review-queue gating), so they
+    // are excluded from the admitted-name budget check too.
+    expect(
+      gov.quality.distinct - gov.quality.fallbackNames - gov.quality.demotedNames,
+    ).toBeLessThanOrEqual(distinctBudget(1000));
     // PRD target is <200ms on dev hardware; CI shared runners run ~1.2-1.3x
     // slower, so the regression guard here is 2x the target to avoid
     // flaking on runner noise while still catching real algorithmic slips.

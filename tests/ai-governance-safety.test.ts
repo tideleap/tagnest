@@ -97,11 +97,16 @@ describe('P0-7 — governance never mutates the existing tags table', () => {
       { vocab, config: modelConfig, local },
     );
 
-    // Governance ran and dropped the singletons from the suggestion set.
+    // Governance ran; under demotion semantics (2026-08-30) the one-off
+    // fragments stay in the suggestion set at reduced confidence, flagged
+    // for human review — the safety boundary below is what must not bend.
     expect(out.governance).not.toBeNull();
-    const suggestedNames = out.results.flatMap((r) => r.tags.map((t) => t.name));
-    for (const frag of ['孤词甲', '孤词乙', '孤词丙', '孤词丁']) {
-      expect(suggestedNames).not.toContain(frag);
+    const demoted = out.results.flatMap((r) => r.tags).filter((t) =>
+      ['孤词甲', '孤词乙', '孤词丙', '孤词丁'].includes(t.name),
+    );
+    expect(demoted.length).toBe(4);
+    for (const t of demoted) {
+      expect(t.reason).toContain('人工确认');
     }
 
     // Persist the governed suggestions.
@@ -113,11 +118,13 @@ describe('P0-7 — governance never mutates the existing tags table', () => {
     expect(state.tags).toHaveLength(2);
     expect(state.tags.map((t) => t.name).sort()).toEqual(['前端', '数据库']);
 
-    // And the suggestion carrier did receive rows (governed, no fragments).
+    // And the suggestion carrier received the governed rows, demoted
+    // fragments included (still review-gated, never auto-applied).
     expect(state.tag_suggestions.length).toBeGreaterThan(0);
-    for (const s of state.tag_suggestions) {
-      expect(['孤词甲', '孤词乙', '孤词丙', '孤词丁']).not.toContain(s.tag_name);
-    }
+    const carried = state.tag_suggestions.filter((s) =>
+      ['孤词甲', '孤词乙', '孤词丙', '孤词丁'].includes(s.tag_name),
+    );
+    expect(carried.length).toBe(4);
   });
 
   it('source audit: governance.ts holds no DB handle and no tags-table write', () => {

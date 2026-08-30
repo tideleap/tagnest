@@ -51,6 +51,12 @@ export const GOVERNANCE_DEFAULTS = {
   newTagRatio: 0.3,
   /** Edit-distance similarity above which a dropped name merges into a kept one. */
   mergeSimilarity: 0.75,
+  /**
+   * Tier-3 demotion floor: a not-kept new name whose average model confidence
+   * reaches this is demoted (confidence ×0.6 + needsReview) instead of
+   * dropped, so the model's verdict stays visible to the review queue.
+   */
+  demoteConfidenceFloor: 0.5,
 } as const;
 
 export type GovernanceConfig = typeof GOVERNANCE_DEFAULTS;
@@ -79,6 +85,12 @@ export interface GovernanceQuality {
    * budget applies to model names only: modelNames = distinct − fallbackNames.
    */
   fallbackNames: number;
+  /**
+   * Distinct names demoted this run (kept at reduced confidence, flagged for
+   * review). They stay visible in the output by design, so the admitted-name
+   * budget check is: distinct − fallbackNames − demotedNames ≤ budget.
+   */
+  demotedNames: number;
 }
 
 export interface GovernMetrics {
@@ -86,6 +98,9 @@ export interface GovernMetrics {
   budget: number;
   merged: number;
   rolledUp: number;
+  /** Assignments demoted instead of dropped (kept with needsReview). */
+  demoted: number;
+  /** Assignments fully dropped (below the demote confidence floor). */
   dropped: number;
 }
 
@@ -94,6 +109,12 @@ export interface GovernResult {
   tags: Map<number, RawCandidate[]>;
   quality: GovernanceQuality;
   metrics: GovernMetrics;
+  /**
+   * Normalised keys demoted this run (kept at reduced confidence). The engine
+   * uses this to flag the affected bookmarks needsReview so the review queue
+   * — not a threshold — decides whether the tag survives.
+   */
+  demotedKeys: Set<string>;
 }
 
 interface TagStat {
@@ -105,6 +126,8 @@ interface TagStat {
   vocabCount: number;
   /** Sum of candidate confidences (ranking signal). */
   confSum: number;
+  /** Number of contributing candidates — pairs with confSum for the average. */
+  confCount: number;
   /** Whether the name already exists in the user's vocabulary. */
   existing: boolean;
   /** Indices of bookmarks proposing this name (each index once). */
@@ -169,7 +192,7 @@ export function governTaxonomy(
   inputs: ReadonlyArray<EnrichInput>,
   cfg: GovernanceConfig = GOVERNANCE_DEFAULTS,
 ): GovernResult {
-  const metrics: GovernMetrics = { budget: 0, merged: 0, rolledUp: 0, dropped: 0 };
+  const metrics: GovernMetrics = { budget: 0, merged: 0, rolledUp: 0, demoted: 0, dropped: 0 };
 
   // ---- 1. Collect tag statistics across the whole batch ----------------
   const stats = new Map<string, TagStat>();
@@ -189,6 +212,7 @@ export function governTaxonomy(
           batchSupport: 0,
           vocabCount: entry?.count ?? 0,
           confSum: 0,
+          confCount: 0,
           existing: Boolean(entry),
           holders: [],
         };
@@ -201,14 +225,24 @@ export function governTaxonomy(
         stat.holders.push(index);
       }
       stat.confSum += cand.confidence;
+      stat.confCount += 1;
     }
   }
 
   if (stats.size === 0) {
     return {
       tags: modelTags,
-      quality: { distinct: 0, assignments: 0, newTags: 0, singletons: 0, reuseRate: 0, fallbackNames: 0 },
+      quality: {
+        distinct: 0,
+        assignments: 0,
+        newTags: 0,
+        singletons: 0,
+        reuseRate: 0,
+        fallbackNames: 0,
+        demotedNames: 0,
+      },
       metrics,
+      demotedKeys: new Set<string>(),
     };
   }
 
@@ -258,12 +292,33 @@ export function governTaxonomy(
     .sort((a, b) => a.name.localeCompare(b.name));
   const droppedStats = [...stats.entries()].filter(([statKey]) => !keptKeys.has(statKey));
 
-  /** statKey → replacement name, or null = drop the assignment. */
-  const rewrite = new Map<string, string | null>();
+  /**
+   * statKey →
+   *  - string  : merge/roll-up replacement name
+   *  - 'demote': keep the model's own tag but downgrade it (confidence ×
+   *              DEMOTE_CONFIDENCE_FACTOR, flagged needsReview) so it lands
+   *              in the review queue instead of being deleted
+   *  - null    : drop entirely (reserved for unmergeable non-CJK noise)
+   */
+  const rewrite = new Map<string, string | 'demote' | null>();
+
+  /**
+   * Root-cause fix (2026-08-30 "全走域名兜底"): the old tier-3 dropped every
+   * under-supported new name outright. In production, runs are sliced into
+   * 20-bookmark partitions and governance runs per slice, so a diverse
+   * slice's model tags mostly have slice-support 1 → tier 3 deleted nearly
+   * every model proposal → bookmarks re-seeded with domain fallbacks, which
+   * are themselves singletons. The model was effectively vetoed. Demotion
+   * keeps the model's verdict visible, marks it for human confirmation, and
+   * lets the review queue — not a threshold — decide what survives. Full
+   * drops now happen only when merge and roll-up both miss AND the name is
+   * not worth showing a human (see `demotable` below).
+   */
+  const DEMOTE_CONFIDENCE_FACTOR = 0.6;
 
   for (const [statKey, stat] of droppedStats) {
-    let resolved: string | null = null;
-    let action: 'merged' | 'rolledUp' | null = null;
+    let resolved: string | 'demote' | null = null;
+    let action: 'merged' | 'rolledUp' | 'demoted' | null = null;
 
     // ① Merge into the most similar kept name.
     let best: { name: string; score: number } | null = null;
@@ -290,16 +345,29 @@ export function governTaxonomy(
       }
     }
 
-    // ③ Drop (resolved stays null).
+    // ③ Demote: keep the model's tag, downgrade confidence, flag review.
+    //    Only names the model proposed with some conviction are worth a
+    //    human glance; ultra-low-confidence noise is dropped as before.
+    if (!resolved) {
+      const avgConf = stat.batchSupport > 0 ? stat.confSum / stat.confCount : 0;
+      if (avgConf >= cfg.demoteConfidenceFloor) {
+        resolved = 'demote';
+        action = 'demoted';
+      }
+    }
+
     rewrite.set(statKey, resolved);
     const affected = stat.holders.length;
     if (action === 'merged') metrics.merged += affected;
     else if (action === 'rolledUp') metrics.rolledUp += affected;
+    else if (action === 'demoted') metrics.demoted += affected;
     else metrics.dropped += affected;
   }
 
   // ---- 4. Apply rewrites, then guarantee non-empty tag lists -----------
   const out = new Map<number, RawCandidate[]>();
+  /** Names demoted this run — engine flags their holders for review. */
+  const demotedKeys = new Set<string>();
   for (const [index, cands] of modelTags) {
     const next: RawCandidate[] = [];
     for (const cand of cands) {
@@ -307,9 +375,24 @@ export function governTaxonomy(
       if (!rawKey) continue;
       const statKey = rawToStat.get(rawKey) ?? rawKey;
       const rule = rewrite.get(statKey);
-      if (rule === null) continue; // dropped
+      if (rule === null) continue; // hard drop (below the demote floor)
+      // Note: demote/merge targets are BY DESIGN not in keptKeys — they were
+      // rescued after failing admission. Only null means "drop"; anything
+      // else rewrites or demotes in place. (The former `!keptKeys.has(...)`
+      // guard made both rescue paths unreachable and re-seeded every
+      // affected bookmark with a domain fallback — the 2026-08-30 bug.)
       const stat = stats.get(statKey);
-      if (!stat || !keptKeys.has(statKey)) continue; // defensive; unreachable
+      if (!stat) continue; // defensive; unreachable
+      if (rule === 'demote') {
+        // Keep the model's own tag but make the human the gatekeeper.
+        demotedKeys.add(statKey);
+        next.push({
+          ...cand,
+          confidence: Math.max(0, Math.min(1, cand.confidence * DEMOTE_CONFIDENCE_FACTOR)),
+          reason: `${cand.reason} · 支持度不足已降级，请人工确认`,
+        });
+        continue;
+      }
       const name = rule ?? stat.name;
       next.push(
         rule
@@ -365,9 +448,10 @@ export function governTaxonomy(
     singletons: singletonNames,
     reuseRate: Math.round(reuseRate * 100) / 100,
     fallbackNames: fallbackNames.size,
+    demotedNames: demotedKeys.size,
   };
 
-  return { tags: out, quality, metrics };
+  return { tags: out, quality, metrics, demotedKeys };
 }
 
 /**

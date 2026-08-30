@@ -381,10 +381,11 @@ describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {  it('synthes
 });
 
 describe('suggestForBookmarks — tag governance integration (PRD-TAG-QUALITY)', () => {
-  it('governs fragment tags across the whole batch: singletons drop, survivors keep', async () => {
+  it('governs fragment tags across the whole batch: singletons demoted for review, supported tag kept', async () => {
     // 4 bookmarks each proposing a unique one-off tag, plus 2 bookmarks
-    // sharing one tag. minSupport=2: the shared tag survives, the four
-    // singletons are dropped (domain fallback re-seeds them).
+    // sharing one tag. minSupport=2: the shared tag survives; the four
+    // one-off names are demoted (kept at reduced confidence, flagged for
+    // review) instead of being deleted — the model's verdict stays visible.
     const json = JSON.stringify({
       results: [
         { i: 1, tags: [{ name: '孤词甲', confidence: 0.9, reason: 'r' }] },
@@ -405,21 +406,34 @@ describe('suggestForBookmarks — tag governance integration (PRD-TAG-QUALITY)',
       { vocab: emptyVocab, config: modelConfig, local },
     );
     const allNames = out.results.flatMap((r) => r.tags.map((t) => t.name));
-    // The supported tag survives; the one-off names are gone from every result.
+    // The supported tag survives on its holders...
     expect(allNames).toContain('常用主题');
+    // ...and every one-off name stays visible, demoted for human review.
     for (const frag of ['孤词甲', '孤词乙', '孤词丙', '孤词丁']) {
-      expect(allNames).not.toContain(frag);
+      expect(allNames).toContain(frag);
+    }
+    // Demoted holders are flagged needsReview so the review queue — not a
+    // threshold — decides whether the tag survives.
+    for (const r of out.results) {
+      if (r.tags.some((t) => ['孤词甲', '孤词乙', '孤词丙', '孤词丁'].includes(t.name))) {
+        expect(r.needsReview).toBe(true);
+        expect(r.tags.find((t) => ['孤词甲', '孤词乙', '孤词丙', '孤词丁'].includes(t.name))!.reason).toContain('人工确认');
+      }
     }
     // No bookmark left untagged (fallback guarantee) and metrics surfaced.
     expect(out.results.every((r) => r.tags.length >= 1)).toBe(true);
     expect(out.governance).not.toBeNull();
     expect(out.governance!.metrics.budget).toBeGreaterThan(0);
-    expect(out.governance!.metrics.dropped).toBeGreaterThanOrEqual(4);
+    expect(out.governance!.metrics.demoted).toBe(4);
+    expect(out.governance!.metrics.dropped).toBe(0);
+    // Fallback re-seeding is no longer needed: nothing was deleted.
+    expect(out.uncovered).toBe(0);
   });
 
   it('P0-6: writes GOVERNED tags to the URL cache, not the raw model output', async () => {
-    // 1 bookmark carries a true singleton fragment (support 1 → dropped);
-    // 4 bookmarks share a supported keeper tag.
+    // 1 bookmark carries a true singleton fragment (support 1 → demoted with
+    // review flag since 2026-08-30, not deleted); 4 bookmarks share a
+    // supported keeper tag.
     const json = JSON.stringify({
       results: [
         { i: 1, tags: [{ name: '孤立碎片词', confidence: 0.9, reason: 'r' }] },
@@ -448,19 +462,27 @@ describe('suggestForBookmarks — tag governance integration (PRD-TAG-QUALITY)',
       { vocab: emptyVocab, config: modelConfig, local, tagCache: cache },
     );
 
-    // No cached entry may contain the governed-away fragment.
-    const entries = [...store.values()] as Array<{ tags: Array<{ name: string }> }>;
-    for (const entry of entries) {
-      for (const tag of entry.tags) {
-        expect(tag.name).not.toBe('孤立碎片词');
-      }
-    }
+    // The fragment URL IS cached under the new demotion semantics, but the
+    // demoted tag carries the review flag so a cache replay cannot resurrect
+    // it as a fully-trusted suggestion.
+    const entries = [...store.values()] as Array<{
+      tags: Array<{ name: string; confidence: number; reason: string }>;
+      needsReview: boolean;
+    }>;
+    const fragmentEntry = entries.find((e) =>
+      e.tags.some((t) => t.name === '孤立碎片词'),
+    );
+    expect(fragmentEntry).toBeDefined();
+    expect(fragmentEntry!.needsReview).toBe(true);
+    expect(fragmentEntry!.tags.find((t) => t.name === '孤立碎片词')!.reason).toContain(
+      '人工确认',
+    );
+    expect(fragmentEntry!.tags.find((t) => t.name === '孤立碎片词')!.confidence).toBeCloseTo(0.54, 5);
     // The supported tag is present in the cached sets that had it.
     const withShared = entries.filter((e) => e.tags.some((t) => t.name === '共享主题'));
     expect(withShared.length).toBe(4);
-    // The fragment-only URL is NOT cached (skip-on-empty), so the next run
-    // re-asks the model instead of replaying the fragment.
-    expect(entries.length).toBe(4);
+    // All 5 URLs are cached now — nothing was governed away.
+    expect(entries.length).toBe(5);
   });
 
   it('P0-5: prompt states the run-size budget line', async () => {

@@ -30,6 +30,21 @@ import type { EnrichInput } from './types';
 /** Per-fetch deadline. Short on purpose: a slow page is not worth waiting for. */
 const FETCH_TIMEOUT_MS = 6_000;
 
+/**
+ * Whole-batch enrichment budget, independent of the per-partition model
+ * budget (TN_PARTITION_BUDGET_MS, default 22s).
+ *
+ * Root-cause fix (2026-08-30 "全走域名兜底"): enrichment used to run at full
+ * concurrency with no awareness of the partition signal — worst case 4 waves
+ * × 6s = 24s of fetching, which drained the 22s partition budget BEFORE the
+ * first model call. Every model call then died instantly on the aborted
+ * signal and the whole slice degraded to domain fallbacks. The budget now
+ * caps fetching at a fraction of the typical partition budget and the workers
+ * stop early when either runs out, so the model always gets its share of the
+ * wall-clock.
+ */
+const ENRICH_BUDGET_MS = 8_000;
+
 /** Read at most this many bytes of the body — the excerpt needs only the head. */
 const MAX_BODY_BYTES = 300_000;
 
@@ -190,18 +205,31 @@ export function renderExcerpt(excerpt: PageExcerpt): string | null {
  * Returns a new array in input order; each input gains `pageExcerpt` when a
  * fetch succeeded. Inputs that are not fetchable keep their shape untouched.
  * Never throws.
+ *
+ * Two hard stop conditions protect the model's share of the partition
+ * budget:
+ *  - `ENRICH_BUDGET_MS` — the whole batch's fetch phase is capped, so a run
+ *    of slow/withholding sites cannot starve the model call that follows;
+ *  - `signal` — when the partition budget is nearly spent, fetching stops
+ *    immediately and whatever excerpts have landed are returned as-is.
+ * Under either condition un-fetched inputs simply stay un-enriched (title/
+ * URL/description only), which is the documented non-blocking contract.
  */
 export async function enrichInputsWithContent<T extends EnrichInput>(
   inputs: T[],
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<T[]> {
   if (inputs.length === 0) return [];
 
   const results: Array<PageExcerpt | null> = new Array(inputs.length).fill(null);
   let cursor = 0;
+  const startedAt = Date.now();
+  const timeLeft = () =>
+    Date.now() - startedAt < ENRICH_BUDGET_MS && !(signal?.aborted ?? false);
 
   async function worker(): Promise<void> {
-    while (cursor < inputs.length) {
+    while (timeLeft() && cursor < inputs.length) {
       const index = cursor;
       cursor += 1;
       results[index] = await fetchPageExcerpt(inputs[index].url, fetchImpl);

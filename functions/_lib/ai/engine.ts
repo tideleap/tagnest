@@ -303,8 +303,10 @@ export async function suggestForBookmarks(
     // 方案A: fetch page content so the model classifies real text, not just a
     // title. Runs once for the whole input set (bounded concurrency, hard
     // timeouts); failures leave the input untouched and the pipeline proceeds.
+    // The partition signal is threaded through: when the partition budget is
+    // nearly spent, fetching stops early and the model keeps what remains.
     const enriched = config.fetchContent
-      ? await enrichInputsWithContent(inputs, options.fetchImpl)
+      ? await enrichInputsWithContent(inputs, options.fetchImpl, options.signal)
       : inputs;
 
     // Shared applier: writes one parsed item (fresh model output or cache hit)
@@ -350,6 +352,15 @@ export async function suggestForBookmarks(
     }
 
     for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+      // Root-cause fix (2026-08-30): when the partition budget is spent, every
+      // remaining batch would die instantly on the aborted signal — and each
+      // attempt still pays the retry backoff before failing. Break out instead
+      // of burning the rest of the slice against a dead signal; those
+      // bookmarks fall through to the per-bookmark fallback below.
+      if (options.signal?.aborted) {
+        modelError = modelError ?? '分区时间预算已用尽，本分片剩余书签未送入模型';
+        break;
+      }
       const slice = pending.slice(start, start + BATCH_SIZE);
       const sliceInputs = slice.map((p) => p.input);
 
@@ -423,6 +434,17 @@ export async function suggestForBookmarks(
     if (modelContributed && inputs.length > 1) {
       governance = governTaxonomy(modelTags, vocab, inputs);
       modelTags = governance.tags;
+      // Demoted tags (kept at reduced confidence for human review) flag their
+      // bookmarks needsReview, so the review queue — not a threshold —
+      // decides whether a demoted model tag survives.
+      for (const [index, cands] of modelTags) {
+        if (cands.some((c) => {
+          const key = normalizeKey(c.name);
+          return key ? governance!.demotedKeys.has(key) : false;
+        })) {
+          needsReviewFlags.set(index, true);
+        }
+      }
     }
 
     // P0-1: synthesise a consistent hierarchy from the batch's tag frequencies
@@ -469,11 +491,17 @@ export async function suggestForBookmarks(
           reason: c.reason,
           isNew: !vocab.byKey.has(normalizeKey(c.name)),
         }));
+        // Demotion (2026-08-30) keeps rescued tags at reduced confidence and
+        // flags them for review — persist that flag, or a cache replay would
+        // resurrect a demoted fragment as a fully-trusted suggestion.
+        const cacheNeedsReview =
+          item.needsReview ||
+          needsReviewFlags.get(globalIndex) === true;
         await cache.put(key, {
           tags: modelTagsForUrl,
           summary: item.summary,
           topic: item.topic,
-          needsReview: item.needsReview,
+          needsReview: cacheNeedsReview,
         });
       }
     }
@@ -967,6 +995,12 @@ export async function categorizeBookmarks(
     }
 
     for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+      // Same abort-awareness as the tagging loop: a spent partition budget
+      // must not burn the remaining batches (and their retry backoffs).
+      if (options.signal?.aborted) {
+        modelError = modelError ?? '分区时间预算已用尽，本分片剩余书签未送入模型';
+        break;
+      }
       const slice = pending.slice(start, start + BATCH_SIZE);
       const sliceInputs = slice.map((p) => p.input);
 
@@ -1322,6 +1356,12 @@ export async function renameBookmarks(
     }
 
     for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+      // Same abort-awareness as the tagging loop: a spent partition budget
+      // must not burn the remaining batches (and their retry backoffs).
+      if (options.signal?.aborted) {
+        modelError = modelError ?? '分区时间预算已用尽，本分片剩余书签未送入模型';
+        break;
+      }
       const slice = pending.slice(start, start + BATCH_SIZE);
       const sliceInputs = slice.map((p) => p.input);
 
