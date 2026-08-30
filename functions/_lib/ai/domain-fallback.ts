@@ -8,7 +8,7 @@
 
 import type { CandidateSource, EnrichInput, RawCandidate } from './types';
 import { hostOf } from '../urlkey';
-import { KNOWN_BRANDS, brandFromHost } from '@shared/siteLabel';
+import { KNOWN_BRANDS, brandFromHost } from '../../../shared/siteLabel';
 
 export { KNOWN_BRANDS, brandFromHost };
 

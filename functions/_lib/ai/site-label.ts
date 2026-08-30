@@ -17,4 +17,4 @@ export {
   KNOWN_BRANDS,
   brandFromHost,
   isGenericTitle,
-} from '@shared/siteLabel';
+} from '../../../shared/siteLabel';
