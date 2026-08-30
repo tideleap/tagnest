@@ -745,11 +745,32 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const job = state.ai_jobs.find((j) => j.id === jobId);
       if (!job) return 0;
       const setPart = sql.substring(sql.indexOf(' SET ') + 5, sql.indexOf(' WHERE '));
-      const columns = setPart.split(',').map((c) => c.split('=')[0].trim().toLowerCase());
+      const assignments = setPart.split(',').map((c) => c.trim());
       // Param order mirrors the SET order; the last param is the id.
       const values = params.slice(0, -1);
-      columns.forEach((col, i) => {
-        const v = values[i];
+      let vi = 0;
+      for (const assignment of assignments) {
+        const eq = assignment.indexOf('=');
+        const col = assignment.substring(0, eq).trim().toLowerCase();
+        const rhs = assignment.substring(eq + 1).trim();
+        // Arithmetic form `col = col + ?` / `col = col - ?` (used by
+        // incrementJobCounters for race-free parallel progress). Add/subtract
+        // the bound delta from the current value; a plain `col = ?` just assigns.
+        const arith = rhs.match(/^([a-z_]+)\s*([+-])\s*\?$/i);
+        let v: unknown;
+        if (arith && arith[1].toLowerCase() === col) {
+          const delta = Number(values[vi]);
+          const current =
+            col === 'processed'
+              ? Number(job.processed)
+              : col === 'suggested'
+                ? Number(job.suggested)
+                : Number(job.failed);
+          v = arith[2] === '+' ? current + delta : current - delta;
+        } else {
+          v = values[vi];
+        }
+        vi += 1;
         if (col === 'updated_at') job.updated_at = String(v);
         else if (col === 'status') job.status = String(v);
         else if (col === 'processed') job.processed = Number(v);
@@ -757,7 +778,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         else if (col === 'failed') job.failed = Number(v);
         else if (col === 'engine') job.engine = v == null ? null : String(v);
         else if (col === 'error') job.error = v == null ? null : String(v);
-      });
+      }
       return 1;
     }
 

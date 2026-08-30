@@ -7,6 +7,7 @@ import {
   createJob,
   decideSuggestions,
   getJob,
+  incrementJobCounters,
   listJobs,
   listPendingSuggestions,
   resolveScope,
@@ -295,5 +296,54 @@ describe('jobs — create / read / update', () => {
 
     const jobs = await listJobs(env, 'u1', 5);
     expect(jobs.some((j) => j.id === job.id)).toBe(true);
+  });
+});
+
+describe('incrementJobCounters — atomic, race-free progression', () => {
+  it('accumulates processed/suggested/failed instead of overwriting', async () => {
+    const { env } = makeEnv();
+    const job = await createJob(env, 'u1', 'categorize', { target: 'ids', ids: Array.from({ length: 30 }, (_, i) => `b${i}`) });
+
+    await incrementJobCounters(env, 'u1', job.id, { processed: 10, suggested: 10, failed: 0 });
+    let fetched = await getJob(env, 'u1', job.id);
+    expect(fetched?.processed).toBe(10);
+    expect(fetched?.suggested).toBe(10);
+    expect(fetched?.status).toBe('queued');
+
+    await incrementJobCounters(env, 'u1', job.id, { processed: 10, suggested: 5, failed: 1 });
+    fetched = await getJob(env, 'u1', job.id);
+    expect(fetched?.processed).toBe(20);
+    expect(fetched?.suggested).toBe(15);
+    expect(fetched?.failed).toBe(1);
+  });
+
+  it('ignores non-positive deltas so a zero-length partition is a no-op', async () => {
+    const { env } = makeEnv();
+    const job = await createJob(env, 'u1', 'categorize', { target: 'ids', ids: Array.from({ length: 5 }, (_, i) => `b${i}`) });
+
+    await incrementJobCounters(env, 'u1', job.id, { processed: 0, suggested: 0, failed: 0 });
+    const fetched = await getJob(env, 'u1', job.id);
+    expect(fetched?.processed).toBe(0);
+  });
+
+  it('sets status only when provided (finalizer flips to done, fatal to failed)', async () => {
+    const { env } = makeEnv();
+    const job = await createJob(env, 'u1', 'categorize', { target: 'ids', ids: Array.from({ length: 20 }, (_, i) => `b${i}`) });
+
+    await incrementJobCounters(env, 'u1', job.id, { processed: 20, suggested: 20 });
+    let fetched = await getJob(env, 'u1', job.id);
+    expect(fetched?.status).toBe('queued'); // not finalizer-set yet
+
+    await incrementJobCounters(env, 'u1', job.id, { processed: 0, status: 'done' });
+    fetched = await getJob(env, 'u1', job.id);
+    expect(fetched?.status).toBe('done');
+    expect(fetched?.processed).toBe(20); // status change must not clobber counts
+
+    const fatalJob = await createJob(env, 'u1', 'tagging', { target: 'ids', ids: ['x1'] });
+    await incrementJobCounters(env, 'u1', fatalJob.id, { processed: 1, failed: 1, status: 'failed', error: 'bad key' });
+    const fatal = await getJob(env, 'u1', fatalJob.id);
+    expect(fatal?.status).toBe('failed');
+    expect(fatal?.error).toBe('bad key');
+    expect(fatal?.processed).toBe(1);
   });
 });

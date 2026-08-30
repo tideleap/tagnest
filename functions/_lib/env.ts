@@ -106,6 +106,14 @@ export interface Env {
    * 503 so a misconfigured instance never exposes an open grant path.
    */
   ADMIN_TOKEN?: string;
+  /**
+   * Per-partition model-call budget (ms) for the AI organise runner. The runner
+   * creates one `AbortSignal` per partition from this value and merges it with
+   * each call's `REQUEST_TIMEOUT_MS`, guaranteeing a single slice can never outlive
+   * the Cloudflare Pages Functions ~30s wall-clock. Defaults to 22s (see run.ts)
+   * when unset; keep it below the client's 28s partition deadline.
+   */
+  TN_PARTITION_BUDGET_MS?: string;
 }
 
 /** Populated by the API middleware once a request is authenticated. */

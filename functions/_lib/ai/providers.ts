@@ -45,22 +45,29 @@ function envNumber(name: string, fallback: number): number {
 }
 
 /**
- * Model request deadline.
+ * Per-call model request deadline.
  *
- * Must stay *shorter* than the client's chunk deadline (90s in
- * `useOrganizeRun`) so the server fails first and returns a useful error
- * instead of the client aborting mid-flight and showing a generic timeout.
- * 25s is generous for a 10-bookmark batch while keeping total chunk time
- * (2 batches + D1 writes) well under a minute. Override with `TN_AI_TIMEOUT_MS`.
+ * Must stay *well* under the Cloudflare Pages Functions wall-clock (≈30s) and
+ * the client's per-partition deadline (28s in `useOrganizeRun`), leaving
+ * headroom for the D1 writes and — on the finisher — the shared-state
+ * finalize. A single partition is exactly one model call now (page fetching was
+ * removed in 方案A), so 20s leaves ~8s for everything else and still fits before
+ * the 28s client timeout fires. Override with `TN_AI_TIMEOUT_MS`.
  */
-export const REQUEST_TIMEOUT_MS = envNumber('TN_AI_TIMEOUT_MS', 25_000);
+export const REQUEST_TIMEOUT_MS = envNumber('TN_AI_TIMEOUT_MS', 20_000);
 
 /**
  * Maximum provider attempts for one logical call (override `TN_AI_MAX_RETRIES`).
- * Mirrors the reference project's default of 5; exponential backoff is applied
- * between attempts by `withRetry`.
+ *
+ * Kept low on purpose: under the Pages Functions 30s wall a partition cannot
+ * survive many serial attempts, and — critically — *timeouts are not retried at
+ * all* (see `isTransientRetryable`), so this only bounds retries of fast,
+ * transient 429/5xx responses. A slow model that already timed out will only
+ * time out again, and retrying it is exactly what used to push every partition
+ * past the wall and surface as "0/168 + 请求超时". Default 2 gives one cheap
+ * retry for a flaky gateway without any risk of a multi-minute loop.
  */
-export const RETRY_MAX_ATTEMPTS = envNumber('TN_AI_MAX_RETRIES', 5);
+export const RETRY_MAX_ATTEMPTS = envNumber('TN_AI_MAX_RETRIES', 2);
 
 const BACKOFF_BASE_MS = 1_500;
 const BACKOFF_FACTOR = 2;
@@ -81,6 +88,21 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Merges the caller's abort signal (if any) with a hard deadline.
+ *
+ * `AbortSignal.timeout(ms)` fires the deadline; if the caller also passes a
+ * signal — e.g. the partition budget created in `run.ts` — `AbortSignal.any`
+ * rejects as soon as *either* fires, so a single partition can never outlive its
+ * budget even if `REQUEST_TIMEOUT_MS` is misconfigured larger than it.
+ */
+function withDeadline(signal: AbortSignal | null | undefined, ms: number): AbortSignal {
+  const deadline = AbortSignal.timeout(ms);
+  if (!signal) return deadline;
+  const any = (AbortSignal as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+  return any ? any([signal, deadline]) : deadline;
+}
+
 export type RetryVerdict = 'ok' | 'retry' | 'stop';
 
 /**
@@ -97,13 +119,18 @@ export async function withRetry<T>(
   attempt: (n: number) => Promise<T>,
   classify: (result: T) => RetryVerdict,
   opts: { maxAttempts?: number } = {},
+  signal?: AbortSignal,
 ): Promise<T> {
   const maxAttempts = opts.maxAttempts ?? RETRY_MAX_ATTEMPTS;
   let last: T | undefined;
   for (let n = 1; n <= maxAttempts; n += 1) {
+    // Always run at least the first attempt; after that, bail the moment the
+    // partition budget has been spent rather than burning more calls we cannot
+    // afford under the Functions wall-clock.
     last = await attempt(n);
     const verdict = classify(last);
     if (verdict === 'ok' || verdict === 'stop') return last;
+    if (signal?.aborted) break;
     if (n < maxAttempts) await sleep(backoffDelayMs(n));
   }
   return last as T;
@@ -229,6 +256,7 @@ export async function callProvider(
   config: AiConfig,
   prompt: string,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<ProviderResult> {
   const req = buildProviderRequest(config, prompt);
   if (!req) {
@@ -240,7 +268,7 @@ export async function callProvider(
       method: 'POST',
       headers: req.headers,
       body: JSON.stringify(req.body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: withDeadline(signal, REQUEST_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -282,6 +310,21 @@ function describeStatus(status: number, detail: string): string {
 export function isRetryable(error: ProviderError): boolean {
   if (error.status === null) return true; // timeout / network
   return error.status === 429 || error.status >= 500;
+}
+
+/**
+ * True only for *fast, transient* HTTP failures — rate limits and 5xx.
+ *
+ * Deliberately excludes timeouts / network errors (`status === null`). Under the
+ * Cloudflare Pages Functions 30s wall-clock a model call that already timed out
+ * will only time out again; retrying it serially is what used to make a single
+ * 10-bookmark partition run for 5 × 25s ≈ 125s, blow the wall, and surface to
+ * the user as "0/168 + 请求超时". On a timeout we therefore stop immediately and
+ * let the engine degrade to its domain fallback for that slice.
+ */
+export function isTransientRetryable(error: ProviderError): boolean {
+  const status = error.status;
+  return status !== null && (status === 429 || status >= 500);
 }
 
 /** True when the whole job should stop rather than burn through the batch. */

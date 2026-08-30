@@ -315,6 +315,62 @@ export async function updateJob(env: Env, userId: string, jobId: string, patch: 
     .run();
 }
 
+/**
+ * Atomically advances a job's counters by a delta rather than overwriting them.
+ *
+ * The parallel-partition run path launches N concurrent `/run` calls, each
+ * owning a disjoint slice of bookmark IDs. A naive read-modify-write
+ * (`processed = job.processed + slice.length` from a per-request snapshot)
+ * would drop every other partition's progress the moment two of them finish
+ * at the same time. A single `UPDATE ... SET processed = processed + ?` is a
+ * race-free increment no matter how many partitions land on it concurrently,
+ * and it is what lets the final partition reliably detect "I am the last one"
+ * by checking `processed >= total` after its own increment.
+ */
+export interface JobCounterPatch {
+  processed?: number;
+  suggested?: number;
+  failed?: number;
+  status?: JobStatus;
+  error?: string | null;
+}
+
+export async function incrementJobCounters(
+  env: Env,
+  userId: string,
+  jobId: string,
+  patch: JobCounterPatch,
+): Promise<void> {
+  const sets: string[] = ['updated_at = ?'];
+  const params: unknown[] = [nowIso()];
+
+  const increment = (key: 'processed' | 'suggested' | 'failed') => {
+    const delta = patch[key];
+    if (delta && delta > 0) {
+      sets.push(`${key} = ${key} + ?`);
+      params.push(delta);
+    }
+  };
+  increment('processed');
+  increment('suggested');
+  increment('failed');
+
+  if (patch.status !== undefined) {
+    sets.push('status = ?');
+    params.push(patch.status);
+  }
+  if (patch.error !== undefined) {
+    sets.push('error = ?');
+    params.push(patch.error);
+  }
+
+  // Scope the update to the owning user (defense in depth).
+  params.push(userId, jobId);
+  await env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE user_id = ? AND id = ?`)
+    .bind(...params)
+    .run();
+}
+
 /** Most recent jobs, for the "last run" summary in the UI. */
 export async function listJobs(env: Env, userId: string, limit = 5): Promise<JobRow[]> {
   const rows = await env.DB.prepare(

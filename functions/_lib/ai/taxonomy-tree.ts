@@ -1,4 +1,4 @@
-import { callProvider, isFatal, isRetryable, withRetry } from './providers';
+import { callProvider, isFatal, isTransientRetryable, withRetry } from './providers';
 import { extractJsonValue, MAX_TAG_LENGTH } from './prompt';
 import type { AiConfig, RawCandidate } from './types';
 
@@ -191,7 +191,7 @@ export async function synthesizeTaxonomy(
     (outcome) => {
       if (!outcome.ok) {
         if (isFatal(outcome.error)) return 'stop';
-        if (isRetryable(outcome.error)) return 'retry';
+        if (isTransientRetryable(outcome.error)) return 'retry';
         return 'stop';
       }
       // A successful response that parses to nothing: retrying the identical

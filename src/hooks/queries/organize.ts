@@ -315,25 +315,33 @@ function mergeTopicCounts(
 }
 
 /**
- * Drives a batch run to completion, chunk by chunk.
+ * Drives a batch run to completion via parallel partitions (方案A).
  *
- * ## Why a loop in the client
+ * ## Why parallel partitions
  *
- * Tagging a few thousand bookmarks takes minutes of model calls, which no
- * single request on Pages will survive. The server exposes the run as
- * `create job` + `run next chunk`, and this hook calls the second endpoint
- * repeatedly until it reports `done`.
+ * Tagging/categorising thousands of bookmarks takes many model calls, which no
+ * single Pages request will survive (30s wall-clock hard limit). The old design
+ * looped one `run next chunk` call at a time — serial, and each chunk fetched
+ * every page body, so a 168-bookmark run blew the timeout on the very first
+ * chunk and never advanced past 0/total.
  *
- * The cost is one round trip per 20 bookmarks. What it buys:
+ * The new design splits the scope into fixed 10-bookmark partitions and fires
+ * up to 6 of them concurrently. Each partition carries `{ from, to }`, the
+ * server advances an atomic counter, and the LAST partition to finish runs the
+ * shared-state finalize (auto-apply / hierarchy rebuild) once. Because
+ * categorization no longer fetches page bodies, a partition is a single fast
+ * model call, so the whole run finishes in roughly one model-call's worth of
+ * wall time.
  *
- *  - **Real progress.** Every chunk returns fresh counters, so the bar moves
- *    for actual work completed rather than being an animation.
- *  - **Interruptibility.** `stop()` just breaks the loop. Proposals already
- *    written stay in the queue — nothing is wasted.
- *  - **Resumability.** Progress lives in the database. Reloading mid-run and
- *    pressing continue picks up at the same bookmark.
+ *  - **Real progress.** Every partition returns fresh counters (read back from
+ *    the atomic increment), so the bar moves for actual work completed.
+ *  - **Interruptibility.** `stop()` flips `cancelled` / aborts the controller;
+ *    in-flight partitions are cancelled and proposals already written stay.
+ *  - **Concurrency safety.** Partitions own disjoint bookmark IDs, so their
+ *    suggestion writes never collide; the counter increment is atomic, and the
+ *    finalize runs exactly once, on the finisher.
  *
- * `cancelledRef` is a ref rather than state because the loop reads it between
+ * `cancelled` is a ref rather than state because the workers read it between
  * awaits, where a state value would be the one captured at render time.
  */
 export function useOrganizeRun() {
@@ -393,49 +401,93 @@ export function useOrganizeRun() {
       let autoApplied = 0;
       let uncovered = 0;
       let uncategorized = 0;
+      let lastJob: AiJob = job;
+      let error: string | null = null;
 
-      // Bounded so a server bug that never advances `processed` cannot spin
-      // forever; +2 covers the settle call after the last chunk.
-      const maxIterations = Math.ceil(job.total / 20) + 2;
+      // 方案A: 把整理范围切成多个不重叠的分片，用固定并发的 worker 池并行打出
+      // 去。每个分片带 {from,to} 认领一段书签，服务端用原子计数推进进度，所以
+      // 进度条是实时的、且总时长从「N 个串行 round-trip」降到「约一次模型调用」。
+      // 关掉抓取后单分片只剩一次模型调用，稳进 Cloudflare 的 30s 墙钟。
+      const PARTITION = 10;
+      const CONCURRENCY = 6;
+      const partitions: Array<{ from: number; to: number }> = [];
+      for (let from = 0; from < job.total; from += PARTITION) {
+        partitions.push({ from, to: Math.min(from + PARTITION, job.total) });
+      }
 
-      for (let i = 0; i < maxIterations; i += 1) {
-        if (cancelled.current) break;
+      // 取消 / 致命错误时让所有在途分片一并中止。
+      const abort = new AbortController();
+
+      const runPartition = async (part: { from: number; to: number }, attempt: number): Promise<void> => {
+        if (cancelled.current || abort.signal.aborted) return;
 
         let result: AiJobRunResult;
         try {
-          // Each chunk may call the model (up to 25s) plus D1 writes. The
-          // default 15s client deadline is far too short and aborts the
-          // request before the server can respond, leaving the user with a
-          // false "timeout" while the chunk actually completed.
-          result = await api.post<AiJobRunResult>(`/ai/jobs/${job.id}/run`, undefined, {
-            timeoutMs: 90_000,
-          });
+          // 单分片只做一次模型调用（已关抓取），通常数秒；28s 客户端超时留足余量
+          // 且仍低于 Pages Functions 的 30s 墙钟。
+          result = await api.post<AiJobRunResult>(
+            `/ai/jobs/${job.id}/run`,
+            { from: part.from, to: part.to },
+            { timeoutMs: 28_000, signal: abort.signal },
+          );
         } catch (e) {
-          const message = e instanceof Error ? e.message : '整理过程中断';
-          setState((s) => ({ ...s, running: false, error: message }));
-          return job;
+          if (cancelled.current || abort.signal.aborted) return;
+          // 单次超时做一次瞬时重试，仍失败则中止整个 run。
+          if ((e as { code?: string })?.code === 'timeout' && attempt < 1) {
+            return runPartition(part, attempt + 1);
+          }
+          error = e instanceof Error ? e.message : '整理过程中断';
+          abort.abort();
+          return;
         }
 
-      autoApplied += result.autoApplied;
-      uncovered += result.uncovered;
-      uncategorized += result.uncategorized ?? 0;
-      setState((s) => ({
-        job: result.job,
-        running: !result.done,
-        engine: result.engine,
-        modelError: result.modelError,
-        autoApplied,
-        uncovered,
-        uncategorized,
-        error: result.job.status === 'failed' ? result.job.error : null,
-        topics: mergeTopicCounts(s.topics, result.topics),
-        autoGrouped: result.autoGrouped ?? s.autoGrouped,
-        // Only the final chunk computes it; once true, keep it true.
-        rebalanceWarning: s.rebalanceWarning || result.rebalanceWarning,
-      }));
+        autoApplied += result.autoApplied;
+        uncovered += result.uncovered;
+        uncategorized += result.uncategorized ?? 0;
+        lastJob = result.job;
 
-        if (result.done) break;
-      }
+        // 致命（fatal）模型错误：服务端已把任务置 failed，整体中止。
+        if (result.job.status === 'failed' && result.modelError) {
+          error = result.job.error ?? result.modelError;
+          abort.abort();
+        }
+
+        setState((s) => ({
+          job: result.job,
+          running: true,
+          engine: result.engine,
+          modelError: result.modelError,
+          autoApplied,
+          uncovered,
+          uncategorized,
+          error: result.job.status === 'failed' ? result.job.error : null,
+          topics: mergeTopicCounts(s.topics, result.topics),
+          autoGrouped: result.autoGrouped ?? s.autoGrouped,
+          rebalanceWarning: s.rebalanceWarning || result.rebalanceWarning,
+        }));
+      };
+
+      const worker = async (): Promise<void> => {
+        for (;;) {
+          if (cancelled.current || abort.signal.aborted) return;
+          const part = partitions.shift();
+          if (!part) return;
+          await runPartition(part, 0);
+        }
+      };
+
+      const workers: Promise<void>[] = [];
+      const workerCount = Math.max(1, Math.min(CONCURRENCY, partitions.length));
+      for (let i = 0; i < workerCount; i += 1) workers.push(worker());
+      await Promise.all(workers);
+
+      // 用户中途取消或发生错误：取消不算错误；否则带上 error。
+      setState((s) => ({
+        ...s,
+        job: lastJob,
+        running: false,
+        error: cancelled.current ? null : error,
+      }));
 
       // Refresh once at the end rather than on every chunk: re-fetching the
       // full suggestions list per chunk wastes server load and API quota during
