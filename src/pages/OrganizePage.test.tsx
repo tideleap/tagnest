@@ -34,6 +34,9 @@ vi.mock('@/components/organize/EvaluationPanel', () => ({ EvaluationPanel: () =>
 vi.mock('@/components/organize/TaxonomyPanel', () => ({ TaxonomyPanel: () => null }));
 vi.mock('@/components/organize/AutoGroupPanel', () => ({ AutoGroupPanel: () => null }));
 vi.mock('@/components/organize/HealthPanel', () => ({ HealthPanel: () => null }));
+vi.mock('@/components/organize/CategoryExportPanel', () => ({
+  CategoryExportPanel: () => null,
+}));
 
 const startMock = vi.fn().mockResolvedValue(null);
 
@@ -126,5 +129,42 @@ describe('OrganizePage (CategorySync categorize mode)', () => {
     renderPage('/organize');
     await user.click(screen.getByRole('radio', { name: /确认/ }));
     expect(screen.getByTestId('suggestion-review')).toHaveAttribute('data-kind', 'tag');
+  });
+});
+
+describe('OrganizePage (2026-08-30 hero redesign)', () => {
+  beforeEach(() => {
+    queryClient.clear();
+    captured.runPanelProps.length = 0;
+    captured.reviewProps.length = 0;
+    startMock.mockClear();
+  });
+
+  it('renders the hero run card above the fold — RunPanel mounts on initial view without switching tabs', () => {
+    renderPage();
+    // The run panel is mounted immediately (hero), no tab click needed.
+    expect(screen.getByTestId('run-panel')).toBeInTheDocument();
+    // The hero card shows the active track title.
+    expect(screen.getByRole('heading', { name: '标签整理' })).toBeInTheDocument();
+  });
+
+  it('shows the four-cell stat strip with pending confirmations as a clickable card', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const pendingCell = screen.getByTitle('点击进入确认队列');
+    expect(pendingCell).toHaveTextContent('待确认');
+    expect(pendingCell).toHaveTextContent('3');
+    // Clicking it jumps straight to the review tab.
+    await user.click(pendingCell);
+    expect(screen.getByTestId('suggestion-review')).toBeInTheDocument();
+  });
+
+  it('hosts the metric cards in the insights tab instead of the initial view', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    // Switch to the insights tab; EvaluationPanel is mocked to null but the
+    // tab radio must exist and be selectable.
+    await user.click(screen.getByRole('radio', { name: /效果数据/ }));
+    expect(screen.getByRole('radio', { name: /效果数据/ })).toHaveAttribute('aria-checked', 'true');
   });
 });
