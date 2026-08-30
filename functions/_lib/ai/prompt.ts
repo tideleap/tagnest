@@ -57,7 +57,7 @@ export const MAX_REASON_LENGTH = 24;
  * required, because old entries hold ungoverned fragment tags that the new
  * governance pass expects to see regenerated under the new rules.
  */
-export const PROMPT_VERSION = '2026-08-30';
+export const PROMPT_VERSION = '2026-08-30-v2';
 
 /**
  * Version tag for the *categorize* prompt (CategorySync P1, C1-1).
@@ -368,8 +368,8 @@ export function renderTagHardRules(totalCount?: number): string {
   const lines = [
     '',
     '【硬性要求】',
-    '1. 优先复用已有标签：只有当已有标签会明显误导时才新建标签。',
-    '2. 新建标签必须是「预计至少 3 个书签会使用」的概念；只会用一次的标签一律不要新建。',
+    '1. 优先复用已有标签，但已有标签明显不匹配时果断新建。',
+    '2. 不要因「只有 1 条书签命中」就拒绝新建标签：只要主题是真实、具体、可长期复用的概念，即使本次只出现 1 次也应输出；疑似孤立的新标签会进入人工确认队列，由你给出准确名称，不会直接污染标签库。',
     '3. 每个书签最多新建 1 个新标签，其余从已有标签中选择。',
   ];
   if (totalCount && totalCount > 0) {

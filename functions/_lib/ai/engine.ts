@@ -181,7 +181,7 @@ async function callTagWithRetryAndRepair(
   if (items.length === 0) {
     const repairOutcome = await callProvider(
       config,
-      `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
+      `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空标签。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
     );
@@ -189,6 +189,13 @@ async function callTagWithRetryAndRepair(
       const repaired = parseTaggingResponse(repairOutcome.text, batchSize);
       if (repaired.length > 0) items = repaired;
     }
+  }
+  if (items.length === 0) {
+    return {
+      items: [],
+      fatal: false,
+      error: '模型返回了空标签（可能是提示规则过于严格或模型拒绝生成）',
+    };
   }
   return { items, fatal: false, error: null };
 }
@@ -406,9 +413,11 @@ export async function suggestForBookmarks(
           totalInputs: inputs.length,
         },
       );
+      if (groupResult.error) {
+        modelError = modelError ?? groupResult.error;
+      }
       if (groupResult.fatal) {
         fatal = true;
-        if (groupResult.error) modelError = groupResult.error;
         break;
       }
 
@@ -423,6 +432,14 @@ export async function suggestForBookmarks(
           pendingCacheWrites.set(globalIndex, { key: slice[localIdx].key, item });
         }
       }
+    }
+
+    // Silent-empty diagnosis (2026-08-30): the model answered every batch but
+    // produced zero usable tags for the whole slice. Without this the run
+    // degrades to domain fallback with NO error surfaced, which reads as
+    // "the model works but only emits site names". Surface the reason instead.
+    if (!modelContributed && !modelError && pending.length > 0) {
+      modelError = '模型已响应但未产出任何可用标签（提示规则过严或模型拒绝生成），本次使用域名兜底';
     }
 
     // Tag-quality governance (PRD-TAG-QUALITY-2026-08-30): one deterministic,
@@ -703,7 +720,7 @@ async function callCategorizeWithRetryAndRepair(
   if (items.length === 0) {
     const repairOutcome = await callProvider(
       config,
-      `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
+      `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空分类。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
     );
@@ -711,6 +728,13 @@ async function callCategorizeWithRetryAndRepair(
       const repaired = parseCategorizeResponse(repairOutcome.text, batchSize);
       if (repaired.length > 0) items = repaired;
     }
+  }
+  if (items.length === 0) {
+    return {
+      items: [],
+      fatal: false,
+      error: '模型返回了空分类（可能是提示规则过于严格或模型拒绝生成）',
+    };
   }
   return { items, fatal: false, error: null };
 }
@@ -1011,9 +1035,11 @@ export async function categorizeBookmarks(
         fetchImpl: options.fetchImpl,
         signal: options.signal,
       });
+      if (groupResult.error) {
+        modelError = modelError ?? groupResult.error;
+      }
       if (groupResult.fatal) {
         fatal = true;
-        if (groupResult.error) modelError = groupResult.error;
         break;
       }
 
@@ -1043,6 +1069,13 @@ export async function categorizeBookmarks(
         // by the fallback anyway, so caching a real placement is always safe.
         if (cache) await cache.put(slice[localIdx].key, entry);
       }
+    }
+
+    // Same silent-empty diagnosis as the tagging track: model answered but
+    // produced no usable placement for the whole slice → say why instead of
+    // silently degrading to the domain fallback.
+    if (!modelContributed && !modelError && pending.length > 0) {
+      modelError = '模型已响应但未产出任何可用分类（提示规则过严或模型拒绝生成），本次使用域名兜底';
     }
   } else if (!config) {
     modelError = '未配置可用的模型，使用域名派生兜底分类';
@@ -1250,7 +1283,7 @@ async function callRenameWithRetryAndRepair(
   if (items.length === 0) {
     const repairOutcome = await callProvider(
       config,
-      `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
+      `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空结果。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
     );
@@ -1258,6 +1291,13 @@ async function callRenameWithRetryAndRepair(
       const repaired = parseRenameResponse(repairOutcome.text, batchSize);
       if (repaired.length > 0) items = repaired;
     }
+  }
+  if (items.length === 0) {
+    return {
+      items: [],
+      fatal: false,
+      error: '模型返回了空结果（可能是提示规则过于严格或模型拒绝生成）',
+    };
   }
   return { items, fatal: false, error: null };
 }
@@ -1370,9 +1410,11 @@ export async function renameBookmarks(
         fetchImpl: options.fetchImpl,
         signal: options.signal,
       });
+      if (groupResult.error) {
+        modelError = modelError ?? groupResult.error;
+      }
       if (groupResult.fatal) {
         fatal = true;
-        if (groupResult.error) modelError = groupResult.error;
         break;
       }
 
