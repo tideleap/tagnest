@@ -149,6 +149,12 @@ const MIGRATION_PROBES = {
   // idempotent, so recording-and-skipping is safe once the column exists.
   '0025_billing.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('ai_settings') WHERE name='managed_enabled'`,
+  // 0026 adds tags.status (ALTER, non-idempotent) + idx_tags_user_status
+  // (CREATE INDEX IF NOT EXISTS). Probe status as the "already applied" marker
+  // so a re-run does not throw "duplicate column name: status"; the index is
+  // idempotent, so recording-and-skipping is safe once the column exists.
+  '0026_tag_pending_status.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('tags') WHERE name='status'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (

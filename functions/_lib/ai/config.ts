@@ -167,12 +167,13 @@ export function toLocalConfig(row: ConfigRow): LocalConfig {
 export async function loadVocabulary(env: Env, userId: string): Promise<Vocabulary> {
   const rows = await env.DB.prepare(
     `SELECT t.id AS id, t.name AS name, t.aliases AS aliases, t.parent_id AS parent_id,
+            t.status AS status, t.created_at AS created_at,
             COUNT(b.id) AS cnt
        FROM tags t
        LEFT JOIN bookmark_tags bt ON bt.tag_id = t.id
        LEFT JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL
       WHERE t.user_id = ?
-      GROUP BY t.id, t.name, t.aliases, t.parent_id`,
+      GROUP BY t.id, t.name, t.aliases, t.parent_id, t.status, t.created_at`,
   )
     .bind(userId)
     .all<Record<string, unknown>>();
@@ -183,6 +184,9 @@ export async function loadVocabulary(env: Env, userId: string): Promise<Vocabula
     aliases: parseAliases(row.aliases),
     count: Number(row.cnt ?? 0),
     parentId: (row.parent_id as string | null) ?? null,
+    // Migration 0026 column; rows written before it read as 'active'.
+    status: row.status === 'pending' ? 'pending' : 'active',
+    createdAt: (row.created_at as string | null) ?? undefined,
   }));
 
   return buildVocabulary(entries);

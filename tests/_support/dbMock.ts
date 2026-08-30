@@ -582,7 +582,7 @@ export class MockDb {
     // --- ai: loadVocabulary (tags + usage counts + parent_id) --------
     if (
       u.startsWith(
-        'SELECT T.ID AS ID, T.NAME AS NAME, T.ALIASES AS ALIASES, T.PARENT_ID AS PARENT_ID, COUNT(B.ID) AS CNT FROM TAGS T LEFT JOIN',
+        'SELECT T.ID AS ID, T.NAME AS NAME, T.ALIASES AS ALIASES, T.PARENT_ID AS PARENT_ID, T.STATUS AS STATUS, T.CREATED_AT AS CREATED_AT, COUNT(B.ID) AS CNT FROM TAGS T LEFT JOIN',
       )
     ) {
       const userId = params[0] as string;
@@ -593,6 +593,8 @@ export class MockDb {
           name: t.name,
           aliases: t.aliases ?? null,
           parent_id: t.parent_id ?? null,
+          status: t.status ?? 'active',
+          created_at: t.created_at ?? null,
           cnt: this.bookmark_tags.filter((bt) => {
             if (bt.tag_id !== t.id) return false;
             const b = this.bookmarks.find((x) => x.id === bt.bookmark_id && x.deleted_at == null);
@@ -718,7 +720,7 @@ export class MockDb {
     // --- bookmark_tags: attachTags bridge (tag ids → tags for bookmarks) ---
     if (
       u.startsWith(
-        'SELECT BT.BOOKMARK_ID, T.ID, T.NAME, T.COLOR_INDEX, T.PARENT_ID, T.SORT_ORDER, T.CREATED_AT FROM BOOKMARK_TAGS BT JOIN TAGS T',
+        'SELECT BT.BOOKMARK_ID, T.ID, T.NAME, T.COLOR_INDEX, T.PARENT_ID, T.SORT_ORDER, T.STATUS, T.CREATED_AT FROM BOOKMARK_TAGS BT JOIN TAGS T',
       )
     ) {
       const ids = params as string[];
@@ -734,6 +736,7 @@ export class MockDb {
           color_index: tag.color_index ?? 0,
           parent_id: tag.parent_id ?? null,
           sort_order: tag.sort_order ?? 0,
+          status: tag.status ?? 'active',
           created_at: tag.created_at ?? '',
         });
       }
@@ -775,6 +778,46 @@ export class MockDb {
         this.tags.push(parseInsertRow(m[1], m[2], params));
         return [];
       }
+    }
+
+    // P2-3: ensureTags marks freshly minted AI tags 'pending' (binds ts/id/user).
+    if (u.startsWith("UPDATE TAGS SET STATUS = 'PENDING'")) {
+      const [updatedAt, tagId, userId] = params as string[];
+      let changes = 0;
+      for (const t of this.tags) {
+        if (t.id === tagId && t.user_id === userId) {
+          t.status = 'pending';
+          t.updated_at = updatedAt;
+          changes += 1;
+        }
+      }
+      this.lastChanges = changes;
+      return [];
+    }
+
+    // P2-3: promotePendingTags flips pending tags with live support >= minSupport
+    // to 'active' (binds ts/user/minSupport). Live support counts only links to
+    // non-trashed bookmarks, mirroring the correlated subquery.
+    if (u.startsWith("UPDATE TAGS SET STATUS = 'ACTIVE'") && u.includes("STATUS = 'PENDING'")) {
+      const updatedAt = params[0] as string;
+      const userId = params[1] as string;
+      const minSupport = Number(params[2]);
+      let changes = 0;
+      for (const t of this.tags) {
+        if (t.user_id !== userId || (t.status ?? 'active') !== 'pending') continue;
+        const liveSupport = this.bookmark_tags.filter((bt) => {
+          if (bt.tag_id !== t.id) return false;
+          const b = this.bookmarks.find((x) => x.id === bt.bookmark_id);
+          return Boolean(b && b.deleted_at == null);
+        }).length;
+        if (liveSupport >= minSupport) {
+          t.status = 'active';
+          t.updated_at = updatedAt;
+          changes += 1;
+        }
+      }
+      this.lastChanges = changes;
+      return [];
     }
 
     // --- tags: governance (merge ownership check, bulk ops) ----------

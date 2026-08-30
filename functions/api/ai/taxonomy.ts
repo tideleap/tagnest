@@ -9,6 +9,21 @@ const MAX_CLUSTERS = 50;
 const MAX_UNUSED = 100;
 
 /**
+ * P2-3 grace period: a pending (AI-minted, not-yet-promoted) tag is still
+ * earning its second bookmark, so it is hidden from the governance list for
+ * this many days after creation. Once it goes stale it joins `lowUsage` like
+ * any other one-bookmark tag.
+ */
+const PENDING_GRACE_DAYS = 30;
+
+function isStalePending(entry: { status?: string; createdAt?: string }, now: number): boolean {
+  if (entry.status !== 'pending' || !entry.createdAt) return false;
+  const created = Date.parse(entry.createdAt);
+  if (Number.isNaN(created)) return false;
+  return now - created >= PENDING_GRACE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+/**
  * Taxonomy health check.
  *
  * Reports groups of tags that mean the same thing ("js" / "JS" / "JavaScript",
@@ -48,8 +63,14 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
 
   // Used exactly once: governance candidates. Unlike `unused` they each carry
   // a live bookmark, so the UI offers merge/review rather than bulk delete.
+  //
+  // P2-3 grace: a pending tag is still earning its second bookmark, so it is
+  // hidden here until it goes stale (30 days). Active one-bookmark tags and
+  // stale pending tags both surface.
+  const now = Date.now();
   const lowUsage = vocab.entries
     .filter((entry) => entry.count === 1)
+    .filter((entry) => entry.status !== 'pending' || isStalePending(entry, now))
     .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, MAX_UNUSED)
     .map((entry) => ({ id: entry.id, name: entry.name, count: entry.count }));

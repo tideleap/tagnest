@@ -51,6 +51,13 @@ export interface Tag {
    * carrying it is hidden from all normal lists/search/share/export. */
   isPrivate: boolean;
   createdAt: string;
+  /**
+   * Lifecycle standing (P2-3 pending promotion). `'active'` is a first-class
+   * tag; `'pending'` is an AI-minted tag that has not yet earned a second live
+   * bookmark. Absent on rows written before migration 0026 — readers treat a
+   * missing value as `'active'`.
+   */
+  status?: 'active' | 'pending';
 }
 
 /**

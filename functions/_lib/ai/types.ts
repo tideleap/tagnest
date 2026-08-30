@@ -116,6 +116,15 @@ export interface VocabEntry {
    * granularity); normalisation itself stays parent-agnostic.
    */
   parentId?: string | null;
+  /**
+   * Lifecycle standing (P2-3 pending promotion). `'pending'` tags are AI-minted
+   * and not yet adopted by a second live bookmark. Absent on rows written before
+   * migration 0026 — readers treat a missing value as `'active'`. Governance and
+   * the prompt ignore this; only the taxonomy audit's grace-period rule reads it.
+   */
+  status?: 'active' | 'pending';
+  /** ISO creation time; the 30-day stale-pending rule compares against it. */
+  createdAt?: string;
 }
 
 /** The user's existing tag system, indexed for fast normalisation. */

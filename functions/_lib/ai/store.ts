@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import type { CategoryTreeNode, CategoryWritebackPage } from '../../../shared/types';
-import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, queryInChunks } from '../db';
+import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, promotePendingTags, queryInChunks } from '../db';
 import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
 import { recordFeedback, type FeedbackRecord } from './feedback';
@@ -645,9 +645,14 @@ export async function decideSuggestions(
 
   // Resolve every name in one pass so a batch accept is a couple of round
   // trips rather than one per tag.
+  //
+  // P2-3: tags minted by an AI accept start 'pending' — they only become
+  // first-class once a second live bookmark adopts them (promoted below). Tags
+  // the user already owns are never re-graded (ensureTags only marks rows it
+  // created in this call).
   const names = [...new Set(rows.map((r) => String(r.tag_name)))];
   if (renameTo) names.push(renameTo);
-  const { ids: tagIds, created } = await ensureTags(env, userId, names);
+  const { ids: tagIds, created } = await ensureTags(env, userId, names, { status: 'pending' });
 
   const byLower = new Map<string, string>();
   names.forEach((name, index) => {
@@ -706,6 +711,17 @@ export async function decideSuggestions(
   const BATCH_LIMIT = 90;
   for (let i = 0; i < statements.length; i += BATCH_LIMIT) {
     await env.DB.batch(statements.slice(i, i + BATCH_LIMIT));
+  }
+
+  // P2-3 pending promotion: now that this accept's links are written, any
+  // pending tag whose live support reached 2 becomes first-class. Runs on every
+  // accept (not just ones that minted tags) because a tag created by an earlier
+  // single-save may earn its second bookmark here. Best-effort: a promotion
+  // hiccup must never fail the accept itself.
+  try {
+    await promotePendingTags(env, userId);
+  } catch {
+    /* promotion is best-effort; the accept already succeeded */
   }
 
   // Flip the decided suggestions to 'accepted' after the inserts (chunked the

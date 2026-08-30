@@ -94,6 +94,8 @@ export function mapTag(row: Row): Tag {
     count: Number(row.count ?? 0),
     isPrivate: bool(row.is_private),
     createdAt: row.created_at as string,
+    // Migration 0026 column; rows written before it read as 'active'.
+    status: row.status === 'pending' ? 'pending' : 'active',
   };
 }
 
@@ -185,7 +187,7 @@ export async function attachTags(
     bookmarkIds,
     [],
     (ph) =>
-      `SELECT bt.bookmark_id, t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.created_at
+      `SELECT bt.bookmark_id, t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.status, t.created_at
          FROM bookmark_tags bt
          JOIN tags t ON t.id = bt.tag_id
         WHERE bt.bookmark_id IN (${ph})
@@ -238,6 +240,7 @@ export async function ensureTags(
   env: Env,
   userId: string,
   names: string[],
+  opts?: { status?: 'active' | 'pending' },
 ): Promise<{ ids: string[]; created: number }> {
   const cleaned = [
     ...new Map(
@@ -262,6 +265,7 @@ export async function ensureTags(
   );
 
   const ids: string[] = [];
+  const createdIds: string[] = [];
   const inserts: D1PreparedStatement[] = [];
   const ts = nowIso();
 
@@ -273,6 +277,7 @@ export async function ensureTags(
     }
     const id = newId();
     ids.push(id);
+    createdIds.push(id);
     inserts.push(
       env.DB.prepare(
         `INSERT INTO tags (id, user_id, name, color_index, parent_id, sort_order, created_at)
@@ -287,7 +292,57 @@ export async function ensureTags(
   for (let i = 0; i < inserts.length; i += BATCH_LIMIT) {
     await env.DB.batch(inserts.slice(i, i + BATCH_LIMIT));
   }
+
+  // P2-3 pending promotion: the AI accept path mints tags as 'pending' so a
+  // one-bookmark tag does not become permanent library furniture until a second
+  // live bookmark adopts it. The INSERT shape above is deliberately unchanged
+  // (status rides the column default 'active'); only the freshly created rows
+  // are re-graded here, so the ten non-AI callers — and any tag the user
+  // already owned — are never touched (P0-7).
+  if (opts?.status === 'pending' && createdIds.length > 0) {
+    const marks: D1PreparedStatement[] = [];
+    for (const id of createdIds) {
+      marks.push(
+        env.DB.prepare(
+          `UPDATE tags SET status = 'pending', updated_at = ? WHERE id = ? AND user_id = ?`,
+        ).bind(ts, id, userId),
+      );
+    }
+    for (let i = 0; i < marks.length; i += BATCH_LIMIT) {
+      await env.DB.batch(marks.slice(i, i + BATCH_LIMIT));
+    }
+  }
+
   return { ids, created: inserts.length };
+}
+
+/**
+ * P2-3 pending promotion: flips every 'pending' tag whose live support reached
+ * the promotion threshold (2 live bookmarks) to 'active'.
+ *
+ * Support-based and origin-agnostic on purpose: it never asks *who* attached the
+ * second bookmark, only that the tag now earns its keep. Promotion is monotonic
+ * — a tag is never demoted back to 'pending' (an undo that drops support below 2
+ * leaves the tag 'active'), so the library never churns between states.
+ *
+ * One statement, no bound IN-list: the correlated subquery does the counting, so
+ * this stays a single round trip no matter how many pending tags exist.
+ */
+export async function promotePendingTags(
+  env: Env,
+  userId: string,
+  minSupport = 2,
+): Promise<number> {
+  const result = await env.DB.prepare(
+    `UPDATE tags SET status = 'active', updated_at = ?
+      WHERE user_id = ? AND status = 'pending'
+        AND (SELECT COUNT(*) FROM bookmark_tags bt
+               JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL
+              WHERE bt.tag_id = tags.id) >= ?`,
+  )
+    .bind(nowIso(), userId, minSupport)
+    .run();
+  return result.meta.changes ?? 0;
 }
 
 /**

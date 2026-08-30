@@ -22,6 +22,9 @@ export interface TagRow {
   sort_order: number;
   created_at: string;
   aliases?: string | null;
+  /** Migration 0026; absent reads as 'active'. */
+  status?: 'active' | 'pending';
+  updated_at?: string;
 }
 
 export interface BookmarkRow {
@@ -262,6 +265,8 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
           name: t.name,
           aliases: t.aliases ?? null,
           parent_id: t.parent_id ?? null,
+          status: t.status ?? 'active',
+          created_at: t.created_at,
           cnt: state.bookmark_tags.filter((bt) => bt.tag_id === t.id).length,
         }));
     }
@@ -1068,6 +1073,46 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
         created_at: String(hasParentParam ? params[5] : params[4]),
       });
       return 1;
+    }
+
+    // P2-3: ensureTags marks freshly minted AI tags 'pending' (binds ts/id/user).
+    if (sql.startsWith("UPDATE TAGS SET STATUS = 'PENDING'")) {
+      const updatedAt = String(params[0]);
+      const tagId = String(params[1]);
+      const userId = String(params[2]);
+      let changes = 0;
+      for (const t of state.tags) {
+        if (t.id === tagId && t.user_id === userId) {
+          t.status = 'pending';
+          t.updated_at = updatedAt;
+          changes += 1;
+        }
+      }
+      return changes;
+    }
+
+    // P2-3: promotePendingTags flips pending tags with live support >= minSupport
+    // to 'active' (binds ts/user/minSupport). Live support counts only links to
+    // non-trashed bookmarks, mirroring the correlated subquery.
+    if (sql.startsWith("UPDATE TAGS SET STATUS = 'ACTIVE'") && sql.includes("STATUS = 'PENDING'")) {
+      const updatedAt = String(params[0]);
+      const userId = String(params[1]);
+      const minSupport = Number(params[2]);
+      let changes = 0;
+      for (const t of state.tags) {
+        if (t.user_id !== userId || (t.status ?? 'active') !== 'pending') continue;
+        const liveSupport = state.bookmark_tags.filter((bt) => {
+          if (bt.tag_id !== t.id) return false;
+          const b = state.bookmarks.find((x) => x.id === bt.bookmark_id);
+          return Boolean(b && b.deleted_at === null);
+        }).length;
+        if (liveSupport >= minSupport) {
+          t.status = 'active';
+          t.updated_at = updatedAt;
+          changes += 1;
+        }
+      }
+      return changes;
     }
 
     // decideSuggestions bookmark_tags insert ('ai' source)

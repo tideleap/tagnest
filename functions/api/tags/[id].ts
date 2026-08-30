@@ -71,7 +71,7 @@ export const onRequestPatch: PagesFunction<Env, string, RequestData> = async (ct
 
   const updated = await ctx.env.DB.prepare(
     `SELECT t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.is_private,
-            t.created_at, COUNT(b.id) AS count
+            t.status, t.created_at, COUNT(b.id) AS count
        FROM tags t
        LEFT JOIN bookmark_tags bt ON bt.tag_id = t.id
        LEFT JOIN bookmarks b ON b.id = bt.bookmark_id AND b.deleted_at IS NULL
