@@ -25,6 +25,21 @@
 //    control. We document this and recommend a one-bookmark dry run.
 //
 // Format reference: <https://learn.microsoft.com/en-us/openspecs/ie_standards/ms-netscape/>
+//
+// ## Structure (decided 2026-08-29: 3-level taxonomy)
+//
+//   书签栏 (PERSONAL_TOOLBAR_FOLDER="true")      ← browser import target
+//     └─ ✨ AI 整理 <timestamp>                    ← one folder per export
+//          └─ <L1 领域>                            ← e.g. 开发与运维
+//               └─ <L2 子类别>                      ← e.g. 开发工具
+//                    └─ <L3 站点>                    ← e.g. React / 高德地图
+//                         └─ <A HREF …>书签</A>
+//
+// Category depth is fixed at three levels (领域 › 子类别 › 站点). Folders are
+// ordered by bookmark count (desc) then pinyin (asc); bookmarks inside a folder
+// are ordered by title pinyin (asc). The friendly site name for the title
+// fallback reuses the shared `canonicalSiteLabel` so the exporter, the AI
+// engine and the rename track all agree on the same brand name.
 
 /** The browser's bookmark bar label used as the outermost import folder.
  *  Matches the Netscape export convention (Chrome imports under "书签栏"). */
@@ -34,6 +49,10 @@ export const BOOKMARKS_BAR_TITLE = '书签栏';
  *  every run is an independent, deletable unit
  *  (e.g. "✨ AI 整理 2026/8/23 13:35:35"). */
 export const AI_SESSION_PREFIX = '✨ AI 整理 ';
+
+/** Category depth the export enforces: 领域 › 子类别 › 站点 (3 levels).
+ *  Must stay in sync with the product decision (see docs/ai-content-organize-review.md). */
+const MAX_EXPORT_CATEGORY_DEPTH = 3;
 
 /** What we feed in. Mostly a `CategoryWritebackItem` with an optional
  *  `createdAt` so the Netscape `ADD_DATE` reflects the real bookmark age
@@ -63,20 +82,33 @@ export interface ExportOptions {
   normalizeTitles?: boolean;
 }
 
+import { canonicalSiteLabel, isGenericTitle } from '@shared/siteLabel';
+
+/** A node in the export folder tree; counts are subtree totals. */
+interface FolderNode {
+  name: string;
+  count: number;
+  children: Map<string, FolderNode>;
+  bookmarks: ExportRow[];
+}
+
 /**
  * Serialise the writeback rows into a Netscape-format HTML document.
  *
  * Layout (with the default `bookmarksBar: true`):
  *   <DL>                                       ← outermost envelope
- *     <H3>书签栏</H3>                           ← browser import target
+ *     <H3 PERSONAL_TOOLBAR_FOLDER="true">书签栏</H3>   ← browser import target
  *     <DL>
  *       <H3>✨ AI 整理 2026/8/23 13:35:35</H3>  ← one folder per export
  *       <DL>
  *         <H3>开发技术</H3>                      ← level 1 (领域)
  *         <DL>
- *           <H3>React 官网</H3>                 ← level 2 (具体网站/产品)
+ *           <H3>前端开发</H3>                    ← level 2 (子类别)
  *           <DL>
- *             <A HREF=…>…</A>
+ *             <H3>React</H3>                    ← level 3 (站点)
+ *             <DL>
+ *               <A HREF=…>…</A>
+ *             </DL>
  *           </DL>
  *         </DL>
  *         <H3>未分类</H3>                        ← uncategorised siblings
@@ -88,8 +120,10 @@ export interface ExportOptions {
  * Bookmarks with `categoryPath === null` are gathered under a single
  * "未分类" sibling so they are not silently dropped from the export.
  *
- * Nested folder depth is unlimited; the recurrence is intentionally
- * iterative to avoid blowing the call stack on a library with a deep tree.
+ * Nested folder depth is unlimited in the input but clamped to
+ * `MAX_EXPORT_CATEGORY_DEPTH` so the output always matches the decided 3-level
+ * taxonomy. The recurrence is intentionally iterative to avoid blowing the call
+ * stack on a library with a deep tree.
  */
 export function toNetscapeBookmarksHtml(
   rows: ReadonlyArray<ExportRow>,
@@ -114,10 +148,12 @@ export function toNetscapeBookmarksHtml(
   out.push('<DL><p>');
 
   // Outer "书签栏" folder — the browser's import landing target.
+  // Per the reference template it must carry PERSONAL_TOOLBAR_FOLDER="true".
   const barIndent = '    ';
   if (useBar) {
     out.push(
-      barIndent + '<DT><H3 ADD_DATE="' + gen + '" LAST_MODIFIED="' + gen + '">'
+      barIndent + '<DT><H3 ADD_DATE="' + gen + '" LAST_MODIFIED="' + gen
+        + '" PERSONAL_TOOLBAR_FOLDER="true">'
         + escapeHtml(BOOKMARKS_BAR_TITLE) + '</H3>',
     );
     out.push(barIndent + '<DL><p>');
@@ -132,58 +168,46 @@ export function toNetscapeBookmarksHtml(
   );
   out.push(sessionIndent + '<DL><p>');
 
-  // Bucket rows by categoryPath so the folder tree is built exactly once.
-  // Uncategorised rows share one bucket regardless of null-ness.
-  const buckets = new Map<string, ExportRow[]>();
-  const UNCATEGORISED_KEY = '\u0000';
-  for (const row of rows) {
-    const key = row.categoryPath && row.categoryPath.length > 0
-      ? row.categoryPath.join('\u0001')
-      : UNCATEGORISED_KEY;
-    const list = buckets.get(key);
-    if (list) list.push(row);
-    else buckets.set(key, [row]);
-  }
+  // --- Build the folder tree -------------------------------------------
+  // Counts are subtree totals so siblings sort by their *whole* bucket, not
+  // just their direct bookmarks. The tree is then emitted depth-first with
+  // deterministic ordering (count desc, pinyin tiebreak).
+  const root: FolderNode = { name: '', count: 0, children: new Map(), bookmarks: [] };
+  const uncategorised: ExportRow[] = [];
 
-  // Walk distinct category paths in a stable order: depth-first, alphabetic
-  // within siblings. Insert empty folder headers when an intermediate level
-  // has no direct bookmarks (so a path that only exists via grand-children
-  // is still represented in the import). The browser then renders it as
-  // an empty folder — better than losing the path entirely.
-  const seenFolders = new Set<string>();
-
-  // 1. Walk every *categorised* row's path and emit folder headers we have
-  //    not yet emitted. Sort by path lexicographically so siblings group.
-  const allPaths = new Set<string>();
   for (const row of rows) {
-    if (!row.categoryPath) continue;
-    for (let depth = 1; depth <= row.categoryPath.length; depth += 1) {
-      allPaths.add(row.categoryPath.slice(0, depth).join('\u0001'));
+    const path =
+      row.categoryPath && row.categoryPath.length > 0
+        ? row.categoryPath.slice(0, MAX_EXPORT_CATEGORY_DEPTH)
+        : null;
+    if (!path) {
+      uncategorised.push(row);
+      continue;
     }
+    root.count += 1;
+    let node = root;
+    for (const seg of path) {
+      let child = node.children.get(seg);
+      if (!child) {
+        child = { name: seg, count: 0, children: new Map(), bookmarks: [] };
+        node.children.set(seg, child);
+      }
+      child.count += 1;
+      node = child;
+    }
+    node.bookmarks.push(row);
   }
-  const sortedPaths = [...allPaths].sort((a, b) => a.localeCompare(b, 'zh'));
 
-  for (const pathKey of sortedPaths) {
-    const path = pathKey.split('\u0001');
-    emitFolderHeaders(out, path, seenFolders, gen, sessionIndent);
-  }
-  // Then emit categorised bookmark rows under their leaf.
-  for (const row of rows) {
-    if (!row.categoryPath) continue;
-    const indent = sessionIndent + '  '.repeat(row.categoryPath.length);
-    out.push(indent + formatBookmarkLine(row, gen, normalize));
-  }
-
-  // 2. Then uncategorised, if any.
-  const uncategorised = buckets.get(UNCATEGORISED_KEY) ?? [];
   if (uncategorised.length > 0) {
-    const folderPath = ['未分类'];
-    emitFolderHeaders(out, folderPath, seenFolders, gen, sessionIndent);
-    for (const row of uncategorised) {
-      const indent = sessionIndent + '  '.repeat(1);
-      out.push(indent + formatBookmarkLine(row, gen, normalize));
-    }
+    root.children.set('未分类', {
+      name: '未分类',
+      count: uncategorised.length,
+      children: new Map(),
+      bookmarks: uncategorised,
+    });
   }
+
+  emitNode(out, root, sessionIndent, gen, normalize);
 
   // Close: session <DL>, then 书签栏 <DL> (if used), then the outer <DL>.
   // Folder <DL>s are intentionally left unclosed like the original — browsers
@@ -195,6 +219,55 @@ export function toNetscapeBookmarksHtml(
   return out.join('\r\n');
 }
 
+/** Recursively emit one folder node's children (sorted) then its own bookmarks
+ *  (sorted). `indent` is the indentation already applied to this node's own
+ *  `<H3>`; children get two extra spaces. */
+function emitNode(
+  out: string[],
+  node: FolderNode,
+  indent: string,
+  gen: number,
+  normalize: boolean,
+): void {
+  const children = [...node.children.values()].sort(byCountThenPinyin);
+  for (const child of children) {
+    const childIndent = indent + '  ';
+    out.push(
+      childIndent + '<DT><H3 ADD_DATE="' + gen + '" LAST_MODIFIED="' + gen + '">'
+        + escapeHtml(child.name) + '</H3>',
+    );
+    out.push(childIndent + '<DL><p>');
+    emitNode(out, child, childIndent, gen, normalize);
+  }
+
+  const sortedBookmarks = node.bookmarks
+    .slice()
+    .sort((a, b) =>
+      pinyinCompare(bookmarkSortKey(a, normalize), bookmarkSortKey(b, normalize)),
+    );
+  for (const row of sortedBookmarks) {
+    const bIndent = indent + '  ';
+    out.push(bIndent + formatBookmarkLine(row, gen, normalize));
+  }
+}
+
+/** Sibling folders: most bookmarks first, pinyin as deterministic tiebreak. */
+function byCountThenPinyin(a: { name: string; count: number }, b: { name: string; count: number }): number {
+  return b.count - a.count || pinyinCompare(a.name, b.name);
+}
+
+/** Pinyin-aware comparison that approximates Chinese reading order (zh-Hans-CN). */
+function pinyinCompare(a: string, b: string): number {
+  return a.localeCompare(b, 'zh-Hans-CN');
+}
+
+/** Display key used to order a bookmark within its folder. */
+function bookmarkSortKey(row: ExportRow, normalize: boolean): string {
+  return normalize
+    ? normalizeBookmarkTitle(row.title, row.url)
+    : ((row.title ?? '').replace(/\s+/g, ' ').trim() || row.url || '');
+}
+
 /** Format a unix-second timestamp as `YYYY/M/D HH:mm:ss` (no zero-padding on
  *  month/day), matching the reference export's session-stamp style. */
 function formatSessionStamp(sec: number): string {
@@ -204,23 +277,23 @@ function formatSessionStamp(sec: number): string {
     + `${n(d.getHours())}:${n(d.getMinutes())}:${n(d.getSeconds())}`;
 }
 
-/** Best-effort "site label" from a URL: the registrable second-level name
- *  (e.g. `amap.com` → `amap`, `sub.foo.example.co.uk` → `example`). Returns
- *  '' when the URL is unusable. */
-function hostLabelOf(url: string): string {
+/** Best-effort registrable host of a URL (lowercased, www. stripped). */
+function safeHost(url: string): string {
   try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-    const parts = host.split('.');
-    if (parts.length >= 2) return parts[parts.length - 2];
-    return host;
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
   } catch {
     return '';
   }
 }
 
-const GENERIC_TITLES = new Set([
-  '首页', '主页', 'home', 'homepage', 'index', '未命名', '新标签页', 'about:blank', '',
-]);
+/** Registrable second-level label of a host
+ *  (e.g. `amap.com` → `amap`, `sub.foo.example.co.uk` → `example`). */
+function hostLabelOf(url: string): string {
+  const host = safeHost(url);
+  if (!host) return '';
+  const parts = host.split('.');
+  return parts.length >= 2 ? parts[parts.length - 2] : host;
+}
 
 /**
  * Normalise a bookmark's display title for export.
@@ -228,62 +301,34 @@ const GENERIC_TITLES = new Set([
  * The goal is consistency, not invention: keep meaningful titles verbatim,
  * but rescue the ones that would be useless in a bookmarks bar — empty
  * strings, bare "首页/Home" placeholders, and titles that are just the host —
- * by turning them into a "首页 | 站点" label (mirroring the reference
- * template's "首页 | 高德控制台" style). Friendly brand names cannot be
- * derived from a domain, so we use the domain label as the fallback site
- * token.
+ * by turning them into a "首页 | 友好品牌名" label (mirroring the reference
+ * template's "首页 | 高德地图" style). The friendly brand name comes from the
+ * shared `canonicalSiteLabel` resolver, so it is identical to what the AI
+ * engine assigns as an L2 site folder.
  */
 export function normalizeBookmarkTitle(title: string, url: string): string {
   const raw = (title ?? '').replace(/\s+/g, ' ').trim();
-  const label = hostLabelOf(url);
   const lc = raw.toLowerCase();
 
-  // Empty or generic placeholder → "首页 | 站点" (or the URL if hostless).
-  if (raw === '' || GENERIC_TITLES.has(lc)) {
-    if (label) return `首页 | ${label}`;
+  // Empty or generic placeholder → "首页 | 友好品牌名" (or the URL if hostless).
+  if (raw === '' || isGenericTitle(lc)) {
+    const brand = canonicalSiteLabel(url);
+    if (brand && brand !== '未命名站点') return `首页 | ${brand}`;
     return url && url.trim() ? url.trim() : '未命名书签';
   }
 
-  if (label) {
+  const host = safeHost(url);
+  if (host) {
+    const label = hostLabelOf(url);
     // Title is literally the host (with or without www) → treat as generic.
-    let host = '';
-    try {
-      host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-    } catch {
-      host = '';
-    }
     if (lc === host || lc === label) {
-      return `首页 | ${label}`;
+      return `首页 | ${canonicalSiteLabel(url)}`;
     }
     // Already contains the site label → don't double up.
-    if (lc.includes(label)) return raw;
+    if (label && lc.includes(label)) return raw;
   }
 
   return raw;
-}
-
-/** Append any folder headers along `path` that have not yet been emitted,
- *  in order from shallow to deep, each followed by its opening <DL><p>.
- *  `prefix` is the indentation of the session folder; each level adds two
- *  spaces so the tree renders nested under it. */
-function emitFolderHeaders(
-  out: string[],
-  path: string[],
-  seen: Set<string>,
-  gen: number,
-  prefix: string,
-): void {
-  for (let depth = 1; depth <= path.length; depth += 1) {
-    const key = path.slice(0, depth).join('\u0001');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const indent = prefix + '  '.repeat(depth);
-    out.push(
-      indent + '<DT><H3 ADD_DATE="' + gen + '" LAST_MODIFIED="' + gen + '">'
-        + escapeHtml(path[depth - 1]) + '</H3>',
-    );
-    out.push(indent + '<DL><p>');
-  }
 }
 
 /** Render one `<DT><A HREF=…>…</A>` line. The browser importer only needs

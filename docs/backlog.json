@@ -1744,6 +1744,94 @@
           "name": "extension-dom-safety"
         }
       ]
+    },
+    {
+      "id": "AI-PERF-1",
+      "title": "AI整理超时治理：分区单次批量调用 + 22s墙钟护栏（方案A）",
+      "source": "docs/ai-content-organize-review.md（0/168+超时事故复盘）",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/api/ai/jobs/[id]/run.ts",
+          "pattern": "partitionBudgetMs"
+        },
+        {
+          "type": "grep",
+          "path": "functions/api/ai/jobs/[id]/run.ts",
+          "pattern": "AbortSignal.timeout"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "enrichInputsWithContent"
+        }
+      ]
+    },
+    {
+      "id": "AI-ORG-1",
+      "title": "站点命名单一真源 shared/siteLabel.ts（canonicalSiteLabel）",
+      "source": "docs/ai-content-organize-review.md D2/T1",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "shared/siteLabel.ts"
+        },
+        {
+          "type": "grep",
+          "path": "shared/siteLabel.ts",
+          "pattern": "canonicalSiteLabel"
+        },
+        {
+          "type": "file",
+          "path": "functions/_lib/ai/site-label.ts"
+        }
+      ]
+    },
+    {
+      "id": "AI-ORG-2",
+      "title": "engine.ts 跨分片 L2/L3 去重：写回处归并到 canonicalSiteLabel",
+      "source": "docs/ai-content-organize-review.md D2（P0）",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "canonicalSiteLabel"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "Plan A \\(D2\\)"
+        }
+      ]
+    },
+    {
+      "id": "AI-ORG-3",
+      "title": "导出格式修正：PERSONAL_TOOLBAR_FOLDER/品牌标题兜底/确定性排序",
+      "source": "docs/ai-content-organize-review.md F2/T1/S1",
+      "priority": "P1",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "src/lib/category-export.ts",
+          "pattern": "PERSONAL_TOOLBAR_FOLDER"
+        },
+        {
+          "type": "grep",
+          "path": "src/lib/category-export.ts",
+          "pattern": "canonicalSiteLabel"
+        },
+        {
+          "type": "test",
+          "name": "export-format"
+        }
+      ]
     }
   ]
 }

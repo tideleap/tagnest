@@ -4,6 +4,11 @@
     "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["./shared/*"],
+      "@/*": ["./src/*"]
+    },
     "types": ["@cloudflare/workers-types"],
 
     "strict": true,

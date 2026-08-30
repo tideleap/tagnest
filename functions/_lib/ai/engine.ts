@@ -1,4 +1,5 @@
 import { domainFallbackTag } from './domain-fallback';
+import { canonicalSiteLabel } from './site-label';
 import { enrichInputsWithContent } from './enrich';
 import {
   BATCH_SIZE,
@@ -17,7 +18,7 @@ import {
   type ParsedCategory,
   type ParsedCategorizeItem,
 } from './prompt';
-import { callProvider, isFatal, isRetryable, withRetry } from './providers';
+import { callProvider, isFatal, isTransientRetryable, withRetry } from './providers';
 import { normalizeKey, resolveCandidates, resolveTagName } from './taxonomy';
 import { attachParentTags, synthesizeTaxonomy, type TaxonomyNode } from './taxonomy-tree';
 import {
@@ -103,6 +104,13 @@ export interface SuggestOptions {
   feedback?: FeedbackProfile | null;
   fetchImpl?: typeof fetch;
   /**
+   * Optional abort signal bounding the *whole* per-partition model budget (set
+   * by `/run` from `TN_PARTITION_BUDGET_MS`). When present it is merged with the
+   * per-call `REQUEST_TIMEOUT_MS` so a partition can never outlive the Cloudflare
+   * Functions wall-clock even if the model is slow.
+   */
+  signal?: AbortSignal;
+  /**
    * Few-shot examples drawn from the user's own well-tagged bookmarks (方案B).
    * When omitted or empty the prompt falls back to its built-in defaults.
    */
@@ -142,15 +150,18 @@ async function callTagWithRetryAndRepair(
   prompt: string,
   batchSize: number,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<{ items: import('./prompt').ParsedItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl),
+    () => callProvider(config, prompt, fetchImpl, signal),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
-      if (isRetryable(outcome.error)) return 'retry';
+      if (isTransientRetryable(outcome.error)) return 'retry';
       return 'stop';
     },
+    {},
+    signal,
   );
 
   if (!result.ok) {
@@ -166,6 +177,7 @@ async function callTagWithRetryAndRepair(
       config,
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
+      signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       const repaired = parseTaggingResponse(repairOutcome.text, batchSize);
@@ -196,6 +208,7 @@ async function tagGroup(
     coarseTopics?: Array<string | null>;
     examples?: Example[];
     fetchImpl?: typeof fetch;
+    signal?: AbortSignal;
   },
 ): Promise<{ items: Map<number, import('./prompt').ParsedItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, import('./prompt').ParsedItem>();
@@ -208,7 +221,13 @@ async function tagGroup(
     examples: opts.examples,
   });
 
-  const { items, fatal, error } = await callTagWithRetryAndRepair(opts.config, prompt, group.length, opts.fetchImpl);
+  const { items, fatal, error } = await callTagWithRetryAndRepair(
+    opts.config,
+    prompt,
+    group.length,
+    opts.fetchImpl,
+    opts.signal,
+  );
   if (fatal) return { items: out, fatal: true, error };
 
   for (const item of items) {
@@ -319,13 +338,15 @@ export async function suggestForBookmarks(
       if (config.twoPass) {
         const coarsePrompt = buildCoarsePrompt(sliceInputs);
         const outcome = await withRetry(
-          () => callProvider(config, coarsePrompt, options.fetchImpl),
+          () => callProvider(config, coarsePrompt, options.fetchImpl, options.signal),
           (o) => {
             if (o.ok) return 'ok';
             if (isFatal(o.error)) return 'stop';
-            if (isRetryable(o.error)) return 'retry';
+            if (isTransientRetryable(o.error)) return 'retry';
             return 'stop';
           },
+          {},
+          options.signal,
         );
         if (outcome.ok) {
           coarseTopics = parseCoarseResponse(outcome.text, sliceInputs.length);
@@ -349,6 +370,7 @@ export async function suggestForBookmarks(
           coarseTopics,
           examples: options.examples,
           fetchImpl: options.fetchImpl,
+          signal: options.signal,
         },
       );
       if (groupResult.fatal) {
@@ -546,6 +568,12 @@ export interface CategorizeOptions {
   config: AiConfig | null;
   feedback?: FeedbackProfile | null;
   fetchImpl?: typeof fetch;
+  /**
+   * Optional abort signal bounding the per-partition model budget (set by `/run`
+   * from `TN_PARTITION_BUDGET_MS`). Merged with `REQUEST_TIMEOUT_MS` inside the
+   * provider so a slow model cannot push a partition past the Functions wall.
+   */
+  signal?: AbortSignal;
   /** Few-shot examples; the prompt defaults to its built-in categorize set. */
   examples?: CategorizeExample[];
   /**
@@ -568,15 +596,18 @@ async function callCategorizeWithRetryAndRepair(
   prompt: string,
   batchSize: number,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<{ items: ParsedCategorizeItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl),
+    () => callProvider(config, prompt, fetchImpl, signal),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
-      if (isRetryable(outcome.error)) return 'retry';
+      if (isTransientRetryable(outcome.error)) return 'retry';
       return 'stop';
     },
+    {},
+    signal,
   );
 
   if (!result.ok) {
@@ -589,6 +620,7 @@ async function callCategorizeWithRetryAndRepair(
       config,
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
+      signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       const repaired = parseCategorizeResponse(repairOutcome.text, batchSize);
@@ -613,6 +645,7 @@ async function categorizeGroup(
     vocab: Vocabulary;
     examples?: CategorizeExample[];
     fetchImpl?: typeof fetch;
+    signal?: AbortSignal;
   },
 ): Promise<{ items: Map<number, ParsedCategorizeItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, ParsedCategorizeItem>();
@@ -624,6 +657,7 @@ async function categorizeGroup(
     prompt,
     group.length,
     opts.fetchImpl,
+    opts.signal,
   );
   if (fatal) return { items: out, fatal: true, error };
 
@@ -847,9 +881,11 @@ export async function categorizeBookmarks(
   const wantModel = Boolean(config && config.autoTag);
 
   if (wantModel && config) {
-    const enriched = config.fetchContent
-      ? await enrichInputsWithContent(inputs, options.fetchImpl)
-      : inputs;
+    // 方案A: 分类不再抓整页正文。书签自带的「标题 + 网址 + 描述」已足够决定它
+    // 归入哪个网站/文件夹；抓取正文是单次整理耗时的最大来源，会把每个分片直接
+    // 推过 Cloudflare Pages Functions 的 30s 墙钟上限。关掉抓取后单分片只剩一次
+    // 模型调用，配合客户端并行分片即可把 168 条的总时长压到数十秒。
+    const enriched = inputs;
 
     const applyItem = (globalIndex: number, entry: CategoryCacheEntry) => {
       modelContributed = true;
@@ -882,6 +918,7 @@ export async function categorizeBookmarks(
         vocab,
         examples: options.examples,
         fetchImpl: options.fetchImpl,
+        signal: options.signal,
       });
       if (groupResult.fatal) {
         fatal = true;
@@ -893,6 +930,23 @@ export async function categorizeBookmarks(
         const globalIndex = slice[localIdx].globalIndex;
         if (!item.category) continue; // row parsed but unusable → fallback path below
         const entry: CategoryCacheEntry = { ...item.category, source: 'model' as const };
+
+        // Plan A (D2): force the site-level segment to the canonical label so the
+        // same site always lands under the same L2/L3 across partitions, killing
+        // the cross-partition duplicate-branch drift. We only override when the
+        // model's segment normalises to the canonical site name, so unknown hosts
+        // (whose canonical label is just the Title-cased domain) are never
+        // wrongly rewritten and the change stays a no-op for non-site L2s.
+        if (entry.path && entry.path.length >= 2) {
+          const site = canonicalSiteLabel(slice[localIdx].input.url);
+          const siteKey = normalizeKey(site);
+          if (normalizeKey(entry.path[1]) === siteKey) {
+            entry.path[1] = site;
+          } else if (entry.path.length >= 3 && normalizeKey(entry.path[2]) === siteKey) {
+            entry.path[2] = site;
+          }
+        }
+
         applyItem(globalIndex, entry);
         // Write-back: remember this URL's placement. Usability is guaranteed
         // by the fallback anyway, so caching a real placement is always safe.
@@ -1060,6 +1114,12 @@ export interface RenameOptions {
   config: AiConfig | null;
   fetchImpl?: typeof fetch;
   /**
+   * Optional abort signal bounding the per-partition model budget (set by `/run`
+   * from `TN_PARTITION_BUDGET_MS`). Merged with `REQUEST_TIMEOUT_MS` so a slow
+   * model cannot push a partition past the Functions wall-clock.
+   */
+  signal?: AbortSignal;
+  /**
    * Per-URL rename cache (`ai:rename:` namespace). Optional exactly like
    * the other caches: absent ⇒ always call the model.
    */
@@ -1077,15 +1137,18 @@ async function callRenameWithRetryAndRepair(
   prompt: string,
   batchSize: number,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<{ items: import('./prompt').ParsedRenameItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl),
+    () => callProvider(config, prompt, fetchImpl, signal),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
-      if (isRetryable(outcome.error)) return 'retry';
+      if (isTransientRetryable(outcome.error)) return 'retry';
       return 'stop';
     },
+    {},
+    signal,
   );
 
   if (!result.ok) {
@@ -1098,6 +1161,7 @@ async function callRenameWithRetryAndRepair(
       config,
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
+      signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       const repaired = parseRenameResponse(repairOutcome.text, batchSize);
@@ -1116,7 +1180,7 @@ async function renameGroup(
   group: BookmarkInput[],
   localIndices: number[],
   depth: number,
-  opts: { config: AiConfig; fetchImpl?: typeof fetch },
+  opts: { config: AiConfig; fetchImpl?: typeof fetch; signal?: AbortSignal },
 ): Promise<{ items: Map<number, import('./prompt').ParsedRenameItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, import('./prompt').ParsedRenameItem>();
   if (group.length === 0) return { items: out, fatal: false, error: null };
@@ -1127,6 +1191,7 @@ async function renameGroup(
     prompt,
     group.length,
     opts.fetchImpl,
+    opts.signal,
   );
   if (fatal) return { items: out, fatal: true, error };
 
@@ -1206,6 +1271,7 @@ export async function renameBookmarks(
       const groupResult = await renameGroup(sliceInputs, sliceInputs.map((_, k) => k), 0, {
         config,
         fetchImpl: options.fetchImpl,
+        signal: options.signal,
       });
       if (groupResult.fatal) {
         fatal = true;

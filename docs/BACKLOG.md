@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 95 条（其中 2 条为跨文档别名），独立需求 93 项：✅ done 89 ／ ➖ superseded 3 ／ ⏸ blocked-external 1
+> 登记 99 条（其中 2 条为跨文档别名），独立需求 97 项：✅ done 93 ／ ➖ superseded 3 ／ ⏸ blocked-external 1
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -219,6 +219,10 @@ npm run backlog:write   # 重新生成下方状态表
 | `CS-P6-B3` | manifest 校验测试（门禁）：无 default_locale:null / 含 gecko.id / background module / 仅 FF 支持权限 | P2 | ✅ done | 1/1 |  |
 | `CS-P6-B4` | 打包双浏览器产物：Firefox .xpi + Chrome .zip（manifest 按 1cda106 拆分为双文件） | P2 | ✅ done | 4/4 | 原双声明方案在 1cda106 被拆分为 extension/manifest.json（Chrome, service_worker+type:module）与 extension/manifest.firefox.json（scripts+gecko.id）：Chrome MV3 拒绝 background 同时含 service_worker 与 scripts（错误 1227774043）。dist-ext 产物不入库，由 extension 构建脚本按需产出。 |
 | `CS-P6-B5` | innerHTML 安全化：共享 dom.js（el/clear/escapeHtml）+ 消除全部 UNSAFE_VAR_ASSIGNMENT + DOM 安全护栏测试 | P2 | ✅ done | 6/6 |  |
+| `AI-PERF-1` | AI整理超时治理：分区单次批量调用 + 22s墙钟护栏（方案A） | P0 | ✅ done | 3/3 |  |
+| `AI-ORG-1` | 站点命名单一真源 shared/siteLabel.ts（canonicalSiteLabel） | P1 | ✅ done | 3/3 |  |
+| `AI-ORG-2` | engine.ts 跨分片 L2/L3 去重：写回处归并到 canonicalSiteLabel | P1 | ✅ done | 2/2 |  |
+| `AI-ORG-3` | 导出格式修正：PERSONAL_TOOLBAR_FOLDER/品牌标题兜底/确定性排序 | P1 | ✅ done | 3/3 |  |
 
 **当前执行队列**：空 —— 所有需求已进入终态。
 

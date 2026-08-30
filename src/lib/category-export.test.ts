@@ -80,6 +80,17 @@ describe('toNetscapeBookmarksHtml — header & envelope', () => {
     // No 书签栏 folder opening <DL> pair should appear.
     expect(html).not.toMatch(/>书签栏<\/H3>/);
   });
+
+  it('adds PERSONAL_TOOLBAR_FOLDER="true" to the 书签栏 header (F2)', () => {
+    const html = toNetscapeBookmarksHtml([], { generatedAt: GEN });
+    expect(html).toContain('PERSONAL_TOOLBAR_FOLDER="true"');
+    // The attribute and the 书签栏 name live in the same <H3> opening tag.
+    const barLineIdx = html.indexOf('<DT><H3');
+    const barLineEnd = html.indexOf('</H3>', barLineIdx);
+    const barLine = html.slice(barLineIdx, barLineEnd);
+    expect(barLine).toContain('PERSONAL_TOOLBAR_FOLDER="true"');
+    expect(barLine).toContain('书签栏');
+  });
 });
 
 describe('toNetscapeBookmarksHtml — flat case', () => {
@@ -137,32 +148,57 @@ describe('toNetscapeBookmarksHtml — uncategorised & mixed', () => {
     );
     expect(html).toContain('>阅读</H3>');
     expect(html).toContain('>未分类</H3>');
-    // Both folder headers are emitted exactly once (dedupe via seen set).
+    // Both folder headers are emitted exactly once (dedupe via tree build).
     expect(html.match(/阅读<\/H3>/g)?.length).toBe(1);
     expect(html.match(/未分类<\/H3>/g)?.length).toBe(1);
   });
+});
 
-  it('produces a stable alphabetic order for siblings across categories', () => {
+describe('toNetscapeBookmarksHtml — deterministic ordering (count desc, pinyin tiebreak)', () => {
+  it('orders top-level categories by bookmark count (desc), then pinyin', () => {
     const html = toNetscapeBookmarksHtml(
       [
-        row({ bookmarkId: 'a', categoryPath: ['技术', 'JavaScript'] }),
-        row({ bookmarkId: 'b', categoryPath: ['技术', 'Algorithms'] }),
-        row({ bookmarkId: 'c', categoryPath: ['娱乐', '游戏'] }),
-        row({ bookmarkId: 'd', categoryPath: ['娱乐', '影视'] }),
+        row({ bookmarkId: 'a1', categoryPath: ['常用工具'] }),
+        row({ bookmarkId: 'a2', categoryPath: ['常用工具'] }),
+        row({ bookmarkId: 'a3', categoryPath: ['常用工具'] }),
+        row({ bookmarkId: 'b1', categoryPath: ['偶尔访问'] }),
       ],
       { generatedAt: GEN },
     );
-    // Within "技术", Algorithms (A) comes before JavaScript (J).
+    const busy = html.indexOf('>常用工具</H3>');
+    const rare = html.indexOf('>偶尔访问</H3>');
+    expect(busy).toBeGreaterThan(0);
+    expect(rare).toBeGreaterThan(0);
+    // The 3-bookmark category comes before the 1-bookmark one.
+    expect(busy).toBeLessThan(rare);
+  });
+
+  it('uses pinyin order for siblings with equal counts', () => {
+    const html = toNetscapeBookmarksHtml(
+      [
+        row({ bookmarkId: 'x', categoryPath: ['开发', 'JavaScript'] }),
+        row({ bookmarkId: 'y', categoryPath: ['开发', 'Algorithms'] }),
+      ],
+      { generatedAt: GEN },
+    );
     const aIdx = html.indexOf('>Algorithms</H3>');
     const jIdx = html.indexOf('>JavaScript</H3>');
     expect(aIdx).toBeGreaterThan(0);
-    expect(jIdx).toBeGreaterThan(aIdx);
-    // Top-level: 技术 before 娱乐 (CJK < Latin-ish alphabetically, but
-    // the actual order is implementation-defined; just assert both exist).
-    const techIdx = html.indexOf('>技术</H3>');
-    const entIdx = html.indexOf('>娱乐</H3>');
-    expect(techIdx).toBeGreaterThan(0);
-    expect(entIdx).toBeGreaterThan(0);
+    expect(jIdx).toBeGreaterThan(aIdx); // A before J
+  });
+
+  it('sorts bookmarks within a folder by title pinyin (asc)', () => {
+    const html = toNetscapeBookmarksHtml(
+      [
+        row({ bookmarkId: 'x', title: '香蕉', url: 'https://e.com/x', categoryPath: ['设计'] }),
+        row({ bookmarkId: 'y', title: '苹果', url: 'https://e.com/y', categoryPath: ['设计'] }),
+      ],
+      { generatedAt: GEN },
+    );
+    const pIdx = html.indexOf('>苹果</A>');
+    const bIdx = html.indexOf('>香蕉</A>');
+    expect(pIdx).toBeGreaterThan(0);
+    expect(bIdx).toBeGreaterThan(pIdx); // 苹果 (p) before 香蕉 (x)
   });
 });
 
@@ -211,28 +247,28 @@ describe('toNetscapeBookmarksHtml — escaping', () => {
 });
 
 describe('toNetscapeBookmarksHtml — title normalization (default on)', () => {
-  it('turns an empty title into "首页 | 站点" using the host label', () => {
+  it('turns an empty title into "首页 | 友好品牌名" using canonicalSiteLabel', () => {
     const html = toNetscapeBookmarksHtml(
-      [row({ title: '', url: 'https://amap.example/', categoryPath: ['地图'] })],
+      [row({ title: '', url: 'https://amap.com/', categoryPath: ['地图'] })],
       { generatedAt: GEN },
     );
-    expect(html).toContain('>首页 | amap</A>');
+    expect(html).toContain('>首页 | 高德地图</A>');
   });
 
-  it('turns a bare-host title into "首页 | 站点"', () => {
+  it('turns a bare-host title into "首页 | 友好品牌名"', () => {
     const html = toNetscapeBookmarksHtml(
       [row({ title: 'github.com', url: 'https://github.com/', categoryPath: ['代码'] })],
       { generatedAt: GEN },
     );
-    expect(html).toContain('>首页 | github</A>');
+    expect(html).toContain('>首页 | GitHub</A>');
   });
 
-  it('turns a generic placeholder title into "首页 | 站点"', () => {
+  it('turns a generic placeholder title into "首页 | 友好品牌名"', () => {
     const html = toNetscapeBookmarksHtml(
-      [row({ title: '首页', url: 'https://figma.example/', categoryPath: ['设计'] })],
+      [row({ title: '首页', url: 'https://figma.com/', categoryPath: ['设计'] })],
       { generatedAt: GEN },
     );
-    expect(html).toContain('>首页 | figma</A>');
+    expect(html).toContain('>首页 | Figma</A>');
   });
 
   it('keeps a meaningful title verbatim (no host label appended)', () => {
@@ -255,11 +291,11 @@ describe('toNetscapeBookmarksHtml — title normalization (default on)', () => {
 });
 
 describe('normalizeBookmarkTitle — unit', () => {
-  it('rescues empty / generic / bare-host titles into "首页 | 站点"', () => {
-    expect(normalizeBookmarkTitle('', 'https://amap.example/')).toBe('首页 | amap');
-    expect(normalizeBookmarkTitle('首页', 'https://amap.example/')).toBe('首页 | amap');
-    expect(normalizeBookmarkTitle('Home', 'https://amap.example/')).toBe('首页 | amap');
-    expect(normalizeBookmarkTitle('github.com', 'https://github.com/')).toBe('首页 | github');
+  it('rescues empty / generic / bare-host titles into "首页 | 友好品牌名"', () => {
+    expect(normalizeBookmarkTitle('', 'https://amap.com/')).toBe('首页 | 高德地图');
+    expect(normalizeBookmarkTitle('首页', 'https://amap.com/')).toBe('首页 | 高德地图');
+    expect(normalizeBookmarkTitle('Home', 'https://amap.com/')).toBe('首页 | 高德地图');
+    expect(normalizeBookmarkTitle('github.com', 'https://github.com/')).toBe('首页 | GitHub');
   });
 
   it('falls back to the URL when the host is unusable', () => {

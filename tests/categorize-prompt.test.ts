@@ -106,6 +106,33 @@ describe('buildCategorizePrompt — two-level-first placement (2026-08-29 upgrad
   });
 });
 
+describe('buildCategorizePrompt — unified length rule & explicit L3 (C1/C2/C3)', () => {
+  it('uses one soft-12 / hard-24 length rule (no contradictory ≤12 hard cap)', () => {
+    const prompt = buildCategorizePrompt(inputs, vocab);
+    expect(prompt).toContain('建议 ≤ 12 字');
+    expect(prompt).toContain('硬上限 24 字');
+    // The old contradictory hard "≤ 12 字" line is gone.
+    expect(prompt).not.toContain('名称 ≤ 12 字；');
+  });
+
+  it('drops the contradictory 「React 官网」 example (C2)', () => {
+    const prompt = buildCategorizePrompt(inputs, vocab);
+    expect(prompt).not.toContain('React 官网');
+  });
+
+  it('gives executable L3 trigger conditions (C3)', () => {
+    const prompt = buildCategorizePrompt(inputs, vocab);
+    expect(prompt).toContain('≥2 个明显不同的子模块');
+    expect(prompt).toContain('≥2 条书签复用');
+    expect(prompt).toContain('具体可辨');
+  });
+
+  it('requires L1 to reuse existing domains, not spawn overlapping ones', () => {
+    const prompt = buildCategorizePrompt(inputs, vocab);
+    expect(prompt).toContain('一级分类必须复用');
+  });
+});
+
 describe('parseCategorizeResponse — documented schema', () => {
   it('parses a full single-placement row', () => {
     const raw = JSON.stringify({
