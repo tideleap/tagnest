@@ -30,6 +30,20 @@ const local: LocalConfig = {
 
 const emptyVocab: Vocabulary = buildVocabulary([]);
 
+/**
+ * Vocabulary carrying the given names as existing tags (count 10).
+ *
+ * Tag governance (PRD-TAG-QUALITY) always keeps existing vocabulary tags and
+ * drops brand-new singletons, so tests that assert a model tag survives must
+ * mark it as existing — otherwise the assertion now measures governance, not
+ * the behaviour under test.
+ */
+function vocabWith(...names: string[]): Vocabulary {
+  return buildVocabulary(
+    names.map((name, i) => ({ id: `t${i}`, name, aliases: [], count: 10 })),
+  );
+}
+
 // A model response referencing 1-based index 1.
 const MODEL_JSON = JSON.stringify({
   results: [{ i: 1, tags: [{ name: '前端', confidence: 0.9, reason: 'React 文档' }] }],
@@ -204,7 +218,8 @@ describe('suggestForBookmarks — P0-3 precise compensation (no silent drops)', 
         { id: 'b2', url: 'https://nodejs.org', title: 'Node' },
         { id: 'b3', url: 'https://figma.com', title: 'Figma' },
       ],
-      { vocab: emptyVocab, config: modelConfig, local },
+      // Existing-vocab tags survive governance; the test measures compensation.
+      { vocab: vocabWith('前端', '后端', '设计'), config: modelConfig, local },
     );
 
     // Exactly two model calls: the original batch + the compensation re-run.
@@ -232,7 +247,8 @@ describe('suggestForBookmarks — P0-3 precise compensation (no silent drops)', 
         { id: 'b2', url: 'https://github.com/foo', title: 'Repo' },
         { id: 'b3', url: 'https://gitlab.com/bar', title: 'Repo2' },
       ],
-      { vocab: emptyVocab, config: modelConfig, local },
+      // 前端 is an existing tag so it survives governance; b2/b3 fall back.
+      { vocab: vocabWith('前端'), config: modelConfig, local },
     );
 
     expect(out.engine).toBe('model');
@@ -259,7 +275,8 @@ describe('suggestForBookmarks — P0-3 precise compensation (no silent drops)', 
         { id: 'b1', url: 'https://react.dev', title: 'React' },
         { id: 'b2', url: 'https://nodejs.org', title: 'Node' },
       ],
-      { vocab: emptyVocab, config: modelConfig, local },
+      // Existing-vocab tags survive governance; the test measures repair.
+      { vocab: vocabWith('前端', '后端'), config: modelConfig, local },
     );
 
     // Original attempt + one repair turn.
@@ -283,7 +300,8 @@ describe('suggestForBookmarks — P0-3 precise compensation (no silent drops)', 
         { id: 'b1', url: 'https://react.dev', title: 'React' },
         { id: 'b2', url: 'https://nodejs.org', title: 'Node' },
       ],
-      { vocab: emptyVocab, config: modelConfig, local },
+      // Existing-vocab tags survive governance; the test measures parsing.
+      { vocab: vocabWith('前端', '后端'), config: modelConfig, local },
     );
 
     expect(mockedCall.mock.calls.length).toBe(1);
@@ -313,8 +331,7 @@ describe('suggestForBookmarks — P0-3 precise compensation (no silent drops)', 
   });
 });
 
-describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {
-  it('synthesizes a taxonomy and attaches parent tags when enabled', async () => {
+describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {  it('synthesizes a taxonomy and attaches parent tags when enabled', async () => {
     const tagResults = Array.from({ length: 8 }, (_, i) => ({
       i: i + 1,
       tags: [{ name: `Tag${i}`, confidence: 0.9, reason: 'r' }],
@@ -331,7 +348,13 @@ describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {
 
     const out = await suggestForBookmarks(
       Array.from({ length: 8 }, (_, i) => ({ id: `b${i + 1}`, url: `https://x${i}.com`, title: `X${i}` })),
-      { vocab: emptyVocab, config: modelConfig, local, synthesizeTree: true },
+      // Existing-vocab tags survive governance so synthesis sees all 8 names.
+      {
+        vocab: vocabWith(...Array.from({ length: 8 }, (_, i) => `Tag${i}`)),
+        config: modelConfig,
+        local,
+        synthesizeTree: true,
+      },
     );
 
     // One tagging call + one tree-synthesis call.
@@ -354,5 +377,105 @@ describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {
     );
     expect(out.suggestedTaxonomy).toBeUndefined();
     expect(mockedCall.mock.calls.length).toBe(1);
+  });
+});
+
+describe('suggestForBookmarks — tag governance integration (PRD-TAG-QUALITY)', () => {
+  it('governs fragment tags across the whole batch: singletons drop, survivors keep', async () => {
+    // 4 bookmarks each proposing a unique one-off tag, plus 2 bookmarks
+    // sharing one tag. minSupport=2: the shared tag survives, the four
+    // singletons are dropped (domain fallback re-seeds them).
+    const json = JSON.stringify({
+      results: [
+        { i: 1, tags: [{ name: '孤词甲', confidence: 0.9, reason: 'r' }] },
+        { i: 2, tags: [{ name: '孤词乙', confidence: 0.9, reason: 'r' }] },
+        { i: 3, tags: [{ name: '孤词丙', confidence: 0.9, reason: 'r' }] },
+        { i: 4, tags: [{ name: '孤词丁', confidence: 0.9, reason: 'r' }] },
+        { i: 5, tags: [{ name: '常用主题', confidence: 0.8, reason: 'r' }] },
+        { i: 6, tags: [{ name: '常用主题', confidence: 0.8, reason: 'r' }] },
+      ],
+    });
+    mockedCall.mockResolvedValueOnce({ ok: true, text: json });
+    const out = await suggestForBookmarks(
+      Array.from({ length: 6 }, (_, i) => ({
+        id: `b${i + 1}`,
+        url: `https://site${i}.example.com/page`,
+        title: `Page ${i}`,
+      })),
+      { vocab: emptyVocab, config: modelConfig, local },
+    );
+    const allNames = out.results.flatMap((r) => r.tags.map((t) => t.name));
+    // The supported tag survives; the one-off names are gone from every result.
+    expect(allNames).toContain('常用主题');
+    for (const frag of ['孤词甲', '孤词乙', '孤词丙', '孤词丁']) {
+      expect(allNames).not.toContain(frag);
+    }
+    // No bookmark left untagged (fallback guarantee) and metrics surfaced.
+    expect(out.results.every((r) => r.tags.length >= 1)).toBe(true);
+    expect(out.governance).not.toBeNull();
+    expect(out.governance!.metrics.budget).toBeGreaterThan(0);
+    expect(out.governance!.metrics.dropped).toBeGreaterThanOrEqual(4);
+  });
+
+  it('P0-6: writes GOVERNED tags to the URL cache, not the raw model output', async () => {
+    // 1 bookmark carries a true singleton fragment (support 1 → dropped);
+    // 4 bookmarks share a supported keeper tag.
+    const json = JSON.stringify({
+      results: [
+        { i: 1, tags: [{ name: '孤立碎片词', confidence: 0.9, reason: 'r' }] },
+        { i: 2, tags: [{ name: '共享主题', confidence: 0.8, reason: 'r' }] },
+        { i: 3, tags: [{ name: '共享主题', confidence: 0.8, reason: 'r' }] },
+        { i: 4, tags: [{ name: '共享主题', confidence: 0.8, reason: 'r' }] },
+        { i: 5, tags: [{ name: '共享主题', confidence: 0.8, reason: 'r' }] },
+      ],
+    });
+    mockedCall.mockResolvedValueOnce({ ok: true, text: json });
+
+    const store = new Map<string, unknown>();
+    const cache = {
+      get: vi.fn(async () => null),
+      put: vi.fn(async (key: string, entry: unknown) => {
+        store.set(key, entry);
+      }),
+    };
+
+    await suggestForBookmarks(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `b${i + 1}`,
+        url: `https://u${i}.example.com/p`,
+        title: `U${i}`,
+      })),
+      { vocab: emptyVocab, config: modelConfig, local, tagCache: cache },
+    );
+
+    // No cached entry may contain the governed-away fragment.
+    const entries = [...store.values()] as Array<{ tags: Array<{ name: string }> }>;
+    for (const entry of entries) {
+      for (const tag of entry.tags) {
+        expect(tag.name).not.toBe('孤立碎片词');
+      }
+    }
+    // The supported tag is present in the cached sets that had it.
+    const withShared = entries.filter((e) => e.tags.some((t) => t.name === '共享主题'));
+    expect(withShared.length).toBe(4);
+    // The fragment-only URL is NOT cached (skip-on-empty), so the next run
+    // re-asks the model instead of replaying the fragment.
+    expect(entries.length).toBe(4);
+  });
+
+  it('P0-5: prompt states the run-size budget line', async () => {
+    mockedCall.mockResolvedValue({ ok: true, text: JSON.stringify({ results: [] }) });
+    await suggestForBookmarks(
+      Array.from({ length: 30 }, (_, i) => ({
+        id: `b${i}`,
+        url: `https://x${i}.example.com/`,
+        title: `X${i}`,
+      })),
+      { vocab: emptyVocab, config: modelConfig, local },
+    );
+    const prompt = mockedCall.mock.calls[0][1] as string;
+    expect(prompt).toContain('【硬性要求】');
+    expect(prompt).toContain('共 30 条书签');
+    expect(prompt).toContain('不超过 10 个');
   });
 });

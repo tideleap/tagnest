@@ -25,6 +25,18 @@ const modelConfig: AiConfig = {
 const local: LocalConfig = { autoApplyThreshold: 1, maxTags: 4 };
 const emptyVocab: Vocabulary = buildVocabulary([]);
 
+/**
+ * Vocabulary carrying the given names as existing tags (count 10).
+ * Tag governance always keeps existing vocabulary tags and drops brand-new
+ * singletons, so cache-behaviour tests that assert a tag survives must mark
+ * it as existing — otherwise the assertion measures governance, not caching.
+ */
+function vocabWith(...names: string[]): Vocabulary {
+  return buildVocabulary(
+    names.map((name, i) => ({ id: `t${i}`, name, aliases: [], count: 10 })),
+  );
+}
+
 /** In-memory TagCache standing in for KV. */
 function memoryCache(): TagCache & { store: Map<string, TagCacheEntry> } {
   const store = new Map<string, TagCacheEntry>();
@@ -143,7 +155,8 @@ describe('suggestForBookmarks — P1-2 URL result cache', () => {
         { id: 'b1', url: 'https://react.dev', title: 'React' },
         { id: 'b2', url: 'https://nodejs.org', title: 'Node' },
       ],
-      { vocab: emptyVocab, config: modelConfig, local, tagCache: cache },
+      // Existing-vocab tags survive governance; the test measures cache hits.
+      { vocab: vocabWith('前端', '后端'), config: modelConfig, local, tagCache: cache },
     );
 
     // Only the miss (b2) went to the model.

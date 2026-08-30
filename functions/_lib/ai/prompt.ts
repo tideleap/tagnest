@@ -49,7 +49,15 @@ export const MAX_REASON_LENGTH = 24;
  * comparison be more than a guess. It is a plain date tag, not a semver, so the
  * value reads as "the prompt that shipped on this day" in logs and dashboards.
  */
-export const PROMPT_VERSION = '2026-08-21';
+/**
+ * 2026-08-30 — tag-quality governance hard rules (PRD-TAG-QUALITY): the
+ * prompt now carries reuse-first / min-support / one-new-tag-per-bookmark /
+ * run-level budget constraints, and the run size (`totalCount`) when known.
+ * Bumping invalidates every `ai:tag:` entry written by the old prompt —
+ * required, because old entries hold ungoverned fragment tags that the new
+ * governance pass expects to see regenerated under the new rules.
+ */
+export const PROMPT_VERSION = '2026-08-30';
 
 /**
  * Version tag for the *categorize* prompt (CategorySync P1, C1-1).
@@ -80,6 +88,13 @@ export interface PromptOptions {
    * tags with that context instead of re-deriving it from scratch.
    */
   coarseTopics?: Array<string | null>;
+  /**
+   * Total bookmark count of the whole run (PRD-TAG-QUALITY P0-5). Batches are
+   * slices of one run; knowing the run size lets the prompt state the actual
+   * distinct-tag budget (≈ N/3) instead of a vague instruction. Omitted for
+   * sub-batch compensation calls, where the number would mislead.
+   */
+  totalCount?: number;
 }
 
 export interface Example {
@@ -339,7 +354,29 @@ function renderAntiExamples(): string {
     '',
     '错误示例（不要输出这类标签）：',
     ...ANTI_EXAMPLES.map((ex) => `- 「${ex.bad}」→ ${ex.why}`),
+    '- 「React.js」（当已有「React」时）→ 与已有标签构成同义碎片，应复用已有标签',
   ].join('\n');
+}
+
+/**
+ * P0-5 (PRD-TAG-QUALITY): the hard constraints that turn the vocabulary from
+ * a soft suggestion into a binding instruction. Rendered once per prompt,
+ * after the vocabulary block. `totalCount` (run size) renders the concrete
+ * budget line; without it the budget line is omitted rather than guessed.
+ */
+export function renderTagHardRules(totalCount?: number): string {
+  const lines = [
+    '',
+    '【硬性要求】',
+    '1. 优先复用已有标签：只有当已有标签会明显误导时才新建标签。',
+    '2. 新建标签必须是「预计至少 3 个书签会使用」的概念；只会用一次的标签一律不要新建。',
+    '3. 每个书签最多新建 1 个新标签，其余从已有标签中选择。',
+  ];
+  if (totalCount && totalCount > 0) {
+    const budget = Math.min(100, Math.max(6, Math.ceil(totalCount / 3)));
+    lines.push(`4. 本次任务共 ${totalCount} 条书签，全部不同标签总数不超过 ${budget} 个。`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -381,6 +418,10 @@ export function buildTaggingPrompt(
   } else {
     lines.push('', '该用户还没有任何标签，请建立一套简洁、可复用的基础分类。');
   }
+
+  // P0-5: hard reuse/budget constraints — after the vocabulary so they read
+  // as rules ABOUT it, before the examples so nothing dilutes them.
+  lines.push(renderTagHardRules(options.totalCount));
 
   lines.push(renderExamples(examples, options.wantSummary));
   lines.push(renderAntiExamples());

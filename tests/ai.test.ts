@@ -106,8 +106,10 @@ describe('buildTaggingPrompt — classification against the user taxonomy', () =
       vocab,
       { maxTags: 4, wantSummary: false },
     );
-    // Description is truncated to 400 chars; the prompt stays well under 5000.
-    expect(prompt.length).toBeLessThan(2000);
+    // Description is truncated to 400 chars. Bound is generous enough for the
+    // fixed preamble + vocabulary + examples + hard-rules block, yet far below
+    // the ~6700 an un-truncated 5000-char description would produce.
+    expect(prompt.length).toBeLessThan(2500);
   });
 });
 

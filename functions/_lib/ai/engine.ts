@@ -21,6 +21,7 @@ import {
 import { callProvider, isFatal, isTransientRetryable, withRetry } from './providers';
 import { normalizeKey, resolveCandidates, resolveTagName } from './taxonomy';
 import { attachParentTags, synthesizeTaxonomy, type TaxonomyNode } from './taxonomy-tree';
+import { governTaxonomy, type GovernResult } from './governance';
 import {
   cacheKeyFor,
   categoryCacheKeyFor,
@@ -94,6 +95,11 @@ export interface SuggestOutcome {
    * synthesis was off or produced nothing — never an error to omit it.
    */
   suggestedTaxonomy?: TaxonomyNode[];
+  /**
+   * Tag-quality governance result (PRD-TAG-QUALITY-2026-08-30): quality card
+   * and rescue metrics. Null when governance did not run (no model output).
+   */
+  governance?: GovernResult | null;
 }
 
 export interface SuggestOptions {
@@ -209,6 +215,8 @@ async function tagGroup(
     examples?: Example[];
     fetchImpl?: typeof fetch;
     signal?: AbortSignal;
+    /** Whole-run size, for the prompt's distinct-tag budget line (P0-5). */
+    totalInputs?: number;
   },
 ): Promise<{ items: Map<number, import('./prompt').ParsedItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, import('./prompt').ParsedItem>();
@@ -219,6 +227,9 @@ async function tagGroup(
     wantSummary: opts.wantSummary,
     coarseTopics: opts.coarseTopics,
     examples: opts.examples,
+    // P0-5: run-size budget line. Only the top-level call (depth 0) knows the
+    // real run size; compensation re-sends omit it on purpose.
+    totalCount: depth === 0 ? opts.totalInputs : undefined,
   });
 
   const { items, fatal, error } = await callTagWithRetryAndRepair(
@@ -264,12 +275,22 @@ export async function suggestForBookmarks(
   const feedback = options.feedback ?? null;
 
   // ---- The model track (sole generator) -------------------------------
-  const modelTags = new Map<number, RawCandidate[]>();
+  let modelTags = new Map<number, RawCandidate[]>();
   const summaries = new Map<number, string>();
   /** Bookmark index → topic phrase (model-supplied, used for clustering). */
   const topics = new Map<number, string>();
   /** Bookmark index → whether the model flagged the proposal as uncertain. */
   const needsReviewFlags = new Map<number, boolean>();
+  /**
+   * P0-6: per-bookmark cache writes collected DURING batching but flushed
+   * only AFTER governance, so the cache never fixes ungoverned fragment tags
+   * in place (a cached pre-governance result would bypass governance forever
+   * on every later re-run of the same URL). Keyed by bookmark index so the
+   * governed tag set can be joined back onto its URL key.
+   */
+  const pendingCacheWrites = new Map<number, { key: string; item: import('./prompt').ParsedItem }>();
+  /** Last governance metrics, surfaced for tests and run stats. */
+  let governance: GovernResult | null = null;
   let modelError: string | null = null;
   let modelContributed = false;
   let fatal = false;
@@ -371,6 +392,7 @@ export async function suggestForBookmarks(
           examples: options.examples,
           fetchImpl: options.fetchImpl,
           signal: options.signal,
+          totalInputs: inputs.length,
         },
       );
       if (groupResult.fatal) {
@@ -382,18 +404,25 @@ export async function suggestForBookmarks(
       for (const [localIdx, item] of groupResult.items) {
         const globalIndex = slice[localIdx].globalIndex;
         applyItem(globalIndex, item);
-        // P1-2 write-back: remember this URL's result so a re-analysis of the
-        // same page skips the model. Empty results are NOT cached — a quiet
-        // model this time should not poison the next run.
+        // P0-6 write-back moved AFTER governance: only queue the entry here,
+        // keyed by bookmark index so governed tags can be joined on later.
+        // Empty results are NOT cached — a quiet model this time should not
+        // poison the next run.
         if (cache && (item.tags.length > 0 || item.summary)) {
-          await cache.put(slice[localIdx].key, {
-            tags: item.tags,
-            summary: item.summary,
-            topic: item.topic,
-            needsReview: item.needsReview,
-          });
+          pendingCacheWrites.set(globalIndex, { key: slice[localIdx].key, item });
         }
       }
+    }
+
+    // Tag-quality governance (PRD-TAG-QUALITY-2026-08-30): one deterministic,
+    // model-free pass over the whole batch — global budget, minimum support
+    // for brand-new names, merge/roll-up/drop rescue, never a zero-tag
+    // bookmark. Runs BEFORE caching/synthesis so both see governed names.
+    // Single-bookmark runs are exempt (PRD §7 Q6): minSupport=2 is unsolvable
+    // at N=1, and the "pending promotion" design (P2-3) governs that path.
+    if (modelContributed && inputs.length > 1) {
+      governance = governTaxonomy(modelTags, vocab, inputs);
+      modelTags = governance.tags;
     }
 
     // P0-1: synthesise a consistent hierarchy from the batch's tag frequencies
@@ -418,6 +447,34 @@ export async function suggestForBookmarks(
             modelTags.set(index, attachParentTags(cands, synth.tree));
           }
         }
+      }
+    }
+
+    // P0-6 (second half): flush the queued cache writes with the GOVERNED
+    // tag set for each URL. Fallback-sourced rescue tags are excluded — they
+    // are this batch's safety net, not the model's verdict on the URL. When
+    // governance dropped everything model-sourced for a URL we SKIP the
+    // write: caching the pre-governance fragment tags would re-poison the
+    // very cache this change cleans up, and an empty entry only forces the
+    // model to see the URL again next run — the correct outcome.
+    if (cache && pendingCacheWrites.size > 0) {
+      for (const [globalIndex, { key, item }] of pendingCacheWrites) {
+        const governed = (modelTags.get(globalIndex) ?? []).filter(
+          (c) => c.source !== 'fallback',
+        );
+        if (governed.length === 0 && item.tags.length > 0) continue;
+        const modelTagsForUrl = governed.map((c) => ({
+          name: c.name,
+          confidence: c.confidence,
+          reason: c.reason,
+          isNew: !vocab.byKey.has(normalizeKey(c.name)),
+        }));
+        await cache.put(key, {
+          tags: modelTagsForUrl,
+          summary: item.summary,
+          topic: item.topic,
+          needsReview: item.needsReview,
+        });
       }
     }
   } else if (!config) {
@@ -487,7 +544,7 @@ export async function suggestForBookmarks(
   if (modelContributed) engine = 'model';
   else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal, uncovered, suggestedTaxonomy };
+  return { results, engine, modelError, fatal, uncovered, suggestedTaxonomy, governance };
 }
 
 /**

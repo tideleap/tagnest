@@ -31,6 +31,7 @@ export * from './types';
 export * from './config';
 export * from './billing';
 export * from './taxonomy';
+export * from './governance';
 export * from './scoring';
 export * from './grouping';
 export * from './grouping-apply';
