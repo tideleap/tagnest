@@ -140,6 +140,15 @@ const MIGRATION_PROBES = {
   // safe once the column exists.
   '0024_primary_category.sql':
     `SELECT COUNT(*) AS present FROM pragma_table_info('tag_suggestions') WHERE name='kind'`,
+  // 0025 adds ai_settings.managed_enabled (ALTER, non-idempotent) + creates
+  // subscriptions / ai_credit_balances / ai_credit_ledger (all IF NOT EXISTS).
+  // All four side effects were applied via a direct `wrangler d1 execute
+  // --file` that never wrote _d1_migrations, so probe managed_enabled as the
+  // "already applied" marker instead of re-ADDing (which would throw
+  // "duplicate column name: managed_enabled"). The CREATE TABLE statements are
+  // idempotent, so recording-and-skipping is safe once the column exists.
+  '0025_billing.sql':
+    `SELECT COUNT(*) AS present FROM pragma_table_info('ai_settings') WHERE name='managed_enabled'`,
 };
 
 const MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS _d1_migrations (
