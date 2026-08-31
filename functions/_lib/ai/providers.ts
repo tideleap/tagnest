@@ -47,14 +47,16 @@ function envNumber(name: string, fallback: number): number {
 /**
  * Per-call model request deadline.
  *
- * Must stay *well* under the Cloudflare Pages Functions wall-clock (≈30s) and
- * the client's per-partition deadline (28s in `useOrganizeRun`), leaving
- * headroom for the D1 writes and — on the finisher — the shared-state
- * finalize. A single partition is exactly one model call now (page fetching was
- * removed in 方案A), so 20s leaves ~8s for everything else and still fits before
- * the 28s client timeout fires. Override with `TN_AI_TIMEOUT_MS`.
+ * Set a touch ABOVE the 25s partition budget (`TN_PARTITION_BUDGET_MS`) on
+ * purpose: `withDeadline` takes `min(partitionRemaining, REQUEST_TIMEOUT_MS)`, so
+ * the partition signal — not this constant — is the real ceiling for one model
+ * call. A no-fetch track (categorize/rename) can now spend its full 25s instead
+ * of being capped at the old 20s, while a fetch track is still bounded by the
+ * partition budget after its 8s enrichment. 28s still leaves headroom under the
+ * 30s Functions wall-clock and the 28s client cutoff (useOrganizeRun).
+ * Override with `TN_AI_TIMEOUT_MS`.
  */
-export const REQUEST_TIMEOUT_MS = envNumber('TN_AI_TIMEOUT_MS', 20_000);
+export const REQUEST_TIMEOUT_MS = envNumber('TN_AI_TIMEOUT_MS', 28_000);
 
 /**
  * Maximum provider attempts for one logical call (override `TN_AI_MAX_RETRIES`).
