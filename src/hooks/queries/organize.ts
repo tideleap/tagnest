@@ -386,122 +386,153 @@ export function useOrganizeRun() {
       cancelled.current = false;
       setState({ ...IDLE, running: true });
 
-      let job: AiJob;
-      try {
-        const created = await api.post<{ job: AiJob }>('/ai/jobs', {
-          target,
-          bookmarkIds,
-          limit,
-          kind,
-          // Only meaningful for categorize runs; the server ignores it otherwise.
-          includeBrowserFolder,
-        });
-        job = created.job;
-      } catch (e) {
-        const message = e instanceof Error ? e.message : '无法创建整理任务';
-        setState({ ...IDLE, error: message });
-        return null;
-      }
-
-      setState((s) => ({ ...s, job, running: true }));
-
+      let job: AiJob | null = null;
+      let lastJob: AiJob | null = null;
+      let error: string | null = null;
       let autoApplied = 0;
-      let uncovered = 0;
+      let uncovered = 0; // 累计显示用；最终值由 finalUncovered 覆盖（避免跨 pass 重复计数）
       let uncategorized = 0;
       let adultQuarantined = 0;
-      let lastJob: AiJob = job;
-      let error: string | null = null;
+      let finalUncovered = 0; // 末趟仍未覆盖的书签数（真正需要人工复核的量）
 
-      // 方案A: 把整理范围切成多个不重叠的分片，用固定并发的 worker 池并行打出
-      // 去。每个分片带 {from,to} 认领一段书签，服务端用原子计数推进进度，所以
-      // 进度条是实时的、且总时长从「N 个串行 round-trip」降到「约一次模型调用」。
-      // 关掉抓取后单分片只剩一次模型调用，稳进 Cloudflare 的 30s 墙钟。
-      // 单分片书签数从 6 降到 4（2026-08-31）：切到 deepseek-v4-flash / newapi.uupt.work
-      // 后实测仍 ~4.2s/条，6 条分片的模型调用约 25s 加收尾(finalize)直接撞上 28s 客户端
-      // 墙而整片超时(截图「还是不得行」，20 条里 1 片 6 条兜底)；降到 4 条后模型调用
-      // ≈17s，落在 25s 分区预算内并为 finalize 留 ~8s 余量，客户端 28s 墙不再被顶到。
-      // 代价：分片数增多(总耗时略增)，但每片都能在墙内成功返回，不再整片兜底。
-      // 服务端重试+JSON自动修复已由 engine.ts 三轨道 *WithRetryAndRepair 提供，此处只缩分区。
-      const PARTITION = 4;
-      const CONCURRENCY = 6;
-      const partitions: Array<{ from: number; to: number }> = [];
-      for (let from = 0; from < job.total; from += PARTITION) {
-        partitions.push({ from, to: Math.min(from + PARTITION, job.total) });
+      // 方案F：未覆盖（域名兜底/分片错误）书签自动补跑。
+      // 不原地重放分片——那会让服务端重复计数 processed、破坏收尾判定。改为把这批
+      // 书签作为一次全新任务重跑：新任务计数器独立、建议写入幂等（DELETE+INSERT），安全。
+      const MAX_PASSES = 2; // 主跑 + 最多 2 次补跑
+      let scopeIds: string[] | undefined = bookmarkIds;
+
+      for (let pass = 0; pass <= MAX_PASSES; pass += 1) {
+        if (cancelled.current) break;
+
+        // 创建本次任务：首次用原始范围；补跑只针对上一趟未覆盖的书签 ID（target='ids'）。
+        try {
+          const created = await api.post<{ job: AiJob }>('/ai/jobs', {
+            target: pass === 0 ? target : 'ids',
+            bookmarkIds: pass === 0 ? bookmarkIds : scopeIds,
+            limit,
+            kind,
+            includeBrowserFolder,
+          });
+          job = created.job;
+        } catch (e) {
+          error = error ?? (e instanceof Error ? e.message : '无法创建整理任务');
+          break;
+        }
+        if (!job) break;
+        const jobId = job.id;
+        setState((s) => ({ ...s, job, running: true }));
+
+        // 方案A: 把整理范围切成多个不重叠的分片，用固定并发的 worker 池并行打出
+        // 去。每个分片带 {from,to} 认领一段书签，服务端用原子计数推进进度，所以
+        // 进度条是实时的、且总时长从「N 个串行 round-trip」降到「约一次模型调用」。
+        // 关掉抓取后单分片只剩一次模型调用，稳进 Cloudflare 的 30s 墙钟。
+        // 单分片书签数从 6 降到 4（2026-08-31）：切到 deepseek-v4-flash / newapi.uupt.work
+        // 后实测仍 ~4.2s/条，6 条分片的模型调用约 25s 加收尾(finalize)直接撞上 28s 客户端
+        // 墙而整片超时(截图「还是不得行」，20 条里 1 片 6 条兜底)；降到 4 条后模型调用
+        // ≈17s，落在 25s 分区预算内并为 finalize 留 ~8s 余量，客户端 28s 墙不再被顶到。
+        // 代价：分片数增多(总耗时略增)，但每片都能在墙内成功返回，不再整片兜底。
+        // 服务端重试+JSON自动修复已由 engine.ts 三轨道 *WithRetryAndRepair 提供，此处只缩分区。
+        const PARTITION = 4;
+        const CONCURRENCY = 6;
+        const partitions: Array<{ from: number; to: number }> = [];
+        for (let from = 0; from < job.total; from += PARTITION) {
+          partitions.push({ from, to: Math.min(from + PARTITION, job.total) });
+        }
+
+        // 取消 / 致命错误时让所有在途分片一并中止。
+        const abort = new AbortController();
+        const passUncovered = new Set<string>();
+
+        const runPartition = async (part: { from: number; to: number }): Promise<void> => {
+          if (cancelled.current || abort.signal.aborted) return;
+
+          let result: AiJobRunResult;
+          try {
+            // 单分片只做一次模型调用（已关抓取），通常数秒；28s 客户端超时留足余量
+            // 且仍低于 Pages Functions 的 30s 墙钟。
+            result = await api.post<AiJobRunResult>(
+              `/ai/jobs/${jobId}/run`,
+              { from: part.from, to: part.to },
+              { timeoutMs: 28_000, signal: abort.signal },
+            );
+          } catch (e) {
+            if (cancelled.current || abort.signal.aborted) return;
+            // 客户端超时/网络错不再就地重放（会重复计数）；超时通常服务端已处理，
+            // 记一条软提示即可，不中止整轮。其余真错误才中止。
+            if ((e as { code?: string })?.code === 'timeout') {
+              error = error ?? '部分分片超时，已跳过；可重新整理补回';
+            } else {
+              error = e instanceof Error ? e.message : '整理过程中断';
+              abort.abort();
+            }
+            return;
+          }
+
+          autoApplied += result.autoApplied;
+          uncovered += result.uncovered;
+          uncategorized += result.uncategorized ?? 0;
+          adultQuarantined += result.adultQuarantined ?? 0;
+          lastJob = result.job;
+          for (const id of result.uncoveredIds ?? []) passUncovered.add(id);
+
+          // 致命（fatal）模型错误：服务端已把任务置 failed，整体中止。
+          if (result.job.status === 'failed' && result.modelError) {
+            error = result.job.error ?? result.modelError;
+            abort.abort();
+          }
+
+          setState((s) => ({
+            job: result.job,
+            running: true,
+            engine: result.engine,
+            modelError: result.modelError,
+            autoApplied,
+            uncovered,
+            uncategorized,
+            adultQuarantined,
+            error: result.job.status === 'failed' ? result.job.error : null,
+            topics: mergeTopicCounts(s.topics, result.topics),
+            autoGrouped: result.autoGrouped ?? s.autoGrouped,
+            rebalanceWarning: s.rebalanceWarning || result.rebalanceWarning,
+          }));
+        };
+
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            if (cancelled.current || abort.signal.aborted) return;
+            const part = partitions.shift();
+            if (!part) return;
+            await runPartition(part);
+          }
+        };
+
+        const workers: Promise<void>[] = [];
+        const workerCount = Math.max(1, Math.min(CONCURRENCY, partitions.length));
+        for (let i = 0; i < workerCount; i += 1) workers.push(worker());
+        await Promise.all(workers);
+
+        if (cancelled.current) break;
+        // 末趟仍未覆盖的书签数 = 真正需要人工复核的量（避免跨 pass 重复计入）。
+        finalUncovered = passUncovered.size;
+        // 全覆盖 / 已达补跑上限 / 真错误且无补跑空间：停止补跑。
+        if (passUncovered.size === 0) break;
+        if (pass === MAX_PASSES) break;
+        if (error && passUncovered.size === 0) break;
+        scopeIds = [...passUncovered];
       }
 
-      // 取消 / 致命错误时让所有在途分片一并中止。
-      const abort = new AbortController();
-
-      const runPartition = async (part: { from: number; to: number }, attempt: number): Promise<void> => {
-        if (cancelled.current || abort.signal.aborted) return;
-
-        let result: AiJobRunResult;
-        try {
-          // 单分片只做一次模型调用（已关抓取），通常数秒；28s 客户端超时留足余量
-          // 且仍低于 Pages Functions 的 30s 墙钟。
-          result = await api.post<AiJobRunResult>(
-            `/ai/jobs/${job.id}/run`,
-            { from: part.from, to: part.to },
-            { timeoutMs: 28_000, signal: abort.signal },
-          );
-        } catch (e) {
-          if (cancelled.current || abort.signal.aborted) return;
-          // 单次超时做一次瞬时重试，仍失败则中止整个 run。
-          if ((e as { code?: string })?.code === 'timeout' && attempt < 1) {
-            return runPartition(part, attempt + 1);
-          }
-          error = e instanceof Error ? e.message : '整理过程中断';
-          abort.abort();
-          return;
-        }
-
-        autoApplied += result.autoApplied;
-        uncovered += result.uncovered;
-        uncategorized += result.uncategorized ?? 0;
-        adultQuarantined += result.adultQuarantined ?? 0;
-        lastJob = result.job;
-
-        // 致命（fatal）模型错误：服务端已把任务置 failed，整体中止。
-        if (result.job.status === 'failed' && result.modelError) {
-          error = result.job.error ?? result.modelError;
-          abort.abort();
-        }
-
-        setState((s) => ({
-          job: result.job,
-          running: true,
-          engine: result.engine,
-          modelError: result.modelError,
-          autoApplied,
-          uncovered,
-          uncategorized,
-          adultQuarantined,
-          error: result.job.status === 'failed' ? result.job.error : null,
-          topics: mergeTopicCounts(s.topics, result.topics),
-          autoGrouped: result.autoGrouped ?? s.autoGrouped,
-          rebalanceWarning: s.rebalanceWarning || result.rebalanceWarning,
-        }));
-      };
-
-      const worker = async (): Promise<void> => {
-        for (;;) {
-          if (cancelled.current || abort.signal.aborted) return;
-          const part = partitions.shift();
-          if (!part) return;
-          await runPartition(part, 0);
-        }
-      };
-
-      const workers: Promise<void>[] = [];
-      const workerCount = Math.max(1, Math.min(CONCURRENCY, partitions.length));
-      for (let i = 0; i < workerCount; i += 1) workers.push(worker());
-      await Promise.all(workers);
+      if (!job) {
+        setState({ ...IDLE, error: error ?? '无法创建整理任务' });
+        return null;
+      }
+      lastJob = lastJob ?? job;
 
       // 用户中途取消或发生错误：取消不算错误；否则带上 error。
       setState((s) => ({
         ...s,
         job: lastJob,
         running: false,
+        uncovered: finalUncovered, // 末趟仍未覆盖量（去重），避免多趟累加
         error: cancelled.current ? null : error,
       }));
 

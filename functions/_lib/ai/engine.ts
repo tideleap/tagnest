@@ -90,6 +90,8 @@ export interface SuggestOutcome {
   fatal: boolean;
   /** Number of bookmarks that received only the domain fallback (no model tag). */
   uncovered: number;
+  /** Bookmark IDs that received only the domain fallback this run (for client-side retry). */
+  uncoveredIds: string[];
   /**
    * Adult-content quarantine (2026-08-30): bookmarks identified as obviously
    * adult and therefore NEVER sent to the model (a single adult bookmark can
@@ -321,7 +323,7 @@ export async function suggestForBookmarks(
   options: SuggestOptions,
 ): Promise<SuggestOutcome> {
   if (inputs.length === 0) {
-    return { results: [], engine: 'none', modelError: null, fatal: false, uncovered: 0, adultQuarantined: 0 };
+    return { results: [], engine: 'none', modelError: null, fatal: false, uncovered: 0, uncoveredIds: [], adultQuarantined: 0 };
   }
 
   const { vocab, config, local } = options;
@@ -608,6 +610,7 @@ export async function suggestForBookmarks(
 
   // ---- Normalise, rank, score, and guarantee coverage -----------------
   let uncovered = 0;
+  const uncoveredIds: string[] = [];
   const results: SuggestionResult[] = inputs.map((input, index) => {
     // Adult-content quarantine: a deterministic neutral tag, never the model
     // and never the domain fallback. Resolved against the vocab so an existing
@@ -662,6 +665,7 @@ export async function suggestForBookmarks(
         resolved = resolveCandidates([fb], vocab, local.maxTags);
         needsReview = true;
         uncovered += 1;
+        uncoveredIds.push(input.id);
       }
     }
 
@@ -700,7 +704,7 @@ export async function suggestForBookmarks(
   if (modelContributed) engine = 'model';
   else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal, uncovered, adultQuarantined, suggestedTaxonomy, governance };
+  return { results, engine, modelError, fatal, uncovered, uncoveredIds, adultQuarantined, suggestedTaxonomy, governance };
 }
 
 /**
@@ -768,6 +772,8 @@ export interface CategorizeOutcome {
   fatal: boolean;
   /** Bookmarks that received only the domain fallback (no model placement). */
   uncovered: number;
+  /** Bookmark IDs that received only the domain fallback (for client-side retry). */
+  uncoveredIds: string[];
   /**
    * C1-7 metric: bookmarks whose final placement is the catch-all 「未分类」 —
    * no model output AND no parseable host signal. These need a human.
@@ -1099,6 +1105,7 @@ export async function categorizeBookmarks(
       modelError: null,
       fatal: false,
       uncovered: 0,
+      uncoveredIds: [],
       uncategorized: 0,
       adultQuarantined: 0,
     };
@@ -1233,6 +1240,7 @@ export async function categorizeBookmarks(
 
   // ---- Normalise, score, and guarantee a placement for every bookmark ----
   let uncovered = 0;
+  const uncoveredIds: string[] = [];
   let uncategorized = 0;
 
   const results: CategorizeResult[] = inputs.map((input, index) => {
@@ -1334,7 +1342,10 @@ export async function categorizeBookmarks(
             needsReview: true,
           };
         }
-        if (candidate) uncovered += 1;
+        if (candidate) {
+          uncovered += 1;
+          uncoveredIds.push(input.id);
+        }
       }
     }
 
@@ -1349,7 +1360,7 @@ export async function categorizeBookmarks(
   if (modelContributed) engine = 'model';
   else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal, uncovered, uncategorized, adultQuarantined };
+  return { results, engine, modelError, fatal, uncovered, uncoveredIds, uncategorized, adultQuarantined };
 }
 
 /**

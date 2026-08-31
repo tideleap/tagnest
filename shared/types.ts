@@ -663,6 +663,8 @@ export interface AiJobRunResult {
   rebalanceWarning: boolean;
   /** Bookmarks in this chunk that received only the domain fallback (no model tag). */
   uncovered: number;
+  /** Bookmark IDs that received only the domain fallback (no model placement) this chunk. */
+  uncoveredIds?: string[];
   /**
    * CategorySync (C1-7): bookmarks in this chunk whose final placement is the
    * catch-all 「未分类」 — no model output AND no parseable host signal. Only
