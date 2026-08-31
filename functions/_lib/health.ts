@@ -1,10 +1,21 @@
 import type { Env } from './env';
 
+/**
+ * Build/version marker surfaced by `/api/health` so the live deployment can be
+ * identified directly — i.e. to confirm a given fix actually reached production
+ * instead of inferring it from CI status. Bumped on each deploy that must be
+ * distinguishable. Because it is committed ON TOP of the change under test, a
+ * live marker proves that change (and everything before it) is live.
+ */
+export const BUILD_VERSION = '2026-08-31-live-probe-1';
+
 export interface HealthReport {
   status: 'ok' | 'degraded';
   /** Per-component readiness: 'ok' | 'missing' | 'error: <detail>'. */
   checks: Record<string, string>;
   timestamp: string;
+  /** Build marker identifying the deployed code (see BUILD_VERSION). */
+  build: string;
 }
 
 /**
@@ -35,5 +46,6 @@ export async function probeHealth(env: Env): Promise<HealthReport> {
     status: degraded ? 'degraded' : 'ok',
     checks,
     timestamp: new Date().toISOString(),
+    build: BUILD_VERSION,
   };
 }
