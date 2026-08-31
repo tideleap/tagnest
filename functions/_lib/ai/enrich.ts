@@ -32,7 +32,7 @@ const FETCH_TIMEOUT_MS = 6_000;
 
 /**
  * Whole-batch enrichment budget, independent of the per-partition model
- * budget (TN_PARTITION_BUDGET_MS, default 22s).
+ * budget (TN_PARTITION_BUDGET_MS, default 25s).
  *
  * Root-cause fix (2026-08-30 "全走域名兜底"): enrichment used to run at full
  * concurrency with no awareness of the partition signal — worst case 4 waves
@@ -48,7 +48,7 @@ const ENRICH_BUDGET_MS = 8_000;
 /**
  * Minimum wall-clock reserved for the model call, no matter how slow the
  * page-fetch phase is. Fetching and the model call share ONE partition signal
- * (run.ts `partitionSignal`, default 22s); if fetching burned most of it, the
+ * (run.ts `partitionSignal`, default 25s); if fetching burned most of it, the
  * model call was squeezed to whatever remained and timed out on any slightly
  * slow gateway — surfacing as "全走域名兜底". The fetch budget is therefore
  * clamped to `partitionBudget - MODEL_TIME_FLOOR_MS` (see

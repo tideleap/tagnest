@@ -110,7 +110,7 @@ export interface Env {
    * Per-partition model-call budget (ms) for the AI organise runner. The runner
    * creates one `AbortSignal` per partition from this value and merges it with
    * each call's `REQUEST_TIMEOUT_MS`, guaranteeing a single slice can never outlive
-   * the Cloudflare Pages Functions ~30s wall-clock. Defaults to 22s (see run.ts)
+   * the Cloudflare Pages Functions ~30s wall-clock. Defaults to 25s (see run.ts)
    * when unset; keep it below the client's 28s partition deadline.
    */
   TN_PARTITION_BUDGET_MS?: string;

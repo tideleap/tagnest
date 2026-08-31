@@ -85,8 +85,14 @@ describe('renderExcerpt', () => {
 
 describe('effectiveEnrichBudgetMs — model time floor (预算挤压修复)', () => {
   it('caps fetching at partition budget minus the 15s model floor', () => {
-    // 22s partition − 15s floor = 7s fetch cap (below the flat 8s default).
+    // A 22s partition − 15s floor = 7s fetch cap (below the flat 8s default).
     expect(effectiveEnrichBudgetMs(22000)).toBe(7000);
+  });
+
+  it('restores the flat 8s fetch cap at the 25s default partition budget', () => {
+    // 25s partition − 15s floor = 10s headroom ≥ the flat 8s cap, so fetching
+    // keeps its full 8s and the model still gets ≥ 15s (25 − 8 = 17s).
+    expect(effectiveEnrichBudgetMs(25000)).toBe(8000);
   });
 
   it('falls back to the flat 8s budget when no partition budget is passed', () => {

@@ -156,8 +156,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Cloudflare Pages Functions 的 ~30s 墙钟杀掉、而客户端 28s 超时先触发，表现为
   // "0/168 + 请求超时"。该信号在 providers.withDeadline 中与每次调用的
   // REQUEST_TIMEOUT_MS 取较小值，保证无论后者如何配置都不会突破墙钟。
-  // `TN_PARTITION_BUDGET_MS` 可调（默认 22s，给 D1 写入与收尾 finalize 留余量）。
-  const partitionBudgetMs = Math.max(5_000, Number(ctx.env.TN_PARTITION_BUDGET_MS) || 22_000);
+  // `TN_PARTITION_BUDGET_MS` 可调（默认 25s，给 D1 写入与收尾 finalize 留余量）。
+  // 25s = 8s 抓取上限 + 15s 模型底线 + ~2s 固定开销（D1 查询/缓存/提示词构建）。
+  const partitionBudgetMs = Math.max(5_000, Number(ctx.env.TN_PARTITION_BUDGET_MS) || 25_000);
   const partitionSignal = AbortSignal.timeout(partitionBudgetMs);
 
   const inputs = await loadBookmarkInputs(ctx.env, userId, slice);
