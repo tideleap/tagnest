@@ -331,6 +331,61 @@ describe('suggestForBookmarks — P0-3 precise compensation (no silent drops)', 
   });
 });
 
+describe('suggestForBookmarks — zero-usable-tags repair turn (no silent empty tags)', () => {
+  it('fires the repair turn when the response parses but every tag list is empty, and surfaces the raw text when the repair is also empty', async () => {
+    // Parseable JSON, yet zero usable tags — the exact shape that used to skip
+    // the repair turn and silently degrade every bookmark to the domain fallback.
+    const emptyJson = JSON.stringify({
+      results: [{ i: 1, tags: [] }, { i: 2, tags: [] }],
+    });
+    mockedCall.mockResolvedValue({ ok: true, text: emptyJson });
+
+    const out = await suggestForBookmarks(
+      [
+        { id: 'b1', url: 'https://react.dev', title: 'React' },
+        { id: 'b2', url: 'https://nodejs.org', title: 'Node' },
+      ],
+      { vocab: emptyVocab, config: modelConfig, local },
+    );
+
+    // The repair turn was triggered (original call + at least one repair call).
+    expect(mockedCall.mock.calls.length).toBeGreaterThanOrEqual(2);
+    // The repair prompt demands at least one concrete tag per bookmark.
+    const repairPrompt = mockedCall.mock.calls[1][1] as string;
+    expect(repairPrompt).toContain('至少输出 1 个');
+    // The error bubbles up to the outcome carrying the model's raw response.
+    expect(out.modelError).not.toBeNull();
+    expect(out.modelError).toContain('模型原文');
+    expect(out.modelError).toContain('"tags":[]');
+    // Coverage guarantee still holds: both bookmarks fall back, flagged.
+    expect(out.engine).toBe('fallback');
+    expect(out.uncovered).toBe(2);
+    expect(out.results.every((r) => r.tags.length >= 1)).toBe(true);
+  });
+
+  it('adopts the repair turn result when it finally carries tags', async () => {
+    const emptyJson = JSON.stringify({ results: [{ i: 1, tags: [] }] });
+    const repaired = JSON.stringify({
+      results: [{ i: 1, tags: [{ name: '前端', confidence: 0.9, reason: 'r' }] }],
+    });
+    mockedCall
+      .mockResolvedValueOnce({ ok: true, text: emptyJson })
+      .mockResolvedValueOnce({ ok: true, text: repaired });
+
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: 'https://react.dev', title: 'React' }],
+      // Existing-vocab tag survives governance; the test measures the repair.
+      { vocab: vocabWith('前端'), config: modelConfig, local },
+    );
+
+    expect(mockedCall.mock.calls.length).toBe(2);
+    expect(out.engine).toBe('model');
+    expect(out.modelError).toBeNull();
+    expect(out.uncovered).toBe(0);
+    expect(out.results[0].tags.map((t) => t.name)).toContain('前端');
+  });
+});
+
 describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {  it('synthesizes a taxonomy and attaches parent tags when enabled', async () => {
     const tagResults = Array.from({ length: 8 }, (_, i) => ({
       i: i + 1,

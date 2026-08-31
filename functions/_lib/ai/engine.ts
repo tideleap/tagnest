@@ -199,24 +199,28 @@ async function callTagWithRetryAndRepair(
     return { items: [], fatal: isFatal(result.error), error: result.error?.message ?? '模型调用失败' };
   }
 
-  // Successful response: parse it, and if it yields nothing, fire one strict-JSON
-  // repair turn before giving up (recovers prose/fenced/truncated responses).
+  // Successful response: parse it, and if it yields zero usable tags — either
+  // unparseable OR parseable-but-empty (every bookmark's `tags` is []) — fire
+  // one stronger repair turn before giving up. The empty-tags case matters: a
+  // model that answers valid JSON with no tags used to skip the repair turn
+  // entirely and let the whole batch silently degrade to the domain fallback.
   let items = parseTaggingResponse(result.text, batchSize);
   let lastRaw = result.text ?? null;
-  if (items.length === 0) {
+  const totalTags = items.reduce((s, it) => s + it.tags.length, 0);
+  if (totalTags === 0) {
     const repairOutcome = await callProvider(
       config,
-      `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空标签。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
+      `${prompt}\n\n注意：刚才的回复没有为书签产出任何可用标签。请重新生成：为每一条书签至少输出 1 个具体、可复用的标签（避免「网站」「链接」「资料」「文章」等宽泛词）。严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
       const repaired = parseTaggingResponse(repairOutcome.text, batchSize);
-      if (repaired.length > 0) items = repaired;
+      if (repaired.reduce((s, it) => s + it.tags.length, 0) > 0) items = repaired;
     }
   }
-  if (items.length === 0) {
+  if (items.reduce((s, it) => s + it.tags.length, 0) === 0) {
     const snippet = rawSnippet(lastRaw);
     return {
       items: [],
@@ -287,7 +291,11 @@ async function tagGroup(
     if (sub.fatal) return { items: out, fatal: true, error: sub.error };
     for (const [li, item] of sub.items) out.set(li, item);
   }
-  return { items: out, fatal: false, error: null };
+  // Pass the non-fatal error (with the model's raw text) through when nothing
+  // was recovered for this group — swallowing it here used to hide "the model
+  // answered but produced zero tags" from the UI. Any recovered bookmark clears
+  // the error; a fully empty group keeps it so `suggestForBookmarks` can show it.
+  return { items: out, fatal: false, error: out.size > 0 ? null : error };
 }
 
 /**
@@ -496,7 +504,7 @@ export async function suggestForBookmarks(
     // degrades to domain fallback with NO error surfaced, which reads as
     // "the model works but only emits site names". Surface the reason instead.
     if (!modelContributed && !modelError && pending.length > 0) {
-      modelError = '模型已响应但未产出任何可用标签（提示规则过严或模型拒绝生成），本次使用域名兜底';
+      modelError = '模型已响应但未产出任何可用标签，修复重问后仍为空（提示规则过严或模型拒绝生成），本次使用域名兜底';
     }
 
     // Tag-quality governance (PRD-TAG-QUALITY-2026-08-30): one deterministic,
