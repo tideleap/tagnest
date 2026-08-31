@@ -187,9 +187,10 @@ async function callTagWithRetryAndRepair(
   batchSize: number,
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
+  partitionBudgetMs?: number,
 ): Promise<{ items: import('./prompt').ParsedItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl, signal),
+    () => callProvider(config, prompt, fetchImpl, signal, { partitionBudgetMs, itemCount: batchSize }),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
@@ -219,6 +220,7 @@ async function callTagWithRetryAndRepair(
       `${prompt}\n\n注意：刚才的回复没有为书签产出任何可用标签。请重新生成：为每一条书签至少输出 1 个具体、可复用的标签（避免「网站」「链接」「资料」「文章」等宽泛词）。严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
+      { partitionBudgetMs, itemCount: batchSize },
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
@@ -261,6 +263,8 @@ async function tagGroup(
     signal?: AbortSignal;
     /** Whole-run size, for the prompt's distinct-tag budget line (P0-5). */
     totalInputs?: number;
+    /** Partition budget, threaded into the timeout diagnosis. */
+    partitionBudgetMs?: number;
   },
 ): Promise<{ items: Map<number, import('./prompt').ParsedItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, import('./prompt').ParsedItem>();
@@ -282,6 +286,7 @@ async function tagGroup(
     group.length,
     opts.fetchImpl,
     opts.signal,
+    opts.partitionBudgetMs,
   );
   if (fatal) return { items: out, fatal: true, error };
 
@@ -448,7 +453,10 @@ export async function suggestForBookmarks(
       if (config.twoPass) {
         const coarsePrompt = buildCoarsePrompt(sliceInputs);
         const outcome = await withRetry(
-          () => callProvider(config, coarsePrompt, options.fetchImpl, options.signal),
+          () => callProvider(config, coarsePrompt, options.fetchImpl, options.signal, {
+            partitionBudgetMs: options.partitionBudgetMs,
+            itemCount: slice.length,
+          }),
           (o) => {
             if (o.ok) return 'ok';
             if (isFatal(o.error)) return 'stop';
@@ -482,6 +490,7 @@ export async function suggestForBookmarks(
           fetchImpl: options.fetchImpl,
           signal: options.signal,
           totalInputs: inputs.length,
+          partitionBudgetMs: options.partitionBudgetMs,
         },
       );
       if (groupResult.error) {
@@ -792,6 +801,8 @@ export interface CategorizeOptions {
    * `tagCache`: absent ⇒ always call the model.
    */
   categoryCache?: CategoryCache;
+  /** Partition budget, threaded into the timeout diagnosis. */
+  partitionBudgetMs?: number;
 }
 
 /** The catch-all placement name `domainFallbackTag` uses for unparseable hosts. */
@@ -808,9 +819,10 @@ async function callCategorizeWithRetryAndRepair(
   batchSize: number,
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
+  partitionBudgetMs?: number,
 ): Promise<{ items: ParsedCategorizeItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl, signal),
+    () => callProvider(config, prompt, fetchImpl, signal, { partitionBudgetMs, itemCount: batchSize }),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
@@ -833,6 +845,7 @@ async function callCategorizeWithRetryAndRepair(
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空分类。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
+      { partitionBudgetMs, itemCount: batchSize },
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
@@ -867,6 +880,8 @@ async function categorizeGroup(
     examples?: CategorizeExample[];
     fetchImpl?: typeof fetch;
     signal?: AbortSignal;
+    /** Partition budget, threaded into the timeout diagnosis. */
+    partitionBudgetMs?: number;
   },
 ): Promise<{ items: Map<number, ParsedCategorizeItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, ParsedCategorizeItem>();
@@ -879,6 +894,7 @@ async function categorizeGroup(
     group.length,
     opts.fetchImpl,
     opts.signal,
+    opts.partitionBudgetMs,
   );
   if (fatal) return { items: out, fatal: true, error };
 
@@ -1167,6 +1183,7 @@ export async function categorizeBookmarks(
         examples: options.examples,
         fetchImpl: options.fetchImpl,
         signal: options.signal,
+        partitionBudgetMs: options.partitionBudgetMs,
       });
       if (groupResult.error) {
         modelError = modelError ?? groupResult.error;
@@ -1408,6 +1425,8 @@ export interface RenameOptions {
    * the other caches: absent ⇒ always call the model.
    */
   renameCache?: RenameCache;
+  /** Partition budget, threaded into the timeout diagnosis. */
+  partitionBudgetMs?: number;
 }
 
 /**
@@ -1422,9 +1441,10 @@ async function callRenameWithRetryAndRepair(
   batchSize: number,
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
+  partitionBudgetMs?: number,
 ): Promise<{ items: import('./prompt').ParsedRenameItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl, signal),
+    () => callProvider(config, prompt, fetchImpl, signal, { partitionBudgetMs, itemCount: batchSize }),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
@@ -1447,6 +1467,7 @@ async function callRenameWithRetryAndRepair(
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空结果。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
+      { partitionBudgetMs, itemCount: batchSize },
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
@@ -1474,7 +1495,7 @@ async function renameGroup(
   group: BookmarkInput[],
   localIndices: number[],
   depth: number,
-  opts: { config: AiConfig; fetchImpl?: typeof fetch; signal?: AbortSignal },
+  opts: { config: AiConfig; fetchImpl?: typeof fetch; signal?: AbortSignal; partitionBudgetMs?: number },
 ): Promise<{ items: Map<number, import('./prompt').ParsedRenameItem>; fatal: boolean; error: string | null }> {
   const out = new Map<number, import('./prompt').ParsedRenameItem>();
   if (group.length === 0) return { items: out, fatal: false, error: null };
@@ -1486,6 +1507,7 @@ async function renameGroup(
     group.length,
     opts.fetchImpl,
     opts.signal,
+    opts.partitionBudgetMs,
   );
   if (fatal) return { items: out, fatal: true, error };
 
@@ -1591,6 +1613,7 @@ export async function renameBookmarks(
         config,
         fetchImpl: options.fetchImpl,
         signal: options.signal,
+        partitionBudgetMs: options.partitionBudgetMs,
       });
       if (groupResult.error) {
         modelError = modelError ?? groupResult.error;

@@ -218,6 +218,44 @@ describe('callProvider', () => {
     }
   });
 
+  it('attributes a partition abort with a near-full model window to a slow model, not fetch', async () => {
+    const fetchImpl = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+      throw new Error('aborted');
+    });
+    const spent = AbortSignal.abort();
+    const out = await callProvider(base, 'prompt', fetchImpl as never, spent, {
+      partitionBudgetMs: 6000,
+      itemCount: 10,
+    });
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.message).toContain('超时');
+      expect(out.error.message).toContain('模型已拿满分配时间仍超时');
+      expect(out.error.message).toContain('本网关处理偏慢');
+      // per-bookmark rate is reported when itemCount is supplied
+      expect(out.error.message).toContain('s/条');
+    }
+  });
+
+  it('still blames fetch squeeze when the partition abort leaves little model time', async () => {
+    const fetchImpl = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+      throw new Error('aborted');
+    });
+    const spent = AbortSignal.abort();
+    const out = await callProvider(base, 'prompt', fetchImpl as never, spent, {
+      partitionBudgetMs: 25000,
+      itemCount: 10,
+    });
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.message).toContain('超时');
+      expect(out.error.message).toContain('分区时间预算已用尽');
+      expect(out.error.message).toContain('网页抓取挤占');
+    }
+  });
+
   it('enforces the ceilings on parsed content', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(

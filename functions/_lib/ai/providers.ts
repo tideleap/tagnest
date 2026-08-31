@@ -257,6 +257,8 @@ export async function callProvider(
   prompt: string,
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
+  /** Optional context for a more accurate timeout diagnosis. */
+  diagnosisCtx?: { partitionBudgetMs?: number; itemCount?: number },
 ): Promise<ProviderResult> {
   const req = buildProviderRequest(config, prompt);
   if (!req) {
@@ -289,13 +291,30 @@ export async function callProvider(
     const message = error instanceof Error ? error.message : String(error);
     if (/abort|timeout/i.test(message)) {
       // Self-diagnosing timeout (2026-08-31): tell the two root causes apart.
-      // The caller's signal is the partition budget (run.ts); if IT is aborted,
-      // the fetch phase squeezed the model's share of the wall-clock. Otherwise
-      // the per-request REQUEST_TIMEOUT_MS ceiling fired — the gateway is slow.
+      // The caller's `signal` is the partition budget (run.ts).
+      //  - If IT is aborted, the partition wall-clock expired. Whether that is
+      //    fetch-squeeze or a genuinely slow model depends on how much of the
+      //    budget was consumed BEFORE the model call: `preModelMs` below equals
+      //    `partitionBudgetMs - modelElapsed`. A large preModelMs means the fetch
+      //    phase ate most of the window (squeeze); a small one means the model got
+      //    almost the whole window and still couldn't finish (model/gateway slow).
+      //    Threshold 6s cleanly separates the two given the 8s fetch cap.
+      //  - Otherwise the per-request REQUEST_TIMEOUT_MS ceiling fired first: the
+      //    gateway itself is slow.
       const elapsedS = ((Date.now() - startedAt) / 1000).toFixed(1);
-      const diagnosed = signal?.aborted
-        ? `模型响应超时（已等待 ${elapsedS}s，分区时间预算已用尽——网页抓取挤占了模型调用时间）`
-        : `模型响应超时（已等待 ${elapsedS}s，单次请求超过 ${REQUEST_TIMEOUT_MS / 1000}s 上限——模型网关响应过慢）`;
+      const budget = diagnosisCtx?.partitionBudgetMs ?? 0;
+      const preModelMs = budget > 0 ? budget - Number(elapsedS) * 1000 : 0;
+      let diagnosed: string;
+      if (!signal?.aborted) {
+        diagnosed = `模型响应超时（已等待 ${elapsedS}s，单次请求超过 ${REQUEST_TIMEOUT_MS / 1000}s 上限——模型网关响应过慢）`;
+      } else if (budget > 0 && preModelMs < 6_000) {
+        const rate = diagnosisCtx?.itemCount
+          ? `（约 ${(Number(elapsedS) / diagnosisCtx.itemCount).toFixed(2)}s/条）`
+          : '';
+        diagnosed = `模型响应超时（已等待 ${elapsedS}s，模型已拿满分配时间仍超时${rate}——本网关处理偏慢，建议换更快模型/网关）`;
+      } else {
+        diagnosed = `模型响应超时（已等待 ${elapsedS}s，分区时间预算已用尽——网页抓取挤占了模型调用时间）`;
+      }
       return { ok: false, error: { status: null, message: diagnosed } };
     }
     return { ok: false, error: { status: null, message: `请求失败：${message}` } };

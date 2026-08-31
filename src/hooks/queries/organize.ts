@@ -416,7 +416,11 @@ export function useOrganizeRun() {
       // 去。每个分片带 {from,to} 认领一段书签，服务端用原子计数推进进度，所以
       // 进度条是实时的、且总时长从「N 个串行 round-trip」降到「约一次模型调用」。
       // 关掉抓取后单分片只剩一次模型调用，稳进 Cloudflare 的 30s 墙钟。
-      const PARTITION = 10;
+      // 单分片书签数从 10 降到 6（2026-08-31）：实测 uupt 网关约 1.64s/条，10 条
+      // 分片的模型调用需 ~16.4s，在 25s 分区预算（含 8s 抓取）下被掐断；降到 6 条
+      // 后模型调用 ~10s，稳进 15s 模型底线，且保留完整网页抓取增强。代价：分片数
+      // 增多（169 条→约 28 片）、总耗时略增，但每片都能在预算内成功返回。
+      const PARTITION = 6;
       const CONCURRENCY = 6;
       const partitions: Array<{ from: number; to: number }> = [];
       for (let from = 0; from < job.total; from += PARTITION) {
