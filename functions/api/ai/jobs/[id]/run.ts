@@ -110,16 +110,31 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   // Nothing to process.
   if (slice.length === 0) {
+    // 并行模式下空分片视为异常（客户端不应发到），不打 done，交给其它分片收尾；
+    // 直接复用本请求开头已读取的 job（line 82），不再查库（E3：去掉冗余 getJob）。
     if (job.status !== 'done' && !usePartition) {
+      // 仅游标(串行)模式再读一次，确认是否已被其它调用方推进到末位；同一请求内仅此一次额外读。
       const settled = await getJob(ctx.env, userId, jobId);
-      const done = (settled?.processed ?? job.processed) >= ids.length;
+      const current = settled ?? job;
+      const done = current.processed >= ids.length;
       if (done) await updateJob(ctx.env, userId, jobId, { status: 'done' });
+      // 复用 current（置 done 后就地合并状态），彻底去掉原先紧跟其后的第二次查库。
+      const finalJob = done ? ({ ...current, status: 'done' } as typeof current) : current;
+      const result: AiJobRunResult = {
+        job: toApiJob(finalJob),
+        done: finalJob.processed >= ids.length,
+        suggested: 0,
+        autoApplied: 0,
+        rebalanceWarning: false,
+        uncovered: 0,
+        engine: 'none',
+        modelError: null,
+      };
+      return json(result);
     }
-    const finalJob = (await getJob(ctx.env, userId, jobId)) ?? job;
     const result: AiJobRunResult = {
-      job: toApiJob(finalJob),
-      // 并行模式下空分片视为异常（客户端不应发到），不打 done，交给其它分片收尾。
-      done: usePartition ? false : (finalJob.processed ?? 0) >= ids.length,
+      job: toApiJob(job),
+      done: false,
       suggested: 0,
       autoApplied: 0,
       rebalanceWarning: false,
@@ -196,8 +211,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     const isFinal = !fatal && updated.processed >= total;
     if (isFinal) {
       await updateJob(ctx.env, userId, jobId, { status: 'done' });
-      const reread = await getJob(ctx.env, userId, jobId);
-      return { finalJob: (reread ?? updated) as NonNullable<Awaited<ReturnType<typeof getJob>>>, isFinal: true };
+      // 刚置 done，直接在返回对象上合并状态即可，省一次 D1 查询（E3：去掉冗余 getJob）。
+      return { finalJob: { ...updated, status: 'done' }, isFinal: true };
     }
     return { finalJob: updated as NonNullable<Awaited<ReturnType<typeof getJob>>>, isFinal: false };
   };
