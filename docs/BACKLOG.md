@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 100 条（其中 2 条为跨文档别名），独立需求 98 项：✅ done 94 ／ ➖ superseded 3 ／ ⏸ blocked-external 1
+> 登记 103 条（其中 2 条为跨文档别名），独立需求 101 项：✅ done 95 ／ ➖ superseded 3 ／ ⏸ blocked-external 1 ／ ⬜ open 2
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -224,8 +224,14 @@ npm run backlog:write   # 重新生成下方状态表
 | `AI-ORG-2` | engine.ts 跨分片 L2/L3 去重：写回处归并到 canonicalSiteLabel | P1 | ✅ done | 2/2 |  |
 | `AI-ORG-3` | 导出格式修正：PERSONAL_TOOLBAR_FOLDER/品牌标题兜底/确定性排序 | P1 | ✅ done | 3/3 |  |
 | `AI-ADULT-1` | 成人内容隔离 + 模型韧性：确定性隔离归档、提示词安全框架、空响应原文透出 | P0 | ✅ done | 9/9 |  |
+| `AI-EMPTYTAG-1` | 零可用标签修复与透出：修复回合对空标签触发、tagGroup 透传模型原文、静默空诊断强化 | P0 | ✅ done | 5/5 |  |
+| `AI-EMPTYTAG-2` | 纯摘要配置下空标签修复失败时保留 summary（当前随 items:[] 一并丢弃） | P2 | ⬜ open | 0/1 |  |
+| `AI-EMPTYTAG-3` | 分类轨道同构缺口：callCategorizeWithRetryAndRepair 仍用 items.length===0 触发修复回合 | P2 | ⬜ open | 0/1 |  |
 
-**当前执行队列**：空 —— 所有需求已进入终态。
+**当前执行队列**（按优先级与依赖拓扑排序）：
+
+1. `AI-EMPTYTAG-2` 纯摘要配置下空标签修复失败时保留 summary（当前随 items:[] 一并丢弃）（P2）
+2. `AI-EMPTYTAG-3` 分类轨道同构缺口：callCategorizeWithRetryAndRepair 仍用 items.length===0 触发修复回合（P2）
 
 <!-- END:BACKLOG-TABLE -->
 

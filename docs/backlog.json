@@ -1884,6 +1884,66 @@
           "name": "adult-quarantine"
         }
       ]
+    },
+    {
+      "id": "AI-EMPTYTAG-1",
+      "title": "零可用标签修复与透出：修复回合对空标签触发、tagGroup 透传模型原文、静默空诊断强化",
+      "source": "用户反馈（168 条全走域名兜底；AI-ADULT-1 隔离上线后仍未解决，根因定位为模型返回可解析但 tags 全空的 JSON 被静默降级）",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "totalTags === 0"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "至少输出 1 个"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "out\\.size > 0 \\? null : error"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "修复重问后仍为空"
+        },
+        {
+          "type": "grep",
+          "path": "tests/engine.test.ts",
+          "pattern": "zero-usable-tags"
+        }
+      ]
+    },
+    {
+      "id": "AI-EMPTYTAG-2",
+      "title": "纯摘要配置下空标签修复失败时保留 summary（当前随 items:[] 一并丢弃）",
+      "source": "QA 复核发现（autoTag=false + autoSummarize=true 在 UI 可达；零标签修复失败返回 items:[] 会丢弃有效 summary，触发条件苛刻且新行为为响亮报错，方向正确但 summary 丢失是真实代价）",
+      "priority": "P2",
+      "status": "open",
+      "evidence": [
+        {
+          "type": "test",
+          "name": "empty-tags-summary-preserved"
+        }
+      ]
+    },
+    {
+      "id": "AI-EMPTYTAG-3",
+      "title": "分类轨道同构缺口：callCategorizeWithRetryAndRepair 仍用 items.length===0 触发修复回合",
+      "source": "QA 复核发现（与打标缺口同构：可解析但 category 全空不触发修复重问；因 categorizeBookmarks 有静默空诊断兜底文案，不构成静默降级，列后续跟进）",
+      "priority": "P2",
+      "status": "open",
+      "evidence": [
+        {
+          "type": "test",
+          "name": "categorize-empty-repair"
+        }
+      ]
     }
   ]
 }
