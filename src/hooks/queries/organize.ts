@@ -416,11 +416,13 @@ export function useOrganizeRun() {
       // 去。每个分片带 {from,to} 认领一段书签，服务端用原子计数推进进度，所以
       // 进度条是实时的、且总时长从「N 个串行 round-trip」降到「约一次模型调用」。
       // 关掉抓取后单分片只剩一次模型调用，稳进 Cloudflare 的 30s 墙钟。
-      // 单分片书签数从 10 降到 6（2026-08-31）：实测 uupt 网关约 1.64s/条，10 条
-      // 分片的模型调用需 ~16.4s，在 25s 分区预算（含 8s 抓取）下被掐断；降到 6 条
-      // 后模型调用 ~10s，稳进 15s 模型底线，且保留完整网页抓取增强。代价：分片数
-      // 增多（169 条→约 28 片）、总耗时略增，但每片都能在预算内成功返回。
-      const PARTITION = 6;
+      // 单分片书签数从 6 降到 4（2026-08-31）：切到 deepseek-v4-flash / newapi.uupt.work
+      // 后实测仍 ~4.2s/条，6 条分片的模型调用约 25s 加收尾(finalize)直接撞上 28s 客户端
+      // 墙而整片超时(截图「还是不得行」，20 条里 1 片 6 条兜底)；降到 4 条后模型调用
+      // ≈17s，落在 25s 分区预算内并为 finalize 留 ~8s 余量，客户端 28s 墙不再被顶到。
+      // 代价：分片数增多(总耗时略增)，但每片都能在墙内成功返回，不再整片兜底。
+      // 服务端重试+JSON自动修复已由 engine.ts 三轨道 *WithRetryAndRepair 提供，此处只缩分区。
+      const PARTITION = 4;
       const CONCURRENCY = 6;
       const partitions: Array<{ from: number; to: number }> = [];
       for (let from = 0; from < job.total; from += PARTITION) {
