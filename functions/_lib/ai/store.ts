@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import type { CategoryTreeNode, CategoryWritebackPage } from '../../../shared/types';
-import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, promotePendingTags, queryInChunks } from '../db';
+import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, promotePendingTags, queryInChunks, withD1Retry } from '../db';
 import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
 import { recordFeedback, type FeedbackRecord } from './feedback';
@@ -310,9 +310,13 @@ export async function updateJob(env: Env, userId: string, jobId: string, patch: 
   // Scope the update to the owning user so the core layer is safe even if a
   // future caller forgets its own ownership check (defense in depth).
   params.push(userId, jobId);
-  await env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE user_id = ? AND id = ?`)
-    .bind(...params)
-    .run();
+  // 并发分片下 D1 偶发 SQLITE_BUSY / 连接器重置 → 透明重试（withD1Retry 仅重试
+  // 瞬时错误，且 UPDATE 幂等，重试安全）。
+  await withD1Retry(() =>
+    env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE user_id = ? AND id = ?`)
+      .bind(...params)
+      .run(),
+  );
 }
 
 /**
@@ -366,9 +370,13 @@ export async function incrementJobCounters(
 
   // Scope the update to the owning user (defense in depth).
   params.push(userId, jobId);
-  await env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE user_id = ? AND id = ?`)
-    .bind(...params)
-    .run();
+  // 并发分片下 D1 偶发 SQLITE_BUSY / 连接器重置 → 透明重试（withD1Retry 仅重试
+  // 瞬时错误，且 UPDATE 幂等，重试安全）。
+  await withD1Retry(() =>
+    env.DB.prepare(`UPDATE ai_jobs SET ${sets.join(', ')} WHERE user_id = ? AND id = ?`)
+      .bind(...params)
+      .run(),
+  );
 }
 
 /** Most recent jobs, for the "last run" summary in the UI. */
@@ -464,7 +472,8 @@ export async function saveSuggestions(
     // into safe slices rather than letting D1 reject the whole chunk.
     const BATCH_STATEMENT_LIMIT = 100;
     for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
-      await env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+      // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
+      await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
     }
   }
   return written;
@@ -1050,7 +1059,8 @@ export async function saveCategorySuggestions(
   if (statements.length > 0) {
     const BATCH_STATEMENT_LIMIT = 100;
     for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
-      await env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+      // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
+      await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
     }
   }
   return written;
@@ -1737,7 +1747,8 @@ export async function saveRenameSuggestions(
   if (statements.length > 0) {
     const BATCH_STATEMENT_LIMIT = 100;
     for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
-      await env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT));
+      // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
+      await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
     }
   }
   return written;

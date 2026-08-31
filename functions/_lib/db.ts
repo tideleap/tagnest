@@ -32,6 +32,42 @@ export const D1_MAX_PARAMS = 100;
 export const D1_IN_CHUNK = D1_MAX_PARAMS - 1;
 
 /**
+ * D1 (SQLite-backed) is prone to *transient* write failures under concurrency:
+ * `SQLITE_BUSY` / `database is locked` / `database is busy` surface when two
+ * partitions land a write at once. These are safe to retry — a thrown D1 error
+ * means the statement did NOT commit, so re-running it is idempotent for our
+ * INSERT…SELECT/DELETE/atomic-increment statements. Non-transient errors
+ * (constraint violations, syntax) are rethrown immediately.
+ *
+ * Added for the parallel-partition run path: raising PARTITION 6→4 took
+ * concurrent `/run` calls from ~29 to ~43, which is exactly when the
+ * "服务器内部错误" 500 first appeared. Wrapping the run-path writes here
+ * converts those transient 500s into a short retry instead of a failed run.
+ */
+const D1_TRANSIENT = /sql_busy|sql_locked|database is (busy|locked)|too many sql variables|connection (reset|closed|not open)|temporarily unavailable|timeout/i;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+export async function withD1Retry<T>(
+  fn: () => Promise<T>,
+  opts: { retries?: number } = {},
+): Promise<T> {
+  const max = opts.retries ?? 3;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= max; attempt += 1) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (attempt >= max || !D1_TRANSIENT.test(msg)) throw e;
+      await sleep(Math.min(120 * (attempt + 1), 600));
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Clause that hides a user's private bookmarks from every ordinary query.
  *
  * A bookmark is private in either of two ways:

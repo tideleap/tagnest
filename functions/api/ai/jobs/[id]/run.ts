@@ -130,6 +130,14 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     return json(result);
   }
 
+  // 方案A 失败隔离：单个分片在「模型调用 + D1 写入 + finalize」任意环节抛出
+  // 非预期异常（并发下的 D1 SQLITE_BUSY / 连接器重置等，表现为 500
+  // "服务器内部错误"）时，不让异常冒泡成整轮 /run 的 500 —— 否则客户端
+  // organize.ts 的 abort.abort() 会连带杀掉其它在途分片，整轮整理全废。
+  // 改为：记录错误、把本分片计为已处理(含失败)、返回 200 + modelError，
+  // 让其它分片继续、收尾分片仍能正常收口(done)。受影响书签仅本轮拿不到建议，
+  // 可重新整理补回，而不是全盘失败。
+  try {
   // 每个分片独立把 queued 翻成 running（幂等，重复调用无副作用）。
   if (job.status === 'queued') {
     await updateJob(ctx.env, userId, jobId, { status: 'running' });
@@ -442,4 +450,30 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   };
 
   return json(result);
+  } catch (e) {
+    // 非预期异常兜底：优雅降级，避免整轮 500。
+    const msg = e instanceof Error ? e.message : String(e);
+    log.error('ai.job.partition_failed', { userId, jobId, partition: usePartition, error: msg });
+    // 推进计数器，使收尾分片仍能触发 done，避免整轮卡在 running。
+    try {
+      await incrementJobCounters(ctx.env, userId, jobId, {
+        processed: slice.length,
+        failed: slice.length,
+      });
+    } catch {
+      /* 计数器本身也失败则放弃，其它分片会补齐 */
+    }
+    const failedJob = (await getJob(ctx.env, userId, jobId)) ?? job;
+    const result: AiJobRunResult = {
+      job: toApiJob(failedJob),
+      done: false,
+      suggested: 0,
+      autoApplied: 0,
+      rebalanceWarning: false,
+      uncovered: 0,
+      engine: 'none',
+      modelError: '服务器内部错误，该分片已跳过（其余分片继续）。可稍后重新整理补回本分片书签。',
+    };
+    return json(result);
+  }
 };
