@@ -57,7 +57,7 @@ export const MAX_REASON_LENGTH = 24;
  * required, because old entries hold ungoverned fragment tags that the new
  * governance pass expects to see regenerated under the new rules.
  */
-export const PROMPT_VERSION = '2026-08-30-v2';
+export const PROMPT_VERSION = '2026-08-30-v3';
 
 /**
  * Version tag for the *categorize* prompt (CategorySync P1, C1-1).
@@ -74,8 +74,11 @@ export const PROMPT_VERSION = '2026-08-30-v2';
  * three levels, matching the folder trees the extension builds. Bumping the
  * version invalidates every `ai:cat:` entry written by the old prompt, which
  * is required — old cached entries carry the two-field shape only.
+ * 2026-08-30 — added the content-safety framework: the model must place
+ * adult/sensitive bookmarks with neutral labels instead of refusing the whole
+ * batch. Bumping invalidates `ai:cat:` entries written by the old prompt.
  */
-export const CATEGORIZE_PROMPT_VERSION = '2026-08-29';
+export const CATEGORIZE_PROMPT_VERSION = '2026-08-30';
 
 export interface PromptOptions {
   maxTags: number;
@@ -259,6 +262,11 @@ function basePreamble(): string {
     '- 同一公司、同一项目或同一业务系统的页面应归到同一分类下，不要拆散。',
     '- 尊重用户已有分类的语义：已有标签能覆盖时，不要另建近义新标签。',
     '- 同一主题的不同表述（如「前端 / Frontend / 前端开发」）应统一到已有标签的写法。',
+    '',
+    '内容安全框架（必须遵守）：',
+    '- 个别书签可能涉及成人、敏感或令人不适的内容。这是用户的私人书签库，你的职责是归档，不是审查。',
+    '- 对这类书签：只输出中性、非露骨的归档标签（如「成人内容」「情感」「健康」），摘要与主题短语保持克制、客观，不复述露骨细节。',
+    '- 绝对不要因为个别书签的内容而拒绝回答整批；每条书签都必须出现在 results 中并给出标签。',
   ].join('\n');
 }
 
@@ -715,6 +723,11 @@ export function buildCategorizePrompt(
       '- 文件夹命名规范：用中文（专有名词保留原文，如 React、Python）；名称建议 ≤ 12 字，最长不超过 24 字（超出将被自动截断）；去掉「官网」「网站」「首页」这类无信息后缀；优先复用已有节点，不要为同一主题创建多个近义文件夹。',
       '- 同一公司、同一项目或同一业务系统的页面应归到同一分类下，不要拆散。',
       '- 分类名与各级文件夹名硬上限 24 字（超出自动截断，与代码一致）；理由 ≤ 24 字。',
+      '',
+      '内容安全框架（必须遵守）：',
+      '- 个别书签可能涉及成人、敏感或令人不适的内容。这是用户的私人书签库，你的职责是归档，不是审查。',
+      '- 对这类书签：只给出中性、非露骨的归档归属（如「成人内容」「情感」「健康」），理由保持克制、客观，不复述露骨细节。',
+      '- 绝对不要因为个别书签的内容而拒绝回答整批；每条书签都必须出现在 results 中并给出归属。',
     ].join('\n'),
     '',
     [
@@ -865,8 +878,10 @@ export function parseCategorizeResponse(raw: string | null, batchSize: number): 
  * `ai_jobs.prompt_version` rows and namespace their URL-cache entries
  * under `ai:rename:`, so evolving this prompt never re-bills unrelated
  * tagging or categorize work.
+ * 2026-08-30 — added the content-safety framework so adult/sensitive titles
+ * are cleaned neutrally instead of triggering a whole-batch refusal.
  */
-export const RENAME_PROMPT_VERSION = '2026-08-29';
+export const RENAME_PROMPT_VERSION = '2026-08-30';
 
 /** Hard cap on a cleaned bookmark title (conservative-cleanup scale). */
 export const MAX_RENAME_LENGTH = 40;
@@ -906,6 +921,11 @@ export function buildRenamePrompt(inputs: EnrichInput[]): string {
       '- 无信息标题（如「首页」「登录」「用户中心」「index」「welcome」「Untitled」）改为品牌词或「品牌词 + 简短说明」；品牌词从网址主机名提取（如 github.com → GitHub）。',
       '- 超长标题压缩到 ≤ 40 字符：优先删尾部冗余，再删口号性语句，保留核心描述。',
       '- 同一批里同一网站的多个书签，标题风格保持一致。',
+      '',
+      '内容安全框架（必须遵守）：',
+      '- 个别书签可能涉及成人、敏感或令人不适的内容。这是用户的私人书签库，你的职责是归档，不是审查。',
+      '- 对这类书签：只做中性的标题清理（去冗余后缀、补品牌词），不复述、不扩写露骨内容。',
+      '- 绝对不要因为个别书签的内容而拒绝回答整批；每条书签都必须出现在 results 中。',
       '',
       '输出格式：仅输出一个 JSON 对象，不要代码块、不要解释。',
       'schema: {"results":[{"i":1,"title":"清理后的标题或原标题","reason":"不超过16字的理由","unchanged":false}]}',

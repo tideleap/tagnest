@@ -228,6 +228,22 @@ describe('autoApply — high-confidence skip-review path', () => {
     const { env } = makeEnv(seed);
     expect(await autoApply(env, 'u1', 1, 'j1')).toBe(0);
   });
+
+  it('never auto-applies a needs_review row even above the threshold', async () => {
+    // A quarantined adult-content suggestion carries needs_review=1: it must
+    // wait for a human decision regardless of confidence/threshold.
+    const { env, state } = makeEnv({
+      bookmarks: [
+        { id: 'b1', user_id: 'u1', url: 'https://a.com/1', title: 'A', description: null, deleted_at: null, ai_summary: null, created_at: '2024' },
+      ],
+      tag_suggestions: [
+        { id: 'q1', user_id: 'u1', bookmark_id: 'b1', job_id: 'j1', tag_name: '成人内容', tag_id: null, confidence: 0.9, source: 'taxonomy', reason: 'r', needs_review: 1, status: 'pending' as const, decided_at: null, created_at: '2024' },
+      ],
+    });
+    expect(await autoApply(env, 'u1', 0.5, 'j1')).toBe(0);
+    expect(state.tag_suggestions.find((s) => s.id === 'q1')?.status).toBe('pending');
+    expect(state.bookmark_tags).toHaveLength(0);
+  });
 });
 
 describe('countPending / listPendingSuggestions', () => {

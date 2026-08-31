@@ -267,6 +267,12 @@ export interface RunState {
    * host signal). Always 0 for tagging runs.
    */
   uncategorized: number;
+  /**
+   * Bookmarks quarantined as suspected adult content across the run: never
+   * sent to the model, deterministically labelled 「成人内容」 and flagged for
+   * review. Surfaced so the user knows why some bookmarks skipped the model.
+   */
+  adultQuarantined: number;
   error: string | null;
   /** Topic distribution accumulated across chunks, for the result chart. */
   topics: AiTopicCount[];
@@ -290,6 +296,7 @@ const IDLE: RunState = {
   autoApplied: 0,
   uncovered: 0,
   uncategorized: 0,
+  adultQuarantined: 0,
   error: null,
   topics: [],
   autoGrouped: null,
@@ -401,6 +408,7 @@ export function useOrganizeRun() {
       let autoApplied = 0;
       let uncovered = 0;
       let uncategorized = 0;
+      let adultQuarantined = 0;
       let lastJob: AiJob = job;
       let error: string | null = null;
 
@@ -444,6 +452,7 @@ export function useOrganizeRun() {
         autoApplied += result.autoApplied;
         uncovered += result.uncovered;
         uncategorized += result.uncategorized ?? 0;
+        adultQuarantined += result.adultQuarantined ?? 0;
         lastJob = result.job;
 
         // 致命（fatal）模型错误：服务端已把任务置 failed，整体中止。
@@ -460,6 +469,7 @@ export function useOrganizeRun() {
           autoApplied,
           uncovered,
           uncategorized,
+          adultQuarantined,
           error: result.job.status === 'failed' ? result.job.error : null,
           topics: mergeTopicCounts(s.topics, result.topics),
           autoGrouped: result.autoGrouped ?? s.autoGrouped,

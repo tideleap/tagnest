@@ -669,6 +669,15 @@ export interface AiJobRunResult {
    * meaningful for `kind='categorize'` runs; tagging runs report 0.
    */
   uncategorized?: number;
+  /**
+   * Bookmarks in this chunk quarantined as suspected adult content by the
+   * deterministic heuristic: they were never sent to the model (so a single
+   * adult bookmark cannot make a safety-aligned model refuse the whole batch)
+   * and instead received the neutral 「成人内容」 tag/placement with
+   * needs_review=true. The UI surfaces the count so the user knows to check
+   * the review queue.
+   */
+  adultQuarantined?: number;
   engine: AiEngineKind;
   modelError: string | null;
   /** Topic frequency produced by this chunk, for the result distribution chart. */

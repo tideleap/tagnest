@@ -36,7 +36,7 @@ function row(i: number, title: string, opts: { reason?: string; unchanged?: bool
 describe('renameBookmarks — basics', () => {
   it('returns an empty none outcome for no input', async () => {
     const out = await renameBookmarks([], { config: null });
-    expect(out).toEqual({ results: [], engine: 'none', modelError: null, fatal: false, unchanged: 0 });
+    expect(out).toEqual({ results: [], engine: 'none', modelError: null, fatal: false, unchanged: 0, adultQuarantined: 0 });
   });
 
   it('skips the model without a config and reports why', async () => {

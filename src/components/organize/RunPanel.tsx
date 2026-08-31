@@ -284,6 +284,15 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
         </Notice>
       )}
 
+      {/* Adult quarantine: these bookmarks were never sent to the model (so one
+          adult item cannot make the model refuse the whole batch). They got the
+          neutral 「成人内容」 label and wait in the review queue. */}
+      {run.adultQuarantined > 0 && (
+        <Notice tone="caution">
+          本次有 {run.adultQuarantined} 条书签疑似成人内容，已隔离归档为「成人内容」并跳过模型，请在确认队列中核对。
+        </Notice>
+      )}
+
       {run.error && <Notice tone="critical">{run.error}</Notice>}
 
       {/* P2-2: the run introduced a large share of new tags — the incremental

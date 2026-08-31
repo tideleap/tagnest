@@ -1832,6 +1832,58 @@
           "name": "export-format"
         }
       ]
+    },
+    {
+      "id": "AI-ADULT-1",
+      "title": "成人内容隔离 + 模型韧性：确定性隔离归档、提示词安全框架、空响应原文透出",
+      "source": "用户反馈（168 条全走域名兜底 / 模型已响应但未产出标签，疑因成人内容触发整批拒答）",
+      "priority": "P0",
+      "status": "done",
+      "evidence": [
+        {
+          "type": "file",
+          "path": "functions/_lib/ai/adult.ts"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/adult.ts",
+          "pattern": "looksAdult"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "adultQuarantined"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/prompt.ts",
+          "pattern": "内容安全框架"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "rawSnippet"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/store.ts",
+          "pattern": "needs_review = 0"
+        },
+        {
+          "type": "grep",
+          "path": "shared/types.ts",
+          "pattern": "adultQuarantined"
+        },
+        {
+          "type": "grep",
+          "path": "src/components/organize/RunPanel.tsx",
+          "pattern": "成人内容"
+        },
+        {
+          "type": "test",
+          "name": "adult-quarantine"
+        }
+      ]
     }
   ]
 }

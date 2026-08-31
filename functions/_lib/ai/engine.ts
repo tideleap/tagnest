@@ -1,4 +1,5 @@
 import { domainFallbackTag } from './domain-fallback';
+import { ADULT_QUARANTINE_CONFIDENCE, ADULT_TAG_NAME, looksAdult } from './adult';
 import { canonicalSiteLabel } from './site-label';
 import { enrichInputsWithContent } from './enrich';
 import {
@@ -90,6 +91,15 @@ export interface SuggestOutcome {
   /** Number of bookmarks that received only the domain fallback (no model tag). */
   uncovered: number;
   /**
+   * Adult-content quarantine (2026-08-30): bookmarks identified as obviously
+   * adult and therefore NEVER sent to the model (a single adult bookmark can
+   * make a safety-aligned model refuse the whole batch). Each gets one
+   * deterministic neutral tag (「成人内容」) and waits in the review queue.
+   * Counted separately from `uncovered` because this is an intentional routing
+   * decision, not a coverage failure.
+   */
+  adultQuarantined: number;
+  /**
    * The consistent hierarchy synthesized from the batch's tag frequencies (P0-1),
    * when `synthesizeTree` was enabled and enough signal existed. Undefined when
    * synthesis was off or produced nothing — never an error to omit it.
@@ -145,6 +155,20 @@ export interface SuggestOptions {
 const COMPENSATE_DEPTH = 1;
 
 /**
+ * Trims a model's raw (unparseable) response down to a short snippet for error
+ * display. When the model answers but the parser yields nothing, the raw text is
+ * the single best clue about WHY (a safety refusal, a prose preamble, a
+ * truncated tail). Surfacing a snippet turns a silent "empty tags" into a
+ * diagnosable message. Whitespace-collapsed, capped, never throws.
+ */
+function rawSnippet(text: string | null | undefined, max = 120): string {
+  if (typeof text !== 'string') return '';
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return '';
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/**
  * Calls the model for one tagging batch, retrying transient failures, then — if the
  * response parses to nothing — fires a single "strict JSON only" repair turn
  * before giving up. This recovers the common malformed-but-meaningful responses
@@ -178,6 +202,7 @@ async function callTagWithRetryAndRepair(
   // Successful response: parse it, and if it yields nothing, fire one strict-JSON
   // repair turn before giving up (recovers prose/fenced/truncated responses).
   let items = parseTaggingResponse(result.text, batchSize);
+  let lastRaw = result.text ?? null;
   if (items.length === 0) {
     const repairOutcome = await callProvider(
       config,
@@ -186,15 +211,17 @@ async function callTagWithRetryAndRepair(
       signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
+      lastRaw = repairOutcome.text;
       const repaired = parseTaggingResponse(repairOutcome.text, batchSize);
       if (repaired.length > 0) items = repaired;
     }
   }
   if (items.length === 0) {
+    const snippet = rawSnippet(lastRaw);
     return {
       items: [],
       fatal: false,
-      error: '模型返回了空标签（可能是提示规则过于严格或模型拒绝生成）',
+      error: `模型返回了空标签（可能是提示规则过于严格或模型拒绝生成）${snippet ? `。模型原文：${snippet}` : ''}`,
     };
   }
   return { items, fatal: false, error: null };
@@ -275,11 +302,27 @@ export async function suggestForBookmarks(
   options: SuggestOptions,
 ): Promise<SuggestOutcome> {
   if (inputs.length === 0) {
-    return { results: [], engine: 'none', modelError: null, fatal: false, uncovered: 0 };
+    return { results: [], engine: 'none', modelError: null, fatal: false, uncovered: 0, adultQuarantined: 0 };
   }
 
   const { vocab, config, local } = options;
   const feedback = options.feedback ?? null;
+
+  // ---- Adult-content quarantine (2026-08-30) --------------------------
+  // A single adult bookmark inside a batch can make a safety-aligned model
+  // REFUSE the whole batch — it answers with a refusal (or empty tags) instead
+  // of JSON, the parser yields nothing, and the entire slice silently degrades
+  // to domain fallback. So obviously-adult bookmarks are identified up front
+  // and NEVER sent to the model: each gets one deterministic neutral tag
+  // (「成人内容」) and waits in the review queue. This is an intentional routing
+  // decision, counted separately from `uncovered` (which means "model gave
+  // nothing, domain fallback covered it"). Conservative on purpose — misses are
+  // covered by the prompt's safety framework, false hits only land in review.
+  const quarantined = new Set<number>();
+  inputs.forEach((input, index) => {
+    if (looksAdult(input)) quarantined.add(index);
+  });
+  const adultQuarantined = quarantined.size;
 
   // ---- The model track (sole generator) -------------------------------
   let modelTags = new Map<number, RawCandidate[]>();
@@ -307,14 +350,25 @@ export async function suggestForBookmarks(
   const wantModel = Boolean(config && (config.autoTag || config.autoSummarize));
 
   if (wantModel && config) {
+    // Adult-content quarantine: quarantined bookmarks are excluded from
+    // enrichment AND the model entirely — fetching their pages wastes budget
+    // and their content is exactly what makes a safety-aligned model refuse a
+    // batch. `modelIndices[k]` maps the k-th model-bound bookmark back to its
+    // index in `inputs`, so every downstream write stays globally addressed.
+    const modelIndices: number[] = [];
+    for (let i = 0; i < inputs.length; i += 1) {
+      if (!quarantined.has(i)) modelIndices.push(i);
+    }
+    const modelInputs = modelIndices.map((i) => inputs[i]);
+
     // 方案A: fetch page content so the model classifies real text, not just a
-    // title. Runs once for the whole input set (bounded concurrency, hard
+    // title. Runs once for the model-bound set (bounded concurrency, hard
     // timeouts); failures leave the input untouched and the pipeline proceeds.
     // The partition signal is threaded through: when the partition budget is
     // nearly spent, fetching stops early and the model keeps what remains.
-    const enriched = config.fetchContent
-      ? await enrichInputsWithContent(inputs, options.fetchImpl, options.signal)
-      : inputs;
+    const enrichedModel = config.fetchContent
+      ? await enrichInputsWithContent(modelInputs, options.fetchImpl, options.signal)
+      : modelInputs;
 
     // Shared applier: writes one parsed item (fresh model output or cache hit)
     // into the per-bookmark maps the normalisation pass reads from.
@@ -344,18 +398,21 @@ export async function suggestForBookmarks(
     // P1-2: serve cache hits directly; only uncached URLs go to the model.
     // Keys fold in prompt version + model, so a prompt bump invalidates
     // automatically. Lookups run in parallel — one round trip, not N.
+    // `modelIndices[k]` translates each model-bound position back to its
+    // global bookmark index so all downstream writes stay globally addressed.
     const cache = options.tagCache;
     const pending: Array<{ input: BookmarkInput; globalIndex: number; key: string }> = [];
     if (cache) {
-      const keys = await Promise.all(enriched.map((input) => cacheKeyFor(input.url, config.model)));
+      const keys = await Promise.all(enrichedModel.map((input) => cacheKeyFor(input.url, config.model)));
       const hits = await Promise.all(keys.map((key) => cache.get(key)));
-      enriched.forEach((input, index) => {
-        const hit = hits[index];
-        if (hit) applyItem(index, hit);
-        else pending.push({ input, globalIndex: index, key: keys[index] });
+      enrichedModel.forEach((input, k) => {
+        const globalIndex = modelIndices[k];
+        const hit = hits[k];
+        if (hit) applyItem(globalIndex, hit);
+        else pending.push({ input, globalIndex, key: keys[k] });
       });
     } else {
-      enriched.forEach((input, index) => pending.push({ input, globalIndex: index, key: '' }));
+      enrichedModel.forEach((input, k) => pending.push({ input, globalIndex: modelIndices[k], key: '' }));
     }
 
     for (let start = 0; start < pending.length; start += BATCH_SIZE) {
@@ -529,6 +586,37 @@ export async function suggestForBookmarks(
   // ---- Normalise, rank, score, and guarantee coverage -----------------
   let uncovered = 0;
   const results: SuggestionResult[] = inputs.map((input, index) => {
+    // Adult-content quarantine: a deterministic neutral tag, never the model
+    // and never the domain fallback. Resolved against the vocab so an existing
+    // 「成人内容」 tag is reused instead of duplicated; always flagged for
+    // review so the user — not a threshold — decides its fate.
+    if (quarantined.has(index)) {
+      const adultRaw: RawCandidate = {
+        name: ADULT_TAG_NAME,
+        confidence: ADULT_QUARANTINE_CONFIDENCE,
+        source: 'taxonomy',
+        reason: '疑似成人内容，已隔离归档（未送模型）',
+      };
+      const resolvedAdult = resolveCandidates([adultRaw], vocab, local.maxTags);
+      const adultTags: TagCandidate[] =
+        resolvedAdult.length > 0
+          ? resolvedAdult
+          : [{
+              name: ADULT_TAG_NAME,
+              tagId: null,
+              confidence: ADULT_QUARANTINE_CONFIDENCE,
+              source: 'taxonomy',
+              reason: adultRaw.reason,
+            }];
+      return {
+        bookmarkId: input.id,
+        tags: adultTags.slice(0, Math.max(1, local.maxTags)),
+        summary: null,
+        topic: ADULT_TAG_NAME,
+        needsReview: true,
+      };
+    }
+
     // Apply the user's rename history before resolution: a tag they have
     // repeatedly switched ("React" → "React.js") is proposed under their
     // preferred spelling, so resolution can merge it with the right existing
@@ -589,7 +677,7 @@ export async function suggestForBookmarks(
   if (modelContributed) engine = 'model';
   else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal, uncovered, suggestedTaxonomy, governance };
+  return { results, engine, modelError, fatal, uncovered, adultQuarantined, suggestedTaxonomy, governance };
 }
 
 /**
@@ -662,6 +750,13 @@ export interface CategorizeOutcome {
    * no model output AND no parseable host signal. These need a human.
    */
   uncategorized: number;
+  /**
+   * Adult-content quarantine (2026-08-30): bookmarks identified as obviously
+   * adult and therefore never sent to the model. Each is filed under a single
+   * deterministic 「成人内容」 placement and waits in the review queue. See
+   * `SuggestOutcome.adultQuarantined` for the rationale.
+   */
+  adultQuarantined: number;
 }
 
 export interface CategorizeOptions {
@@ -717,6 +812,7 @@ async function callCategorizeWithRetryAndRepair(
   }
 
   let items = parseCategorizeResponse(result.text, batchSize);
+  let lastRaw = result.text ?? null;
   if (items.length === 0) {
     const repairOutcome = await callProvider(
       config,
@@ -725,15 +821,17 @@ async function callCategorizeWithRetryAndRepair(
       signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
+      lastRaw = repairOutcome.text;
       const repaired = parseCategorizeResponse(repairOutcome.text, batchSize);
       if (repaired.length > 0) items = repaired;
     }
   }
   if (items.length === 0) {
+    const snippet = rawSnippet(lastRaw);
     return {
       items: [],
       fatal: false,
-      error: '模型返回了空分类（可能是提示规则过于严格或模型拒绝生成）',
+      error: `模型返回了空分类（可能是提示规则过于严格或模型拒绝生成）${snippet ? `。模型原文：${snippet}` : ''}`,
     };
   }
   return { items, fatal: false, error: null };
@@ -972,11 +1070,22 @@ export async function categorizeBookmarks(
       fatal: false,
       uncovered: 0,
       uncategorized: 0,
+      adultQuarantined: 0,
     };
   }
 
   const { vocab, config } = options;
   const feedback = options.feedback ?? null;
+
+  // Adult-content quarantine — identical policy to the tagging track: identify
+  // obviously-adult bookmarks up front, never send them to the model, file each
+  // under one deterministic 「成人内容」 placement, and let the review queue
+  // decide. See `suggestForBookmarks` for the full rationale.
+  const quarantined = new Set<number>();
+  inputs.forEach((input, index) => {
+    if (looksAdult(input)) quarantined.add(index);
+  });
+  const adultQuarantined = quarantined.size;
 
   const placements = new Map<number, ParsedCategory>();
   const needsReviewFlags = new Map<number, boolean>();
@@ -994,7 +1103,16 @@ export async function categorizeBookmarks(
     // 归入哪个网站/文件夹；抓取正文是单次整理耗时的最大来源，会把每个分片直接
     // 推过 Cloudflare Pages Functions 的 30s 墙钟上限。关掉抓取后单分片只剩一次
     // 模型调用，配合客户端并行分片即可把 168 条的总时长压到数十秒。
-    const enriched = inputs;
+    //
+    // Adult-content quarantine: quarantined bookmarks are excluded from the
+    // model entirely. `modelIndices[k]` maps the k-th model-bound bookmark back
+    // to its index in `inputs`, so every downstream write stays globally
+    // addressed (mirrors the tagging track).
+    const modelIndices: number[] = [];
+    for (let i = 0; i < inputs.length; i += 1) {
+      if (!quarantined.has(i)) modelIndices.push(i);
+    }
+    const enriched = modelIndices.map((i) => inputs[i]);
 
     const applyItem = (globalIndex: number, entry: CategoryCacheEntry) => {
       modelContributed = true;
@@ -1009,13 +1127,14 @@ export async function categorizeBookmarks(
     if (cache) {
       const keys = await Promise.all(enriched.map((input) => categoryCacheKeyFor(input.url, config.model)));
       const hits = await Promise.all(keys.map((key) => cache.get(key)));
-      enriched.forEach((input, index) => {
-        const hit = hits[index];
-        if (hit) applyItem(index, hit);
-        else pending.push({ input, globalIndex: index, key: keys[index] });
+      enriched.forEach((input, k) => {
+        const globalIndex = modelIndices[k];
+        const hit = hits[k];
+        if (hit) applyItem(globalIndex, hit);
+        else pending.push({ input, globalIndex, key: keys[k] });
       });
     } else {
-      enriched.forEach((input, index) => pending.push({ input, globalIndex: index, key: '' }));
+      enriched.forEach((input, k) => pending.push({ input, globalIndex: modelIndices[k], key: '' }));
     }
 
     for (let start = 0; start < pending.length; start += BATCH_SIZE) {
@@ -1086,6 +1205,27 @@ export async function categorizeBookmarks(
   let uncategorized = 0;
 
   const results: CategorizeResult[] = inputs.map((input, index) => {
+    // Adult-content quarantine: a deterministic single-level 「成人内容」
+    // placement, never the model and never the domain fallback. Resolved
+    // against the vocab so an existing node is reused; always flagged for
+    // review so the user — not a threshold — decides its fate.
+    if (quarantined.has(index)) {
+      const normalized = normalizePlacement({ path: [ADULT_TAG_NAME] }, vocab);
+      const path = normalized && normalized.path.length > 0 ? normalized.path : [ADULT_TAG_NAME];
+      return {
+        bookmarkId: input.id,
+        category: {
+          path,
+          tagId: normalized?.leafTagId ?? null,
+          confidence: ADULT_QUARANTINE_CONFIDENCE,
+          source: 'taxonomy',
+          reason: '疑似成人内容，已隔离归档（未送模型）',
+          isNew: normalized?.isNew ?? true,
+          needsReview: true,
+        },
+      };
+    }
+
     let candidate: CategoryCandidate | null = null;
 
     const modelParsed = placements.get(index);
@@ -1178,7 +1318,7 @@ export async function categorizeBookmarks(
   if (modelContributed) engine = 'model';
   else if (uncovered > 0) engine = 'fallback';
 
-  return { results, engine, modelError, fatal, uncovered, uncategorized };
+  return { results, engine, modelError, fatal, uncovered, uncategorized, adultQuarantined };
 }
 
 /**
@@ -1231,6 +1371,12 @@ export interface RenameOutcome {
   fatal: boolean;
   /** Bookmarks whose titles were already fine — surfaced in run stats. */
   unchanged: number;
+  /**
+   * Adult-content quarantine (2026-08-30): bookmarks identified as obviously
+   * adult and therefore never sent to the model — their titles are left
+   * untouched (counted as unchanged too). See `SuggestOutcome.adultQuarantined`.
+   */
+  adultQuarantined: number;
 }
 
 export interface RenameOptions {
@@ -1280,6 +1426,7 @@ async function callRenameWithRetryAndRepair(
   }
 
   let items = parseRenameResponse(result.text, batchSize);
+  let lastRaw = result.text ?? null;
   if (items.length === 0) {
     const repairOutcome = await callProvider(
       config,
@@ -1288,15 +1435,17 @@ async function callRenameWithRetryAndRepair(
       signal,
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
+      lastRaw = repairOutcome.text;
       const repaired = parseRenameResponse(repairOutcome.text, batchSize);
       if (repaired.length > 0) items = repaired;
     }
   }
   if (items.length === 0) {
+    const snippet = rawSnippet(lastRaw);
     return {
       items: [],
       fatal: false,
-      error: '模型返回了空结果（可能是提示规则过于严格或模型拒绝生成）',
+      error: `模型返回了空结果（可能是提示规则过于严格或模型拒绝生成）${snippet ? `。模型原文：${snippet}` : ''}`,
     };
   }
   return { items, fatal: false, error: null };
@@ -1357,10 +1506,19 @@ export async function renameBookmarks(
   options: RenameOptions,
 ): Promise<RenameOutcome> {
   if (inputs.length === 0) {
-    return { results: [], engine: 'none', modelError: null, fatal: false, unchanged: 0 };
+    return { results: [], engine: 'none', modelError: null, fatal: false, unchanged: 0, adultQuarantined: 0 };
   }
 
   const { config } = options;
+
+  // Adult-content quarantine — identical policy to the other tracks: obviously
+  // adult bookmarks are never sent to the model (their titles are left
+  // untouched, counted as unchanged). See `suggestForBookmarks` for rationale.
+  const quarantined = new Set<number>();
+  inputs.forEach((input, index) => {
+    if (looksAdult(input)) quarantined.add(index);
+  });
+  const adultQuarantined = quarantined.size;
 
   const renames = new Map<number, RenameCacheEntry>();
   let modelContributed = false;
@@ -1374,6 +1532,15 @@ export async function renameBookmarks(
   if (wantModel && config) {
     // Rename cares about title + URL + description; a full page fetch adds
     // latency without helping title cleanup, so enrichment is skipped here.
+    // Quarantined bookmarks are excluded from the model entirely;
+    // `modelIndices[k]` maps each model-bound position back to its global
+    // bookmark index (mirrors the other tracks).
+    const modelIndices: number[] = [];
+    for (let i = 0; i < inputs.length; i += 1) {
+      if (!quarantined.has(i)) modelIndices.push(i);
+    }
+    const modelInputs = modelIndices.map((i) => inputs[i]);
+
     const applyItem = (globalIndex: number, entry: RenameCacheEntry) => {
       modelContributed = true;
       renames.set(globalIndex, entry);
@@ -1384,15 +1551,16 @@ export async function renameBookmarks(
     const cache = options.renameCache;
     const pending: Array<{ input: BookmarkInput; globalIndex: number; key: string }> = [];
     if (cache) {
-      const keys = await Promise.all(inputs.map((input) => renameCacheKeyFor(input.url, config.model)));
+      const keys = await Promise.all(modelInputs.map((input) => renameCacheKeyFor(input.url, config.model)));
       const hits = await Promise.all(keys.map((key) => cache.get(key)));
-      inputs.forEach((input, index) => {
-        const hit = hits[index];
-        if (hit) applyItem(index, hit);
-        else pending.push({ input, globalIndex: index, key: keys[index] });
+      modelInputs.forEach((input, k) => {
+        const globalIndex = modelIndices[k];
+        const hit = hits[k];
+        if (hit) applyItem(globalIndex, hit);
+        else pending.push({ input, globalIndex, key: keys[k] });
       });
     } else {
-      inputs.forEach((input, index) => pending.push({ input, globalIndex: index, key: '' }));
+      modelInputs.forEach((input, k) => pending.push({ input, globalIndex: modelIndices[k], key: '' }));
     }
 
     for (let start = 0; start < pending.length; start += BATCH_SIZE) {
@@ -1453,5 +1621,5 @@ export async function renameBookmarks(
   let engine: EngineKind = 'none';
   if (modelContributed) engine = 'model';
 
-  return { results, engine, modelError, fatal, unchanged };
+  return { results, engine, modelError, fatal, unchanged, adultQuarantined };
 }

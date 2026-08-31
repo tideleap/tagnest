@@ -590,6 +590,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       const jobId = String(params[1]);
       const threshold = Number(params[2]);
       const kind = sql.includes("KIND = 'CATEGORY'") ? 'category' : 'tag';
+      const respectReview = sql.includes('NEEDS_REVIEW = 0');
       return state.tag_suggestions
         .filter(
           (s) =>
@@ -597,6 +598,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
             s.job_id === jobId &&
             s.status === 'pending' &&
             (s.kind ?? 'tag') === kind &&
+            (!respectReview || Number(s.needs_review ?? 0) === 0) &&
             s.confidence >= threshold,
         )
         .map((s) => ({ id: s.id }));

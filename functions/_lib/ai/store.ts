@@ -738,6 +738,10 @@ export async function decideSuggestions(
  *
  * Only reachable when the user has lowered `autoApplyThreshold` below 1, i.e.
  * has explicitly traded review for speed after seeing the quality.
+ *
+ * `needs_review = 0` is enforced regardless of threshold: flagged rows (e.g.
+ * quarantined adult content) are semantically "a human must look at this" and
+ * must never slip through auto-apply even at a very low threshold.
  */
 export async function autoApply(
   env: Env,
@@ -749,7 +753,7 @@ export async function autoApply(
 
   const rows = await env.DB.prepare(
     `SELECT id FROM tag_suggestions
-      WHERE user_id = ? AND job_id = ? AND kind = 'tag' AND status = 'pending' AND confidence >= ?`,
+      WHERE user_id = ? AND job_id = ? AND kind = 'tag' AND status = 'pending' AND needs_review = 0 AND confidence >= ?`,
   )
     .bind(userId, jobId, threshold)
     .all<{ id: string }>();
@@ -1227,6 +1231,8 @@ export async function decideCategorySuggestions(
 /**
  * Applies high-confidence category suggestions without review (C1-5 auto path).
  * Only reachable when the user has lowered `autoApplyThreshold` below 1.
+ * Rows flagged `needs_review` (e.g. quarantined adult placements) are always
+ * excluded — they require a human decision by definition.
  */
 export async function autoApplyCategories(
   env: Env,
@@ -1238,7 +1244,7 @@ export async function autoApplyCategories(
 
   const rows = await env.DB.prepare(
     `SELECT id FROM tag_suggestions
-      WHERE user_id = ? AND job_id = ? AND kind = 'category' AND status = 'pending' AND confidence >= ?`,
+      WHERE user_id = ? AND job_id = ? AND kind = 'category' AND status = 'pending' AND needs_review = 0 AND confidence >= ?`,
   )
     .bind(userId, jobId, threshold)
     .all<{ id: string }>();

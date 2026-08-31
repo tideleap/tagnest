@@ -349,6 +349,21 @@ describe('autoApplyCategories — threshold gate', () => {
     expect(applied).toBe(0);
     expect(state.bookmark_primary_category).toHaveLength(0);
   });
+
+  it('never auto-applies a needs_review category row even above the threshold', async () => {
+    // A quarantined adult-content placement carries needs_review=1: it must
+    // wait for a human decision regardless of confidence/threshold.
+    const { env, state } = makeEnv({
+      bookmarks: [bookmark('b1')],
+      tag_suggestions: [
+        categorySuggestion('s1', 'b1', '成人内容', { confidence: 0.95, needs_review: 1 }),
+      ],
+    });
+    const applied = await autoApplyCategories(env, 'u1', 0.5, 'j1');
+    expect(applied).toBe(0);
+    expect(state.bookmark_primary_category).toHaveLength(0);
+    expect(state.tag_suggestions.find((s) => s.id === 's1')?.status).toBe('pending');
+  });
 });
 
 /* ------------------------------------------------------------------ *

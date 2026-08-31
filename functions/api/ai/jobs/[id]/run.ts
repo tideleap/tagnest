@@ -270,6 +270,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       rebalanceWarning,
       uncovered: outcome.uncovered,
       uncategorized: outcome.uncategorized,
+      adultQuarantined: outcome.adultQuarantined,
       engine: outcome.engine,
       modelError: outcome.modelError,
       topics: aggregateCategoryTopics(outcome.results),
@@ -325,6 +326,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       autoApplied: 0,
       rebalanceWarning: false,
       uncovered: 0,
+      adultQuarantined: outcome.adultQuarantined,
       engine: outcome.engine,
       modelError: outcome.modelError,
     };
@@ -430,6 +432,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     autoApplied,
     rebalanceWarning,
     uncovered: outcome.uncovered,
+    adultQuarantined: outcome.adultQuarantined,
     engine: outcome.engine,
     modelError: outcome.modelError,
     topics: aggregateTopics(outcome.results),
