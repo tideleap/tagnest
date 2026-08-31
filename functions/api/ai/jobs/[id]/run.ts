@@ -353,6 +353,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     examples,
     tagCache: ctx.env.AI_CACHE ? makeKvTagCache(ctx.env.AI_CACHE) : undefined,
     signal: partitionSignal,
+    partitionBudgetMs,
   });
 
   const written = await saveSuggestions(ctx.env, userId, jobId, outcome.results);

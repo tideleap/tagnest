@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  effectiveEnrichBudgetMs,
   extractExcerptFromHtml,
   isFetchable,
   renderExcerpt,
@@ -79,6 +80,26 @@ describe('renderExcerpt', () => {
 
   it('returns null when nothing is available', () => {
     expect(renderExcerpt({ text: '', metaDescription: null, pageTitle: null })).toBeNull();
+  });
+});
+
+describe('effectiveEnrichBudgetMs — model time floor (预算挤压修复)', () => {
+  it('caps fetching at partition budget minus the 15s model floor', () => {
+    // 22s partition − 15s floor = 7s fetch cap (below the flat 8s default).
+    expect(effectiveEnrichBudgetMs(22000)).toBe(7000);
+  });
+
+  it('falls back to the flat 8s budget when no partition budget is passed', () => {
+    expect(effectiveEnrichBudgetMs(undefined)).toBe(8000);
+  });
+
+  it('collapses to zero when the partition budget equals the model floor', () => {
+    // Nothing left for fetching — the model keeps its entire 15s.
+    expect(effectiveEnrichBudgetMs(15000)).toBe(0);
+  });
+
+  it('never exceeds the flat 8s budget for generous partitions', () => {
+    expect(effectiveEnrichBudgetMs(30000)).toBe(8000);
   });
 });
 

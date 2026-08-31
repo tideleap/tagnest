@@ -263,6 +263,7 @@ export async function callProvider(
     return { ok: false, error: { status: null, message: '接口地址未配置' } };
   }
 
+  const startedAt = Date.now();
   try {
     const response = await fetchImpl(req.url, {
       method: 'POST',
@@ -286,13 +287,18 @@ export async function callProvider(
     return { ok: true, text: extractText(config.provider, payload) };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      error: {
-        status: null,
-        message: /abort|timeout/i.test(message) ? '模型响应超时' : `请求失败：${message}`,
-      },
-    };
+    if (/abort|timeout/i.test(message)) {
+      // Self-diagnosing timeout (2026-08-31): tell the two root causes apart.
+      // The caller's signal is the partition budget (run.ts); if IT is aborted,
+      // the fetch phase squeezed the model's share of the wall-clock. Otherwise
+      // the per-request REQUEST_TIMEOUT_MS ceiling fired — the gateway is slow.
+      const elapsedS = ((Date.now() - startedAt) / 1000).toFixed(1);
+      const diagnosed = signal?.aborted
+        ? `模型响应超时（已等待 ${elapsedS}s，分区时间预算已用尽——网页抓取挤占了模型调用时间）`
+        : `模型响应超时（已等待 ${elapsedS}s，单次请求超过 ${REQUEST_TIMEOUT_MS / 1000}s 上限——模型网关响应过慢）`;
+      return { ok: false, error: { status: null, message: diagnosed } };
+    }
+    return { ok: false, error: { status: null, message: `请求失败：${message}` } };
   }
 }
 

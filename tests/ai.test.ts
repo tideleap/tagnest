@@ -191,6 +191,33 @@ describe('callProvider', () => {
     }
   });
 
+  it('diagnoses an aborted partition signal as budget squeeze (抓取挤占)', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('aborted');
+    });
+    const spent = AbortSignal.abort();
+    const out = await callProvider(base, 'prompt', fetchImpl as never, spent);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.status).toBeNull();
+      expect(out.error.message).toContain('超时');
+      expect(out.error.message).toContain('分区时间预算已用尽');
+    }
+  });
+
+  it('diagnoses a request-ceiling timeout as a slow gateway (网关慢)', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('aborted');
+    });
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.status).toBeNull();
+      expect(out.error.message).toContain('超时');
+      expect(out.error.message).toContain('模型网关响应过慢');
+    }
+  });
+
   it('enforces the ceilings on parsed content', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(

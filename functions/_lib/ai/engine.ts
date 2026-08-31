@@ -127,6 +127,12 @@ export interface SuggestOptions {
    */
   signal?: AbortSignal;
   /**
+   * 单分片总预算（来自 /run 的 TN_PARTITION_BUDGET_MS），用于为模型调用保留时间底线。
+   * 抓取阶段的实际上限被压到 `分区预算 − MODEL_TIME_FLOOR_MS`，保证模型调用至少
+   * 拿到 ~15s，不再被慢抓取挤占。缺省时抓取退回默认预算（单书签路径不传）。
+   */
+  partitionBudgetMs?: number;
+  /**
    * Few-shot examples drawn from the user's own well-tagged bookmarks (方案B).
    * When omitted or empty the prompt falls back to its built-in defaults.
    */
@@ -375,7 +381,7 @@ export async function suggestForBookmarks(
     // The partition signal is threaded through: when the partition budget is
     // nearly spent, fetching stops early and the model keeps what remains.
     const enrichedModel = config.fetchContent
-      ? await enrichInputsWithContent(modelInputs, options.fetchImpl, options.signal)
+      ? await enrichInputsWithContent(modelInputs, options.fetchImpl, options.signal, options.partitionBudgetMs)
       : modelInputs;
 
     // Shared applier: writes one parsed item (fresh model output or cache hit)

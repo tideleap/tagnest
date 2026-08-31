@@ -45,6 +45,31 @@ const FETCH_TIMEOUT_MS = 6_000;
  */
 const ENRICH_BUDGET_MS = 8_000;
 
+/**
+ * Minimum wall-clock reserved for the model call, no matter how slow the
+ * page-fetch phase is. Fetching and the model call share ONE partition signal
+ * (run.ts `partitionSignal`, default 22s); if fetching burned most of it, the
+ * model call was squeezed to whatever remained and timed out on any slightly
+ * slow gateway — surfacing as "全走域名兜底". The fetch budget is therefore
+ * clamped to `partitionBudget - MODEL_TIME_FLOOR_MS` (see
+ * `effectiveEnrichBudgetMs`), guaranteeing the model always gets its floor.
+ */
+const MODEL_TIME_FLOOR_MS = 15_000;
+
+/**
+ * Effective fetch-phase budget for one partition.
+ *
+ * `min(ENRICH_BUDGET_MS, partitionBudget - MODEL_TIME_FLOOR_MS)`: fetching may
+ * never eat into the time floor reserved for the model call. When
+ * `partitionBudgetMs` is absent (the single-bookmark path does not pass one)
+ * or non-positive, the original flat `ENRICH_BUDGET_MS` applies unchanged.
+ * Pure and synchronous so it is trivially unit-testable.
+ */
+export function effectiveEnrichBudgetMs(partitionBudgetMs?: number): number {
+  if (!partitionBudgetMs || partitionBudgetMs <= 0) return ENRICH_BUDGET_MS;
+  return Math.min(ENRICH_BUDGET_MS, Math.max(0, partitionBudgetMs - MODEL_TIME_FLOOR_MS));
+}
+
 /** Read at most this many bytes of the body — the excerpt needs only the head. */
 const MAX_BODY_BYTES = 300_000;
 
@@ -208,8 +233,13 @@ export function renderExcerpt(excerpt: PageExcerpt): string | null {
  *
  * Two hard stop conditions protect the model's share of the partition
  * budget:
- *  - `ENRICH_BUDGET_MS` — the whole batch's fetch phase is capped, so a run
- *    of slow/withholding sites cannot starve the model call that follows;
+ *  - the effective fetch budget (`effectiveEnrichBudgetMs(partitionBudgetMs)`)
+ *    — the whole batch's fetch phase is capped, so a run of slow/withholding
+ *    sites cannot starve the model call that follows. When a partition budget
+ *    is supplied the cap is additionally clamped to
+ *    `partitionBudget - MODEL_TIME_FLOOR_MS`, reserving a time floor for the
+ *    model call no matter how slow fetching is; without one (single-bookmark
+ *    path) the flat `ENRICH_BUDGET_MS` applies;
  *  - `signal` — when the partition budget is nearly spent, fetching stops
  *    immediately and whatever excerpts have landed are returned as-is.
  * Under either condition un-fetched inputs simply stay un-enriched (title/
@@ -219,14 +249,16 @@ export async function enrichInputsWithContent<T extends EnrichInput>(
   inputs: T[],
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
+  partitionBudgetMs?: number,
 ): Promise<T[]> {
   if (inputs.length === 0) return [];
 
   const results: Array<PageExcerpt | null> = new Array(inputs.length).fill(null);
   let cursor = 0;
   const startedAt = Date.now();
+  const enrichBudget = effectiveEnrichBudgetMs(partitionBudgetMs);
   const timeLeft = () =>
-    Date.now() - startedAt < ENRICH_BUDGET_MS && !(signal?.aborted ?? false);
+    Date.now() - startedAt < enrichBudget && !(signal?.aborted ?? false);
 
   async function worker(): Promise<void> {
     while (timeLeft() && cursor < inputs.length) {
