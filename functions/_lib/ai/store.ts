@@ -1287,15 +1287,62 @@ export type { CategoryTreeNode };
  * user's taxonomy, not just the populated parts — so the UI can show empty
  * folders and the writeback builder can mirror them.
  */
-export async function loadCategoryTree(
+/**
+ * Loads every tag (id, name, parent_id) for a user into an id→node map, ordered
+ * by `sort_order, name` so downstream tree construction preserves display order.
+ *
+ * This is the single source of truth for the "fetch the whole tag tree once"
+ * step that `loadCategoryTree`, `deriveCategoryPaths`, and
+ * `loadCategoryWritebackPage` all previously inlined — centralising it removes
+ * three near-identical `SELECT id, name, parent_id FROM tags WHERE user_id = ?`
+ * blocks and keeps the tree shape in one place.
+ */
+async function loadTagNodes(
   env: Env,
   userId: string,
-): Promise<CategoryTreeNode[]> {
+): Promise<Map<string, { id: string; name: string; parentId: string | null }>> {
   const tagRows = await env.DB.prepare(
     `SELECT id, name, parent_id FROM tags WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE`,
   )
     .bind(userId)
     .all<{ id: string; name: string; parent_id: string | null }>();
+
+  const map = new Map<string, { id: string; name: string; parentId: string | null }>();
+  for (const t of tagRows.results) {
+    map.set(t.id, { id: t.id, name: t.name, parentId: t.parent_id });
+  }
+  return map;
+}
+
+/**
+ * Walks `parent_id` upward from `tagId` (depth-bounded against a corrupt tree)
+ * and returns the category path, root → leaf. Returns null when no node exists
+ * or the node has no upward chain.
+ *
+ * Single source of truth for the in-memory parent walk that
+ * `deriveCategoryPaths` and `loadCategoryWritebackPage` previously duplicated
+ * verbatim.
+ */
+function deriveCategoryPathFromNodes(
+  nodeById: Map<string, { id: string; name: string; parentId: string | null }>,
+  tagId: string,
+): string[] | null {
+  const path: string[] = [];
+  let cursorId: string | null = tagId;
+  for (let depth = 0; cursorId !== null && depth < 8; depth += 1) {
+    const node = nodeById.get(cursorId);
+    if (!node) break;
+    path.unshift(node.name);
+    cursorId = node.parentId;
+  }
+  return path.length > 0 ? path : null;
+}
+
+export async function loadCategoryTree(
+  env: Env,
+  userId: string,
+): Promise<CategoryTreeNode[]> {
+  const nodeById = await loadTagNodes(env, userId);
 
   const countRows = await env.DB.prepare(
     `SELECT bpc.tag_id AS tag_id, COUNT(*) AS c
@@ -1311,13 +1358,13 @@ export async function loadCategoryTree(
   for (const r of countRows.results) directCount.set(r.tag_id, Number(r.c));
 
   const nodes = new Map<string, CategoryTreeNode>();
-  for (const t of tagRows.results) {
-    nodes.set(t.id, {
-      tagId: t.id,
-      name: t.name,
-      parentId: t.parent_id,
+  for (const [id, node] of nodeById) {
+    nodes.set(id, {
+      tagId: id,
+      name: node.name,
+      parentId: node.parentId,
       count: 0,
-      directCount: directCount.get(t.id) ?? 0,
+      directCount: directCount.get(id) ?? 0,
       children: [],
     });
   }
@@ -1395,30 +1442,8 @@ export async function deriveCategoryPaths(
   if (ids.length === 0) return result;
 
   // One tag-tree load serves every path derivation on this page (same shape
-  // as loadCategoryWritebackPage's in-memory walk).
-  const tagRows = await env.DB.prepare(
-    `SELECT id, name, parent_id FROM tags WHERE user_id = ?`,
-  )
-    .bind(userId)
-    .all<{ id: string; name: string; parent_id: string | null }>();
-
-  const nodeById = new Map<string, { name: string; parentId: string | null }>();
-  for (const t of tagRows.results) {
-    nodeById.set(t.id, { name: t.name, parentId: t.parent_id });
-  }
-
-  // Walk parent_id upward in memory; depth-bounded against a corrupt tree.
-  const pathFor = (tagId: string): string[] | null => {
-    const path: string[] = [];
-    let cursorId: string | null = tagId;
-    for (let depth = 0; cursorId !== null && depth < 8; depth += 1) {
-      const node = nodeById.get(cursorId);
-      if (!node) break;
-      path.unshift(node.name);
-      cursorId = node.parentId;
-    }
-    return path.length > 0 ? path : null;
-  };
+  // as loadCategoryWritebackPage's in-memory walk); centralised in loadTagNodes.
+  const nodeById = await loadTagNodes(env, userId);
 
   // Chunk the id list so the IN (...) clause stays within D1's bound-param
   // limit (no leading params here, so the full chunk width is available).
@@ -1432,7 +1457,7 @@ export async function deriveCategoryPaths(
       .bind(...slice)
       .all<{ bookmark_id: string; tag_id: string }>();
     for (const r of rows.results) {
-      result.set(r.bookmark_id, pathFor(r.tag_id));
+      result.set(r.bookmark_id, deriveCategoryPathFromNodes(nodeById, r.tag_id));
     }
   }
 
@@ -1489,30 +1514,9 @@ export async function loadCategoryWritebackPage(
   cursor: string | null = null,
   limit = WRITEBACK_PAGE_SIZE,
 ): Promise<CategoryWritebackPage> {
-  // One tag-tree load serves every path derivation on this page.
-  const tagRows = await env.DB.prepare(
-    `SELECT id, name, parent_id FROM tags WHERE user_id = ?`,
-  )
-    .bind(userId)
-    .all<{ id: string; name: string; parent_id: string | null }>();
-
-  const nodeById = new Map<string, { name: string; parentId: string | null }>();
-  for (const t of tagRows.results) {
-    nodeById.set(t.id, { name: t.name, parentId: t.parent_id });
-  }
-
-  // Walk parent_id upward in memory; depth-bounded against a corrupt tree.
-  const pathFor = (tagId: string): string[] | null => {
-    const path: string[] = [];
-    let cursorId: string | null = tagId;
-    for (let depth = 0; cursorId !== null && depth < 8; depth += 1) {
-      const node = nodeById.get(cursorId);
-      if (!node) break;
-      path.unshift(node.name);
-      cursorId = node.parentId;
-    }
-    return path.length > 0 ? path : null;
-  };
+  // One tag-tree load serves every path derivation on this page; centralised
+  // in loadTagNodes so the tree shape lives in exactly one place.
+  const nodeById = await loadTagNodes(env, userId);
 
   const rows = await env.DB.prepare(
     `SELECT bpc.bookmark_id AS bookmark_id, bpc.tag_id AS tag_id, b.url AS url, b.title AS title
@@ -1533,7 +1537,7 @@ export async function loadCategoryWritebackPage(
     bookmarkId: r.bookmark_id,
     url: r.url,
     title: r.title ?? '',
-    categoryPath: pathFor(r.tag_id),
+    categoryPath: deriveCategoryPathFromNodes(nodeById, r.tag_id),
   }));
 
   const totalRow = await env.DB.prepare(

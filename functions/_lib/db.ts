@@ -513,6 +513,8 @@ export interface ParsedSearch {
  * old whole-string search did.
  */
 export function parseSearchQuery(raw: string): ParsedSearch {
+  if (!raw || raw.trim() === '') return { tokens: [], tags: [], domains: [] };
+
   const tokens: string[] = [];
   const tags: string[] = [];
   const domains: string[] = [];
