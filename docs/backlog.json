@@ -1995,6 +1995,39 @@
           "name": "rename-engine"
         }
       ]
+    },
+    {
+      "id": "CR-1",
+      "title": "全面代码审查优化：分类树加载+parent_id回溯三处重复逻辑去重；空搜索输入短路",
+      "source": "2026-08-31 全面代码审查与性能分析（用户要求：输出按优先级排序优化清单并逐项实施，不改变功能行为且通过现有测试）",
+      "priority": "P2",
+      "status": "done",
+      "note": "2026-09-01 实施并上线（提交 d248b7ca，生产 build 2026-09-01-code-review-1）：store.ts 提取共享 loadTagNodes()+deriveCategoryPathFromNodes()，供 loadCategoryTree/deriveCategoryPaths/loadCategoryWritebackPage 复用，删除约40行重复的标签树加载+内存回溯；db.ts parseSearchQuery 对空/纯空白输入提前返回。行为保持（返回值/子树计数/分页顺序不变），后端 1151/1151 全绿 + typecheck + eslint 0 error。其余审查维度（依赖管理/类型安全/调试日志/N+1/重试正确性/TODO）审计通过无需改动。",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/store.ts",
+          "pattern": "loadTagNodes"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/store.ts",
+          "pattern": "deriveCategoryPathFromNodes"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/db.ts",
+          "pattern": "raw\\.trim\\(\\) === ''"
+        },
+        {
+          "type": "test",
+          "name": "category-store"
+        },
+        {
+          "type": "test",
+          "name": "search-query"
+        }
+      ]
     }
   ]
 }
