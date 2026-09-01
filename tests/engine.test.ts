@@ -386,6 +386,60 @@ describe('suggestForBookmarks — zero-usable-tags repair turn (no silent empty 
   });
 });
 
+describe('suggestForBookmarks — EMPTYTAG-2 pure-summary & mixed modes', () => {
+  // Pure-summary mode (autoTag off, autoSummarize on): an empty tag set is the
+  // expected model answer, so it must NOT fire a repair turn, and any summary
+  // the model returned must still be applied. (2026-08-31 fix.)
+  it('keeps the summary and does NOT fire a repair turn in pure-summary mode', async () => {
+    const summaryJson = JSON.stringify({
+      results: [{ i: 1, tags: [], summary: 'React 官方文档中关于组件拆分的教程' }],
+    });
+    mockedCall.mockResolvedValue({ ok: true, text: summaryJson });
+
+    const pureSummaryConfig: AiConfig = { ...modelConfig, autoTag: false, autoSummarize: true };
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: 'https://react.dev', title: 'React' }],
+      { vocab: emptyVocab, config: pureSummaryConfig, local },
+    );
+
+    // No repair turn — an empty tag set is expected, not an error.
+    expect(mockedCall.mock.calls.length).toBe(1);
+    // The model contributed a summary, so it is applied downstream.
+    expect(out.results[0].summary).toBe('React 官方文档中关于组件拆分的教程');
+    // No empty-tag warning is surfaced in pure-summary mode.
+    expect(out.modelError).toBeNull();
+    expect(out.engine).toBe('model');
+    // Coverage guarantee still applies: with no tags, a fallback tag is added.
+    expect(out.results[0].tags.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Mixed mode (tags on, summary on): an empty tag set is an error worth a
+  // repair turn, but the summary the model produced must survive and the
+  // empty-tag warning must be preserved (not silenced). (2026-08-31 fix.)
+  it('preserves the summary and keeps the empty-tag warning in mixed mode', async () => {
+    const summaryJson = JSON.stringify({
+      results: [{ i: 1, tags: [], summary: 'OpenAI 关于 GPT-4o 微调的实践指南' }],
+    });
+    // Both calls return empty tags + a summary, so the repair turn also yields nothing.
+    mockedCall.mockResolvedValue({ ok: true, text: summaryJson });
+
+    const mixedConfig: AiConfig = { ...modelConfig, autoTag: true, autoSummarize: true };
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: 'https://openai.com', title: 'OpenAI' }],
+      { vocab: emptyVocab, config: mixedConfig, local },
+    );
+
+    // Repair turn fired (original + at least one repair).
+    expect(mockedCall.mock.calls.length).toBeGreaterThanOrEqual(2);
+    // The summary survives the empty-tag failure.
+    expect(out.results[0].summary).toBe('OpenAI 关于 GPT-4o 微调的实践指南');
+    // The empty-tag warning is preserved, not silenced.
+    expect(out.modelError).not.toBeNull();
+    expect(out.modelError).toContain('空标签');
+    expect(out.engine).toBe('model');
+  });
+});
+
 describe('suggestForBookmarks — P0-1 taxonomy synthesis', () => {  it('synthesizes a taxonomy and attaches parent tags when enabled', async () => {
     const tagResults = Array.from({ length: 8 }, (_, i) => ({
       i: i + 1,

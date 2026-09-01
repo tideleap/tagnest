@@ -269,3 +269,29 @@ describe('renameBookmarks — rename cache (ai:rename: namespace)', () => {
     expect(cache.puts).toHaveLength(0);
   });
 });
+
+describe('renameBookmarks — EMPTYTAG-3 zero usable renames (no silent empty result)', () => {
+  // Parseable JSON, yet every row yields no usable title — the exact shape that
+  // used to slip past the `items.length === 0` guard and silently degrade. The
+  // fix must fire a repair turn and surface the error. (2026-08-31 fix.)
+  it('fires a repair turn when the response parses but yields no usable rename, then surfaces the error', async () => {
+    const emptyJson = JSON.stringify({ results: [{ i: 1, title: '' }] });
+    mockedCall.mockResolvedValue({ ok: true, text: emptyJson });
+
+    const out = await renameBookmarks(
+      [{ id: 'b1', url: 'https://github.com/', title: 'GitHub · Slogan' }],
+      { config: modelConfig },
+    );
+
+    // The repair turn was triggered (original call + at least one repair call).
+    expect(mockedCall.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const repairPrompt = mockedCall.mock.calls[1][1] as string;
+    expect(repairPrompt).toContain('空结果');
+    // The specific error bubbles up (no longer swallowed by the group layer).
+    expect(out.modelError).not.toBeNull();
+    expect(out.modelError).toContain('空结果');
+    // No rename was applied; the bookmark counts as unchanged.
+    expect(out.results[0].rename).toBeNull();
+    expect(out.unchanged).toBeGreaterThanOrEqual(1);
+  });
+});

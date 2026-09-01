@@ -215,8 +215,13 @@ async function callTagWithRetryAndRepair(
   // entirely and let the whole batch silently degrade to the domain fallback.
   let items = parseTaggingResponse(result.text, batchSize);
   let lastRaw = result.text ?? null;
+  // EMPTYTAG-2: in pure-summary mode (autoTag off) the model is still asked for
+  // tags, but the user does not want them stored — so an empty tag set is
+  // expected, not an error. Only treat "zero usable tags" as a problem worth a
+  // repair round / warning when tags were actually requested.
+  const wantTags = Boolean(config.autoTag);
   const totalTags = items.reduce((s, it) => s + it.tags.length, 0);
-  if (totalTags === 0) {
+  if (wantTags && totalTags === 0) {
     const repairOutcome = await callProvider(
       config,
       `${prompt}\n\n注意：刚才的回复没有为书签产出任何可用标签。请重新生成：为每一条书签至少输出 1 个具体、可复用的标签（避免「网站」「链接」「资料」「文章」等宽泛词）。严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
@@ -230,10 +235,12 @@ async function callTagWithRetryAndRepair(
       if (repaired.reduce((s, it) => s + it.tags.length, 0) > 0) items = repaired;
     }
   }
-  if (items.reduce((s, it) => s + it.tags.length, 0) === 0) {
+  if (wantTags && items.reduce((s, it) => s + it.tags.length, 0) === 0) {
     const snippet = rawSnippet(lastRaw);
+    // Keep `items` (not []) so any summaries the model produced survive and are
+    // applied downstream; the empty-tag warning is still surfaced via `error`.
     return {
-      items: [],
+      items,
       fatal: false,
       error: `模型返回了空标签（可能是提示规则过于严格或模型拒绝生成）${snippet ? `。模型原文：${snippet}` : ''}`,
     };
@@ -308,7 +315,11 @@ async function tagGroup(
   // was recovered for this group — swallowing it here used to hide "the model
   // answered but produced zero tags" from the UI. Any recovered bookmark clears
   // the error; a fully empty group keeps it so `suggestForBookmarks` can show it.
-  return { items: out, fatal: false, error: out.size > 0 ? null : error };
+  // EMPTYTAG-2: only suppress the empty-tag warning when at least one bookmark
+  // actually received a tag. If the batch yielded summaries but no tags, keep the
+  // warning so the user knows tags failed while the summary is still applied.
+  const hasAnyTags = [...out.values()].some((it) => it.tags && it.tags.length > 0);
+  return { items: out, fatal: false, error: hasAnyTags ? null : error };
 }
 
 /**
@@ -845,7 +856,11 @@ async function callCategorizeWithRetryAndRepair(
 
   let items = parseCategorizeResponse(result.text, batchSize);
   let lastRaw = result.text ?? null;
-  if (items.length === 0) {
+  // EMPTYTAG-3: a response can parse into N items where every one has a null
+  // placement (no usable category). That used to slip past the `items.length === 0`
+  // guard and silently degrade. Trigger repair / error on zero *usable* placements.
+  const usableCategories = items.filter((it) => it.category !== null).length;
+  if (usableCategories === 0) {
     const repairOutcome = await callProvider(
       config,
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空分类。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
@@ -856,13 +871,13 @@ async function callCategorizeWithRetryAndRepair(
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
       const repaired = parseCategorizeResponse(repairOutcome.text, batchSize);
-      if (repaired.length > 0) items = repaired;
+      if (repaired.filter((it) => it.category !== null).length > 0) items = repaired;
     }
   }
-  if (items.length === 0) {
+  if (items.filter((it) => it.category !== null).length === 0) {
     const snippet = rawSnippet(lastRaw);
     return {
-      items: [],
+      items,
       fatal: false,
       error: `模型返回了空分类（可能是提示规则过于严格或模型拒绝生成）${snippet ? `。模型原文：${snippet}` : ''}`,
     };
@@ -909,14 +924,17 @@ async function categorizeGroup(
     if (li !== undefined) out.set(li, item);
   }
 
-  const missing = localIndices.filter((li) => !out.has(li));
+    const missing = localIndices.filter((li) => !out.has(li));
   if (missing.length > 0 && missing.length < localIndices.length && depth < COMPENSATE_DEPTH) {
     const missingInputs = missing.map((li) => group[localIndices.indexOf(li)]);
     const sub = await categorizeGroup(missingInputs, missing, depth + 1, opts);
     if (sub.fatal) return { items: out, fatal: true, error: sub.error };
     for (const [li, item] of sub.items) out.set(li, item);
   }
-  return { items: out, fatal: false, error: null };
+  // EMPTYTAG-3: propagate the "zero usable placements" error from the repair
+  // round so it reaches the outcome (and overrides the generic silent-empty
+  // diagnosis) instead of being discarded here. It is null on every normal path.
+  return { items: out, fatal: false, error };
 }
 
 /**
@@ -1472,7 +1490,11 @@ async function callRenameWithRetryAndRepair(
 
   let items = parseRenameResponse(result.text, batchSize);
   let lastRaw = result.text ?? null;
-  if (items.length === 0) {
+  // EMPTYTAG-3: a response can parse into N items where every one has a null
+  // rename (no usable answer). Mirror the categorize fix — trigger repair / error
+  // on zero *usable* renames instead of `items.length === 0`.
+  const usableRenames = items.filter((it) => it.rename !== null).length;
+  if (usableRenames === 0) {
     const repairOutcome = await callProvider(
       config,
       `${prompt}\n\n注意：刚才的回复无法解析为 JSON 或返回了空结果。请严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
@@ -1483,13 +1505,13 @@ async function callRenameWithRetryAndRepair(
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
       const repaired = parseRenameResponse(repairOutcome.text, batchSize);
-      if (repaired.length > 0) items = repaired;
+      if (repaired.filter((it) => it.rename !== null).length > 0) items = repaired;
     }
   }
-  if (items.length === 0) {
+  if (items.filter((it) => it.rename !== null).length === 0) {
     const snippet = rawSnippet(lastRaw);
     return {
-      items: [],
+      items,
       fatal: false,
       error: `模型返回了空结果（可能是提示规则过于严格或模型拒绝生成）${snippet ? `。模型原文：${snippet}` : ''}`,
     };
@@ -1527,14 +1549,16 @@ async function renameGroup(
     if (li !== undefined) out.set(li, item);
   }
 
-  const missing = localIndices.filter((li) => !out.has(li));
+    const missing = localIndices.filter((li) => !out.has(li));
   if (missing.length > 0 && missing.length < localIndices.length && depth < COMPENSATE_DEPTH) {
     const missingInputs = missing.map((li) => group[localIndices.indexOf(li)]);
     const sub = await renameGroup(missingInputs, missing, depth + 1, opts);
     if (sub.fatal) return { items: out, fatal: true, error: sub.error };
     for (const [li, item] of sub.items) out.set(li, item);
   }
-  return { items: out, fatal: false, error: null };
+  // EMPTYTAG-3: mirror the categorize fix — propagate the "zero usable renames"
+  // error so it surfaces on the outcome rather than being dropped here.
+  return { items: out, fatal: false, error };
 }
 
 /**

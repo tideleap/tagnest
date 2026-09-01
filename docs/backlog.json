@@ -1905,7 +1905,7 @@
         {
           "type": "grep",
           "path": "functions/_lib/ai/engine.ts",
-          "pattern": "out\\.size > 0 \\? null : error"
+          "pattern": "hasAnyTags"
         },
         {
           "type": "grep",
@@ -1924,24 +1924,75 @@
       "title": "纯摘要配置下空标签修复失败时保留 summary（当前随 items:[] 一并丢弃）",
       "source": "QA 复核发现（autoTag=false + autoSummarize=true 在 UI 可达；零标签修复失败返回 items:[] 会丢弃有效 summary，触发条件苛刻且新行为为响亮报错，方向正确但 summary 丢失是真实代价）",
       "priority": "P2",
-      "status": "open",
+      "status": "done",
+      "note": "2026-08-31 收口：callTagWithRetryAndRepair 以 wantTags=autoTag 门控修复/告警（纯摘要模式不触发修复轮、summary 落库），tagGroup 仅在至少 1 书签获标签时抑制空标签告警。回归测试见 tests/engine.test.ts 的 EMPTYTAG-2 describe。",
       "evidence": [
         {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "wantTags"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "hasAnyTags"
+        },
+        {
+          "type": "grep",
+          "path": "tests/engine.test.ts",
+          "pattern": "EMPTYTAG-2"
+        },
+        {
           "type": "test",
-          "name": "empty-tags-summary-preserved"
+          "name": "engine"
         }
       ]
     },
     {
       "id": "AI-EMPTYTAG-3",
-      "title": "分类轨道同构缺口：callCategorizeWithRetryAndRepair 仍用 items.length===0 触发修复回合",
-      "source": "QA 复核发现（与打标缺口同构：可解析但 category 全空不触发修复重问；因 categorizeBookmarks 有静默空诊断兜底文案，不构成静默降级，列后续跟进）",
+      "title": "分类/重命名轨道同构缺口：callCategorizeWithRetryAndRepair / callRenameWithRetryAndRepair 仍用 items.length===0 触发修复回合，且 categorizeGroup/renameGroup 丢弃该错误",
+      "source": "QA 复核发现（与打标缺口同构：可解析但 category/rename 全空不触发修复重问；且 group 层把 callX 返回的零可用错误一率丢弃，仅由静默空诊断兜底，未透出模型原文）",
       "priority": "P2",
-      "status": "open",
+      "status": "done",
+      "note": "2026-08-31 收口：callCategorizeWithRetryAndRepair/callRenameWithRetryAndRepair 改用「零可用放置/重命名」触发修复轮并透出模型原文；categorizeGroup/renameGroup 末尾由 error:null 改为 error 透传，使该错误抵达 outcome 并覆盖静默空诊断。回归测试见 tests/categorize-engine.test.ts 与 tests/rename-engine.test.ts 的 EMPTYTAG-3 describe。",
       "evidence": [
         {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "usableCategories"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "usableRenames"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "模型返回了空分类"
+        },
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/engine.ts",
+          "pattern": "模型返回了空结果"
+        },
+        {
+          "type": "grep",
+          "path": "tests/categorize-engine.test.ts",
+          "pattern": "EMPTYTAG-3"
+        },
+        {
+          "type": "grep",
+          "path": "tests/rename-engine.test.ts",
+          "pattern": "EMPTYTAG-3"
+        },
+        {
           "type": "test",
-          "name": "categorize-empty-repair"
+          "name": "categorize-engine"
+        },
+        {
+          "type": "test",
+          "name": "rename-engine"
         }
       ]
     }

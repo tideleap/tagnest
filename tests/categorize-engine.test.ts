@@ -359,6 +359,33 @@ describe('categorizeBookmarks — feedback memory (C1-6)', () => {
   });
 });
 
+describe('categorizeBookmarks — EMPTYTAG-3 zero usable placements (no silent empty category)', () => {
+  // Parseable JSON, yet every category is null — the exact shape that used to
+  // slip past the `items.length === 0` guard and silently degrade. The fix must
+  // fire a repair turn and surface the error. (2026-08-31 fix.)
+  it('fires a repair turn when the response parses but every placement is null, then surfaces the error', async () => {
+    const emptyJson = JSON.stringify({ results: [{ i: 1, category: null }] });
+    mockedCall.mockResolvedValue({ ok: true, text: emptyJson });
+
+    const out = await categorizeBookmarks(
+      [{ id: 'b1', url: 'https://react.dev', title: 'React' }],
+      { vocab, config: modelConfig },
+    );
+
+    // The repair turn was triggered (original call + at least one repair call).
+    expect(mockedCall.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const repairPrompt = mockedCall.mock.calls[1][1] as string;
+    expect(repairPrompt).toContain('空分类');
+    // The specific error bubbles up (no longer swallowed by the group layer).
+    expect(out.modelError).not.toBeNull();
+    expect(out.modelError).toContain('空分类');
+    // The bookmark still gets the coverage guarantee (domain fallback), not a
+    // null placement that would silently degrade.
+    expect(out.uncovered).toBeGreaterThanOrEqual(1);
+    expect(out.results[0].category?.source).toBe('fallback');
+  });
+});
+
 describe('aggregateCategoryTopics', () => {
   it('counts bookmarks by top-level category', () => {
     const topics = aggregateCategoryTopics([
