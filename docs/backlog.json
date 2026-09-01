@@ -2028,6 +2028,26 @@
           "name": "search-query"
         }
       ]
+    },
+    {
+      "id": "AI-PERF-2",
+      "title": "网关偏慢致 56 条书签域名兜底：换更快模型/网关后重跑整理",
+      "source": "2026-09-01 生产事件（用户报告整理结果：56 条仅域名兜底标签，超时自诊断命中「模型已拿满分配时间仍超时（约 5.35s/条）——本网关处理偏慢」）",
+      "priority": "P1",
+      "status": "blocked-external",
+      "note": "非代码回归：自诊断/兜底/补跑三层防线均按设计工作。数字解码——分区预算 25s（TN_PARTITION_BUDGET_MS 默认），前端 PARTITION=4（organize.ts:435），21.4÷4=5.35s/条 精确吻合；诊断分支 providers.ts:312 命中条件=分区信号已中止且 preModelMs=25000−21400=3600<6000ms → 判定网关本身慢（非抓取挤占）。根因：网关速率从 8/31 实测 ~4.2s/条 下滑至 5.35s/条（约 +27%），4 条×5.35≈21.4s+抓取 3.6s 顶到 25s 墙。补跑（方案F，MAX_PASSES=2）未救回因每轮用同样 4 条分片+同一慢网关。处置（用户已拍板）：Settings→AI 换更快模型/网关后按原范围重跑；重跑安全——旧兜底建议被 delete-then-insert 替换（store.ts:417），needs_review=1 的兜底标签从未自动应用（store.ts:765），56 条在库中仍无已应用标签。安全速率线：PARTITION=4 下需 ≤~4.25s/条（最坏抓取 8s），舒适目标 ≤4s/条。完成判据：换网关重跑后 56 条获得模型标签、确认队列兜底项清零。若新网关仍 ≥5s/条，回退方案=分片 4→3 代码缓解（另立条目，需部署）。",
+      "evidence": [
+        {
+          "type": "grep",
+          "path": "functions/_lib/ai/providers.ts",
+          "pattern": "模型已拿满分配时间仍超时"
+        },
+        {
+          "type": "grep",
+          "path": "src/hooks/queries/organize.ts",
+          "pattern": "const PARTITION = 4"
+        }
+      ]
     }
   ]
 }

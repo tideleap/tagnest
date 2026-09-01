@@ -120,7 +120,7 @@ npm run backlog:write   # 重新生成下方状态表
 <!-- BEGIN:BACKLOG-TABLE -->
 
 > 自动生成于 `npm run backlog:write`，请勿手动编辑本区块。
-> 登记 104 条（其中 2 条为跨文档别名），独立需求 102 项：✅ done 98 ／ ➖ superseded 3 ／ ⏸ blocked-external 1
+> 登记 105 条（其中 2 条为跨文档别名），独立需求 103 项：✅ done 98 ／ ➖ superseded 3 ／ ⏸ blocked-external 2
 
 | 编号 | 需求 | 优先级 | 状态 | 证据 | 备注 |
 | --- | --- | --- | --- | --- | --- |
@@ -228,6 +228,7 @@ npm run backlog:write   # 重新生成下方状态表
 | `AI-EMPTYTAG-2` | 纯摘要配置下空标签修复失败时保留 summary（当前随 items:[] 一并丢弃） | P2 | ✅ done | 4/4 | 2026-08-31 收口：callTagWithRetryAndRepair 以 wantTags=autoTag 门控修复/告警（纯摘要模式不触发修复轮、summary 落库），tagGroup 仅在至少 1 书签获标签时抑制空标签告警。回归测试见 tests/engine.test.ts 的 EMPTYTAG-2 describe。 |
 | `AI-EMPTYTAG-3` | 分类/重命名轨道同构缺口：callCategorizeWithRetryAndRepair / callRenameWithRetryAndRepair 仍用 items.length===0 触发修复回合，且 categorizeGroup/renameGroup 丢弃该错误 | P2 | ✅ done | 8/8 | 2026-08-31 收口：callCategorizeWithRetryAndRepair/callRenameWithRetryAndRepair 改用「零可用放置/重命名」触发修复轮并透出模型原文；categorizeGroup/renameGroup 末尾由 error:null 改为 error 透传，使该错误抵达 outcome 并覆盖静默空诊断。回归测试见 tests/categorize-engine.test.ts 与 tests/rename-engine.test.ts 的 EMPTYTAG-3 describe。 |
 | `CR-1` | 全面代码审查优化：分类树加载+parent_id回溯三处重复逻辑去重；空搜索输入短路 | P2 | ✅ done | 5/5 | 2026-09-01 实施并上线（提交 d248b7ca，生产 build 2026-09-01-code-review-1）：store.ts 提取共享 loadTagNodes()+deriveCategoryPathFromNodes()，供 loadCategoryTree/deriveCategoryPaths/loadCategoryWritebackPage 复用，删除约40行重复的标签树加载+内存回溯；db.ts parseSearchQuery 对空/纯空白输入提前返回。行为保持（返回值/子树计数/分页顺序不变），后端 1151/1151 全绿 + typecheck + eslint 0 error。其余审查维度（依赖管理/类型安全/调试日志/N+1/重试正确性/TODO）审计通过无需改动。 |
+| `AI-PERF-2` | 网关偏慢致 56 条书签域名兜底：换更快模型/网关后重跑整理 | P1 | ⏸ blocked-external | 2/2 | 非代码回归：自诊断/兜底/补跑三层防线均按设计工作。数字解码——分区预算 25s（TN_PARTITION_BUDGET_MS 默认），前端 PARTITION=4（organize.ts:435），21.4÷4=5.35s/条 精确吻合；诊断分支 providers.ts:312 命中条件=分区信号已中止且 preModelMs=25000−21400=3600<6000ms → 判定网关本身慢（非抓取挤占）。根因：网关速率从 8/31 实测 ~4.2s/条 下滑至 5.35s/条（约 +27%），4 条×5.35≈21.4s+抓取 3.6s 顶到 25s 墙。补跑（方案F，MAX_PASSES=2）未救回因每轮用同样 4 条分片+同一慢网关。处置（用户已拍板）：Settings→AI 换更快模型/网关后按原范围重跑；重跑安全——旧兜底建议被 delete-then-insert 替换（store.ts:417），needs_review=1 的兜底标签从未自动应用（store.ts:765），56 条在库中仍无已应用标签。安全速率线：PARTITION=4 下需 ≤~4.25s/条（最坏抓取 8s），舒适目标 ≤4s/条。完成判据：换网关重跑后 56 条获得模型标签、确认队列兜底项清零。若新网关仍 ≥5s/条，回退方案=分片 4→3 代码缓解（另立条目，需部署）。 |
 
 **当前执行队列**：空 —— 所有需求已进入终态。
 
