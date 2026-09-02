@@ -525,7 +525,7 @@ export type AiEngineKind = 'model' | 'fallback' | 'none';
 
 export type AiCandidateSource = 'model' | 'fallback' | 'taxonomy';
 
-export type AiJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+export type AiJobStatus = 'queued' | 'running' | 'finalizing' | 'done' | 'failed' | 'cancelled';
 
 /** What a run covers. `untagged` is the default because it pays off fastest. */
 export type AiJobTarget = 'untagged' | 'all' | 'ids';

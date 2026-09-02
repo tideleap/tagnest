@@ -71,6 +71,7 @@ vi.mock('@/hooks/queries/organize', () => ({
     topics: [],
     autoGrouped: null,
     rebalanceWarning: false,
+    applying: false,
   }),
 }));
 

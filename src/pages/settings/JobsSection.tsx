@@ -24,6 +24,7 @@ const STATUS_META: Record<AiJobStatus, { label: string; cls: string }> = {
   done: { label: '已完成', cls: 'bg-positive-soft text-positive-ink' },
   failed: { label: '失败', cls: 'bg-caution-soft text-caution-ink' },
   cancelled: { label: '已取消', cls: 'bg-sunken text-ink-faint' },
+  finalizing: { label: '收尾中', cls: 'bg-brand-soft text-brand-ink' },
 };
 
 const TARGET_LABEL: Record<AiJobTarget, string> = {
@@ -44,7 +45,7 @@ function progress(job: AiJob): number {
 }
 
 function isActive(status: AiJobStatus): boolean {
-  return status === 'queued' || status === 'running';
+  return status === 'queued' || status === 'running' || status === 'finalizing';
 }
 
 export function JobsSection() {

@@ -7,11 +7,7 @@ import {
   RUN_CHUNK,
   aggregateCategoryTopics,
   aggregateTopics,
-  autoApply,
-  autoApplyCategories,
-  applyTagHierarchy,
   categorizeBookmarks,
-  countJobNewTags,
   getJob,
   getEffectiveAiConfig,
   consumeAiCredit,
@@ -28,7 +24,6 @@ import {
   saveCategorySuggestions,
   saveRenameSuggestions,
   saveSuggestions,
-  shouldWarnRebalance,
   suggestForBookmarks,
   toApiJob,
   toLocalConfig,
@@ -65,14 +60,17 @@ import {
  * unknown model) stops the run, because otherwise every remaining partition
  * would burn a round trip to fail the same way.
  *
- * ## Why finalize runs once, on the finisher
+ * ## Why finalize runs on a separate endpoint
  *
  * `autoApply` / `autoApplyCategories` / `applyTagHierarchy` rewrite shared
- * state (the user's tag tree, accepted suggestions). Under concurrency they
- * must run exactly once — on the partition that observes `processed >= total`
- * — not per slice, or two finishers could double-apply. The finisher is
- * guaranteed to be the last slice to complete, so by the time it runs, every
- * other partition's suggestions are already committed.
+ * state (the user's tag tree, accepted suggestions). They are expensive and,
+ * under a slow gateway + a large scope, can push the finisher's `/run` past the
+ * Cloudflare 30s wall-clock (the 503 the user hit on a 169-bookmark run).
+ * 方案A therefore strips finalize OUT of `/run`: each `/run` only does model
+ * inference (capped by `partitionBudgetMs`), and the finisher marks the job
+ * `finalizing` instead of `done`. The client then calls the dedicated
+ * `/api/ai/jobs/:id/finalize` once, which owns its own 30s budget and applies
+ * the shared-state work safely. Finalize is idempotent, so a retry is safe.
  */
 export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -88,8 +86,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const ids = job.scope?.ids ?? [];
 
   // 方案A: 客户端把整理拆成多个并行分片，每个分片带 {from,to} 认领一段不重叠的
-  // 书签区间；服务端用原子计数推进进度，最后一个分片收尾置 done。不带 body 时
-  // 回退到旧游标串行模式（兼容续跑 / 老调用方）。
+  // 书签区间；服务端用原子计数推进进度，最后一个分片收尾置 finalizing（交由
+  // /finalize 完成收尾）。不带 body 时回退到旧游标串行模式（兼容续跑 / 老调用方）。
   let body: { from?: unknown; to?: unknown } = {};
   try {
     const raw = await ctx.request.json().catch(() => null);
@@ -110,16 +108,17 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
 
   // Nothing to process.
   if (slice.length === 0) {
-    // 并行模式下空分片视为异常（客户端不应发到），不打 done，交给其它分片收尾；
+    // 并行模式下空分片视为异常（客户端不应发到），不打 finalizing，交给其它分片收尾；
     // 直接复用本请求开头已读取的 job（line 82），不再查库（E3：去掉冗余 getJob）。
     if (job.status !== 'done' && !usePartition) {
       // 仅游标(串行)模式再读一次，确认是否已被其它调用方推进到末位；同一请求内仅此一次额外读。
       const settled = await getJob(ctx.env, userId, jobId);
       const current = settled ?? job;
       const done = current.processed >= ids.length;
-      if (done) await updateJob(ctx.env, userId, jobId, { status: 'done' });
-      // 复用 current（置 done 后就地合并状态），彻底去掉原先紧跟其后的第二次查库。
-      const finalJob = done ? ({ ...current, status: 'done' } as typeof current) : current;
+      // 方案A: 游标(串行)模式收尾同样置 finalizing，交由 /finalize 完成收尾。
+      if (done) await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
+      // 复用 current（置 finalizing 后就地合并状态），彻底去掉原先紧跟其后的第二次查库。
+      const finalJob = done ? ({ ...current, status: 'finalizing' } as typeof current) : current;
       const result: AiJobRunResult = {
         job: toApiJob(finalJob),
         done: finalJob.processed >= ids.length,
@@ -145,13 +144,12 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     return json(result);
   }
 
-  // 方案A 失败隔离：单个分片在「模型调用 + D1 写入 + finalize」任意环节抛出
-  // 非预期异常（并发下的 D1 SQLITE_BUSY / 连接器重置等，表现为 500
-  // "服务器内部错误"）时，不让异常冒泡成整轮 /run 的 500 —— 否则客户端
-  // organize.ts 的 abort.abort() 会连带杀掉其它在途分片，整轮整理全废。
-  // 改为：记录错误、把本分片计为已处理(含失败)、返回 200 + modelError，
-  // 让其它分片继续、收尾分片仍能正常收口(done)。受影响书签仅本轮拿不到建议，
-  // 可重新整理补回，而不是全盘失败。
+  // 方案A 失败隔离：单个分片在「模型调用 + D1 写入」任意环节抛出非预期异常
+  // （并发下的 D1 SQLITE_BUSY / 连接器重置等，表现为 500 "服务器内部错误"）时，
+  // 不让异常冒泡成整轮 /run 的 500 —— 否则客户端 organize.ts 的 abort.abort()
+  // 会连带杀掉其它在途分片，整轮整理全废。改为：记录错误、把本分片计为已处理
+  // (含失败)、返回 200 + modelError，让其它分片继续、收尾分片仍能正常收口(finalizing)。
+  // 受影响书签仅本轮拿不到建议，可重新整理补回，而不是全盘失败。
   try {
   // 每个分片独立把 queued 翻成 running（幂等，重复调用无副作用）。
   if (job.status === 'queued') {
@@ -179,7 +177,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Cloudflare Pages Functions 的 ~30s 墙钟杀掉、而客户端 28s 超时先触发，表现为
   // "0/168 + 请求超时"。该信号在 providers.withDeadline 中与每次调用的
   // REQUEST_TIMEOUT_MS 取较小值，保证无论后者如何配置都不会突破墙钟。
-  // `TN_PARTITION_BUDGET_MS` 可调（默认 25s，给 D1 写入与收尾 finalize 留余量）。
+  // `TN_PARTITION_BUDGET_MS` 可调（默认 25s，给 D1 写入留余量，finalize 已剥离）。
   // 25s = 8s 抓取上限 + 15s 模型底线 + ~2s 固定开销（D1 查询/缓存/提示词构建）。
   const partitionBudgetMs = Math.max(5_000, Number(ctx.env.TN_PARTITION_BUDGET_MS) || 25_000);
   const partitionSignal = AbortSignal.timeout(partitionBudgetMs);
@@ -192,8 +190,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   /**
    * Atomically advances the job counters for this slice, then decides whether
    * this slice is the finisher. Returns the freshly-read job and that flag.
-   * The finisher is the only slice permitted to run the shared-state finalize
-   * (auto-apply / hierarchy rebuild).
+   * The finisher is the only slice permitted to mark the job `finalizing`
+   * (modeling complete, awaiting the separate finalize endpoint).
    */
   const commit = async (
     counts: { processed: number; suggested: number; failed: number },
@@ -210,9 +208,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     const total = updated.total ?? ids.length;
     const isFinal = !fatal && updated.processed >= total;
     if (isFinal) {
-      await updateJob(ctx.env, userId, jobId, { status: 'done' });
-      // 刚置 done，直接在返回对象上合并状态即可，省一次 D1 查询（E3：去掉冗余 getJob）。
-      return { finalJob: { ...updated, status: 'done' }, isFinal: true };
+      // 方案A: 模型推理完成、待收尾，置 finalizing；finalize 由独立端点执行后置 done。
+      await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
+      // 刚置 finalizing，直接在返回对象上合并状态即可，省一次 D1 查询（E3：去掉冗余 getJob）。
+      return { finalJob: { ...updated, status: 'finalizing' }, isFinal: true };
     }
     return { finalJob: updated as NonNullable<Awaited<ReturnType<typeof getJob>>>, isFinal: false };
   };
@@ -246,31 +245,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       outcome.fatal ? outcome.modelError : null,
     );
 
-    // Finalize once, on the finisher: apply high-confidence placements and
-    // measure how much NEW taxonomy this run introduced (advisory rebalance).
+    // 方案A: finalize 已剥离到独立端点 /finalize，/run 不再执行收尾
+    // （autoApplyCategories / 新标签统计）。收尾由前端在所有分片完成后单独触发，
+    // 避免慢网关 + 大范围下末片叠加 finalize 顶破 Cloudflare 30s 墙钟。
     let autoApplied = 0;
     let rebalanceWarning = false;
-    if (isFinal && !outcome.fatal) {
-      try {
-        autoApplied = await autoApplyCategories(ctx.env, userId, local.autoApplyThreshold, jobId);
-      } catch (e) {
-        log.error('ai.job.autoapply', {
-          userId,
-          jobId,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-      try {
-        const { newTags, existingTags } = await countJobNewTags(ctx.env, userId, jobId);
-        rebalanceWarning = shouldWarnRebalance(newTags, existingTags);
-      } catch (e) {
-        log.error('ai.job.rebalance', {
-          userId,
-          jobId,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
 
     log.info('ai.job.chunk', {
       userId,
@@ -398,43 +377,12 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     outcome.fatal ? outcome.modelError : null,
   );
 
-  // Finalize once, on the finisher: auto-apply, sync the three-level hierarchy,
-  // and measure new-taxonomy share. All operate on shared state, so they must
-  // not run per slice.
+  // 方案A: finalize 已剥离到独立端点 /finalize，/run 不再执行收尾
+  // （autoApply / applyTagHierarchy / 新标签统计）。收尾由前端在所有分片完成后
+  // 单独触发，避免慢网关 + 大范围下末片叠加 finalize 顶破 Cloudflare 30s 墙钟。
   let autoApplied = 0;
   let autoGrouped: AutoGroupResult | undefined;
   let rebalanceWarning = false;
-  if (isFinal && !outcome.fatal) {
-    try {
-      autoApplied = await autoApply(ctx.env, userId, local.autoApplyThreshold, jobId);
-    } catch (e) {
-      log.error('ai.job.autoapply', {
-        userId,
-        jobId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-    try {
-      autoGrouped = await applyTagHierarchy(ctx.env.DB, userId);
-    } catch (e) {
-      log.error('ai.job.grouping', {
-        userId,
-        jobId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      // Grouping failure is not fatal to the run: proposals are already saved.
-    }
-    try {
-      const { newTags, existingTags } = await countJobNewTags(ctx.env, userId, jobId);
-      rebalanceWarning = shouldWarnRebalance(newTags, existingTags);
-    } catch (e) {
-      log.error('ai.job.rebalance', {
-        userId,
-        jobId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
 
   log.info('ai.job.chunk', {
     userId,
@@ -471,12 +419,18 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     // 非预期异常兜底：优雅降级，避免整轮 500。
     const msg = e instanceof Error ? e.message : String(e);
     log.error('ai.job.partition_failed', { userId, jobId, partition: usePartition, error: msg });
-    // 推进计数器，使收尾分片仍能触发 done，避免整轮卡在 running。
+    // 推进计数器，使收尾分片仍能触发 finalize，避免整轮卡在 running。
     try {
       await incrementJobCounters(ctx.env, userId, jobId, {
         processed: slice.length,
         failed: slice.length,
       });
+      // 方案A: 若该失败分片恰是末片（计数后已抵 total），把任务标为 finalizing，
+      // 使前端仍能触发 /finalize 收尾（建议已落库），避免整轮卡在 running。
+      const after = (await getJob(ctx.env, userId, jobId)) ?? job;
+      if (after.processed >= (after.total ?? ids.length)) {
+        await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
+      }
     } catch {
       /* 计数器本身也失败则放弃，其它分片会补齐 */
     }

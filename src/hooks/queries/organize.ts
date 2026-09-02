@@ -286,6 +286,8 @@ export interface RunState {
    * taxonomy — a hint that a full re-classify would produce a cleaner tree.
    */
   rebalanceWarning: boolean;
+  /** 方案A: 模型推理分片全部完成、正在调用 /finalize 收尾（auto-apply + 建组）时的瞬时状态。 */
+  applying: boolean;
 }
 
 const IDLE: RunState = {
@@ -301,6 +303,7 @@ const IDLE: RunState = {
   topics: [],
   autoGrouped: null,
   rebalanceWarning: false,
+  applying: false,
 };
 
 /**
@@ -494,6 +497,7 @@ export function useOrganizeRun() {
             topics: mergeTopicCounts(s.topics, result.topics),
             autoGrouped: result.autoGrouped ?? s.autoGrouped,
             rebalanceWarning: s.rebalanceWarning || result.rebalanceWarning,
+            applying: s.applying,
           }));
         };
 
@@ -512,6 +516,35 @@ export function useOrganizeRun() {
         await Promise.all(workers);
 
         if (cancelled.current) break;
+
+        // 方案A: 模型推理分片全部完成后，独立调用 /finalize 收尾（auto-apply + 三级归类
+        // 重建 + 新标签统计），使单请求不叠加模型推理、不越 30s 墙钟。仅当任务进入
+        // finalizing（模型完成、待收尾）时触发；failed/cancelled/未收尾跳过。
+        if (lastJob && lastJob.status === 'finalizing') {
+          try {
+            setState((s) => ({ ...s, applying: true }));
+            const fr = await api.post<AiJobRunResult>(
+              `/ai/jobs/${jobId}/finalize`,
+              {},
+              { signal: abort.signal },
+            );
+            autoApplied += fr.autoApplied;
+            lastJob = fr.job;
+            setState((s) => ({
+              ...s,
+              job: fr.job,
+              autoApplied,
+              autoGrouped: fr.autoGrouped ?? s.autoGrouped,
+              rebalanceWarning: s.rebalanceWarning || fr.rebalanceWarning,
+              applying: false,
+            }));
+          } catch (e) {
+            // finalize 失败：幂等可重试，不整轮 abort；建议已落库，可稍后重新整理补回。
+            error = error ?? (e instanceof Error ? e.message : '应用整理结果失败');
+            setState((s) => ({ ...s, applying: false }));
+          }
+        }
+
         // 末趟仍未覆盖的书签数 = 真正需要人工复核的量（避免跨 pass 重复计入）。
         finalUncovered = passUncovered.size;
         // 全覆盖 / 已达补跑上限 / 真错误且无补跑空间：停止补跑。

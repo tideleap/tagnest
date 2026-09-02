@@ -293,6 +293,8 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
         </Notice>
       )}
 
+      {run.applying && <Notice tone="info">正在应用整理结果…</Notice>}
+
       {run.error && <Notice tone="critical">{run.error}</Notice>}
 
       {/* P2-2: the run introduced a large share of new tags — the incremental

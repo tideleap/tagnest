@@ -30,7 +30,7 @@ export const MAX_JOB_ITEMS = 2000;
 /** Bookmarks processed per `run` call. Sized to stay well inside request limits. */
 export const RUN_CHUNK = 20;
 
-export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+export type JobStatus = 'queued' | 'running' | 'finalizing' | 'done' | 'failed' | 'cancelled';
 
 export interface JobScope {
   target: 'untagged' | 'all' | 'ids';
