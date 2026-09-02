@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronUp, FolderTree, Sparkles, Wand2 } from 'lucide-react';
+import { ChevronRight, Flame, FolderTree, Hash, Sparkles, Wand2 } from 'lucide-react';
 import type { Bookmark, Tag } from '@shared/types';
 import {
   buildPrimaryCategoryGroups,
@@ -10,26 +10,33 @@ import {
 import { tagColorVars, Button } from '@/components/ui';
 import { cx } from '@/lib/cx';
 import { useCategoryWriteback } from '@/hooks/queries/category';
+import { useRecordVisit } from '@/hooks/queries';
+import { displayHost } from '@/lib/url';
 import { NavigationTile } from './NavigationTile';
 
 /**
- * Website-navigation style browse view for the Library.
+ * Website-navigation style browse view for the Library — arranged like a
+ * portal directory (Sogou-style):
+ *
+ *   1. A horizontal category tab bar (全部 + each top-level category).
+ *   2. A left "热搜排行榜" rail: the most-visited bookmarks in the current
+ *      scope (whole library on 全部, or just the open category).
+ *   3. A main grid of favicon tiles, grouped by sub-category.
+ *   4. A bottom "热门标签" rail: sub-category chips (in a category) or the
+ *      top-level categories (on 全部) that jump / filter the view.
  *
  * Bookmarks are grouped by their PRIMARY category — the same placement the
  * bookmark bar and the browser extension consume, read from the writeback feed
- * — so the view can never disagree with what lands in the toolbar.
- *
- * Each category becomes a section; inside it, bookmarks render as compact
- * favicon tiles (a "site navigation" grid) instead of management cards. The
- * goal here is fast visual scanning and one-click open, not bulk edits.
- * Untagged bookmarks collect in a catch-all section with a "立即整理" entry
- * point into the categoriser.
+ * — so the view can never disagree with what lands in the toolbar. Each tile
+ * is a compact "site navigation" cell (see NavigationTile) for fast scanning
+ * and one-click open, not bulk management.
  */
 
-const STORAGE_KEY = 'tagnest.library.category-collapsed';
-
+const ALL_TAB = '__all__';
 /** Cap on tiles per sub-section before a "load more" control appears. */
 const PER_SECTION_LIMIT = 18;
+/** Number of rows in the left hot-search rail. */
+const HOT_LIMIT = 8;
 
 export function CategoryView({
   bookmarks,
@@ -68,24 +75,46 @@ export function CategoryView({
     [tags, bookmarks, primaryCategoryByBookmark],
   );
 
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, boolean>) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
+  const [childFilter, setChildFilter] = useState<string | null>(null);
 
+  // Drop the selection if the data refresh retires the open category.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(collapsed));
-    } catch {
-      /* quota / private mode — ignore */
+    if (activeTab !== ALL_TAB && !groups.some((g) => g.id === activeTab)) {
+      setActiveTab(ALL_TAB);
+      setChildFilter(null);
     }
-  }, [collapsed]);
+  }, [groups, activeTab]);
+
+  const activeGroup = activeTab === ALL_TAB ? null : groups.find((g) => g.id === activeTab) ?? null;
+
+  // Bookmarks in the current scope: everything for 全部, or just this category.
+  const scopeBookmarks = useMemo(() => {
+    if (!activeGroup) return bookmarks;
+    return [...activeGroup.directItems, ...activeGroup.children.flatMap((c) => c.items)];
+  }, [activeGroup, bookmarks]);
+
+  // Hot ranking: most-visited first, recent as tiebreak.
+  const hotBookmarks = useMemo(() => {
+    return [...scopeBookmarks]
+      .sort(
+        (a, b) =>
+          (b.visitCount ?? 0) - (a.visitCount ?? 0) ||
+          (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
+      )
+      .slice(0, HOT_LIMIT);
+  }, [scopeBookmarks]);
+
+  // Bottom rail: sub-categories of the open group, or every top-level category.
+  const hotTags = useMemo(() => {
+    if (!activeGroup) return groups.filter((g) => g.id !== UNTAGGED_GROUP_ID);
+    return activeGroup.children;
+  }, [activeGroup, groups]);
+
+  const selectTab = (id: string) => {
+    setActiveTab(id);
+    setChildFilter(null);
+  };
 
   if (groups.length === 0) {
     return (
@@ -108,144 +137,287 @@ export function CategoryView({
     );
   }
 
-  const toggle = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
-
   return (
     <div className="flex flex-col gap-5">
-      {groups.map((group) => (
-        <CategorySection
-          key={group.id}
-          group={group}
-          collapsed={collapsed[group.id] === true}
-          onToggle={() => toggle(group.id)}
-          onOrganizeUntagged={() => navigate('/organize?mode=category')}
-        />
-      ))}
+      {/* Category tab bar (sticky) */}
+      <div className="sticky top-0 z-10 -mx-1 flex gap-1.5 overflow-x-auto border-b border-line bg-glass-canvas/85 px-1 py-2 backdrop-blur">
+        <TabPill active={activeTab === ALL_TAB} onClick={() => selectTab(ALL_TAB)}>
+          全部
+        </TabPill>
+        {groups.map((g) => (
+          <TabPill
+            key={g.id}
+            active={activeTab === g.id}
+            colorIndex={g.colorIndex}
+            onClick={() => selectTab(g.id)}
+          >
+            {g.name}
+          </TabPill>
+        ))}
+      </div>
+
+      {/* Body: hot rail + site grid */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+        <aside className="lg:w-60 lg:shrink-0">
+          <HotRanking items={hotBookmarks} />
+        </aside>
+        <div className="min-w-0 flex-1">
+          {activeGroup ? (
+            <CategoryDetail
+              group={activeGroup}
+              childFilter={childFilter}
+              onClearFilter={() => setChildFilter(null)}
+              onOrganize={() => navigate('/organize?mode=category')}
+            />
+          ) : (
+            <AllCategories groups={groups} onOpenTab={selectTab} onOrganize={() => navigate('/organize?mode=category')} />
+          )}
+        </div>
+      </div>
+
+      {/* Bottom hot tags / categories rail */}
+      {hotTags.length > 0 && (
+        <div className="border-t border-line pt-4">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
+            <Hash size={13} className="text-brand-accent" aria-hidden />
+            {activeGroup ? '热门标签' : '全部分类'}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {hotTags.map((t) => {
+              const isChildActive = activeGroup ? childFilter === t.id : false;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => (activeGroup ? setChildFilter(isChildActive ? null : t.id) : selectTab(t.id))}
+                  className={cx(
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                    isChildActive
+                      ? 'border-brand bg-brand-soft text-brand-ink'
+                      : 'border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink',
+                  )}
+                >
+                  {activeGroup && (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ ...tagColorVars(t.colorIndex), background: 'var(--tag-dot)' }}
+                      aria-hidden
+                    />
+                  )}
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CategorySection({
-  group,
-  collapsed,
-  onToggle,
-  onOrganizeUntagged,
+/* ------------------------------------------------------------------ *
+ * Tab bar
+ * ------------------------------------------------------------------ */
+
+function TabPill({
+  active,
+  colorIndex,
+  onClick,
+  children,
 }: {
-  group: CategoryGroup;
-  collapsed: boolean;
-  onToggle: () => void;
-  /** Jump to the categorize organiser from the 未分类 group. */
-  onOrganizeUntagged: () => void;
+  active: boolean;
+  colorIndex?: number;
+  onClick: () => void;
+  children: ReactNode;
 }) {
-  const isUntagged = group.id === UNTAGGED_GROUP_ID;
-  const totalCount =
-    group.directItems.length + group.children.reduce((s, c) => s + c.items.length, 0);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors',
+        active ? 'bg-brand text-on-brand shadow-xs' : 'bg-surface text-ink-soft hover:bg-sunken hover:text-ink',
+      )}
+    >
+      {colorIndex !== undefined && (
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ ...tagColorVars(colorIndex), background: 'var(--tag-dot)' }}
+          aria-hidden
+        />
+      )}
+      {children}
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Left hot-search rail
+ * ------------------------------------------------------------------ */
+
+function HotRanking({ items }: { items: Bookmark[] }) {
+  const recordVisit = useRecordVisit();
 
   return (
-    <section
-      className="rounded-xl border border-line bg-surface/70 backdrop-blur-sm"
-      aria-labelledby={`category-${group.id}`}
-    >
-      {/* Group header — name, colour accent, counts, collapse control. */}
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={!collapsed}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-        >
-          <ChevronDown
-            size={15}
-            aria-hidden
-            className={cx('shrink-0 text-ink-faint transition-transform', collapsed && '-rotate-90')}
-          />
-          {!isUntagged ? (
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 shrink-0 rounded-sm"
-              style={{ ...tagColorVars(group.colorIndex), background: 'var(--tag-dot)' }}
-            />
-          ) : (
-            <Sparkles size={14} aria-hidden className="shrink-0 text-ink-faint" />
-          )}
-          <h2
-            id={`category-${group.id}`}
-            className="min-w-0 truncate text-sm font-semibold text-ink"
-          >
-            {group.name}
-          </h2>
-          <span className="shrink-0 text-2xs tabular-nums text-ink-faint">
-            {group.children.length > 0 && `${group.children.length} 个子类 · `}
-            {totalCount} 个书签
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onToggle}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
-        >
-          {collapsed ? (
-            <>
-              <ChevronDown size={12} aria-hidden />
-              展开
-            </>
-          ) : (
-            <>
-              <ChevronUp size={12} aria-hidden />
-              收起
-            </>
-          )}
-        </button>
+    <div className="rounded-xl border border-line bg-surface/70 p-4">
+      <div className="mb-3 flex items-center gap-1.5">
+        <Flame size={15} className="text-brand-accent" aria-hidden />
+        <h3 className="text-sm font-semibold text-ink">全网热搜榜</h3>
       </div>
-
-      {!collapsed && (
-        <div className="flex flex-col gap-5 px-4 py-4">
-          {/* Level 2: child-tag sub-sections first… */}
-          {group.children.map((child) => (
-            <SubSection
-              key={child.id}
-              title={child.name}
-              colorIndex={child.colorIndex}
-              items={child.items}
-            />
-          ))}
-
-          {/* …then the group's direct bookmarks. */}
-          {group.directItems.length > 0 && (
-            <SubSection
-              title={isUntagged ? '尚未分类' : '直接归类'}
-              items={group.directItems}
-              untagged={isUntagged}
-            />
-          )}
-
-          {isUntagged && (
-            <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
-              <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
-                这些书签还没有主分类。运行一次「精确分类」，AI
-                会为每条书签指定唯一归属，确认后即写入。
-              </p>
-              <Button
-                size="sm"
-                variant="secondary"
-                iconLeft={<Wand2 size={14} />}
-                onClick={onOrganizeUntagged}
+      {items.length === 0 ? (
+        <p className="text-xs leading-relaxed text-ink-faint">
+          还没有访问记录。打开书签后，这里会按访问频次排出热门站点。
+        </p>
+      ) : (
+        <ol className="space-y-0.5">
+          {items.map((b, i) => (
+            <li key={b.id}>
+              <a
+                href={b.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                  e.preventDefault();
+                  recordVisit.mutate(b.id);
+                  window.open(b.url, '_blank', 'noopener,noreferrer');
+                }}
+                className="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors hover:bg-sunken"
+                title={b.title || displayHost(b.url)}
               >
-                立即整理
-              </Button>
-            </div>
-          )}
-        </div>
+                <span
+                  className={cx(
+                    'w-4 shrink-0 text-center text-xs tabular-nums',
+                    i < 3 ? 'font-semibold text-brand' : 'text-ink-faint',
+                  )}
+                >
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-ink-soft group-hover:text-ink">
+                  {b.title || displayHost(b.url)}
+                </span>
+                {i === 0 && (
+                  <span className="shrink-0 rounded bg-critical-soft px-1 text-[10px] font-medium text-critical-ink">
+                    热
+                  </span>
+                )}
+              </a>
+            </li>
+          ))}
+        </ol>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * 全部 tab — every category as a block
+ * ------------------------------------------------------------------ */
+
+function AllCategories({
+  groups,
+  onOpenTab,
+  onOrganize,
+}: {
+  groups: CategoryGroup[];
+  onOpenTab: (id: string) => void;
+  onOrganize: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      {groups.map((g) =>
+        g.id === UNTAGGED_GROUP_ID ? (
+          <UntaggedBlock key={g.id} group={g} onOrganize={onOrganize} />
+        ) : (
+          <CategoryBlock key={g.id} group={g} onOpen={() => onOpenTab(g.id)} />
+        ),
+      )}
+    </div>
+  );
+}
+
+function CategoryBlock({ group, onOpen }: { group: CategoryGroup; onOpen: () => void }) {
+  const items = useMemo(
+    () => [...group.directItems, ...group.children.flatMap((c) => c.items)],
+    [group],
+  );
+
+  return (
+    <section className="rounded-xl border border-line bg-surface/70">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full items-center gap-2.5 border-b border-line px-4 py-3 text-left transition-colors hover:bg-sunken/60"
+      >
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-sm"
+          style={{ ...tagColorVars(group.colorIndex), background: 'var(--tag-dot)' }}
+          aria-hidden
+        />
+        <h2 className="text-sm font-semibold text-ink">{group.name}</h2>
+        <span className="text-2xs tabular-nums text-ink-faint">{items.length} 个书签</span>
+        <ChevronRight size={14} className="ml-auto shrink-0 text-ink-faint" aria-hidden />
+      </button>
+      <div className="px-4 py-4">
+        <SiteGrid items={items} />
+      </div>
     </section>
   );
 }
 
-/**
- * One level-2 bucket: a small title bar plus a dense favicon-tile grid. Items
- * beyond the cap hide behind a "load more" control so a huge bucket cannot
- * blow up the page.
- */
+/* ------------------------------------------------------------------ *
+ * Single category tab — sub-sections + child filter
+ * ------------------------------------------------------------------ */
+
+function CategoryDetail({
+  group,
+  childFilter,
+  onClearFilter,
+  onOrganize,
+}: {
+  group: CategoryGroup;
+  childFilter: string | null;
+  onClearFilter: () => void;
+  onOrganize: () => void;
+}) {
+  const isUntagged = group.id === UNTAGGED_GROUP_ID;
+  const children = childFilter ? group.children.filter((c) => c.id === childFilter) : group.children;
+
+  return (
+    <div className="flex flex-col gap-5">
+      {childFilter && (
+        <button
+          type="button"
+          onClick={onClearFilter}
+          className="inline-flex w-fit items-center gap-1 rounded-full border border-line px-2.5 py-1 text-2xs text-ink-soft transition-colors hover:text-ink"
+        >
+          <ChevronRight size={12} className="rotate-180" aria-hidden />
+          返回「{group.name}」全部
+        </button>
+      )}
+
+      {children.map((child) => (
+        <SubSection key={child.id} title={child.name} colorIndex={child.colorIndex} items={child.items} />
+      ))}
+
+      {group.directItems.length > 0 && (
+        <SubSection title={isUntagged ? '尚未分类' : '常用站点'} items={group.directItems} untagged={isUntagged} />
+      )}
+
+      {isUntagged && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
+            这些书签还没有主分类。运行一次「精确分类」，AI 会为每条书签指定唯一归属，确认后即写入。
+          </p>
+          <Button size="sm" variant="secondary" iconLeft={<Wand2 size={14} />} onClick={onOrganize}>
+            立即整理
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SubSection({
   title,
   colorIndex,
@@ -257,24 +429,38 @@ function SubSection({
   items: Bookmark[];
   untagged?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasMore = items.length > PER_SECTION_LIMIT;
-  const visible = expanded ? items : items.slice(0, PER_SECTION_LIMIT);
-
+  if (items.length === 0) return null;
   return (
     <div>
       <div className="mb-2.5 flex items-center gap-2">
         {!untagged && colorIndex !== undefined && (
           <span
-            aria-hidden
             className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
             style={{ ...tagColorVars(colorIndex), background: 'var(--tag-dot)' }}
+            aria-hidden
           />
         )}
         <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{title}</h3>
         <span className="text-2xs tabular-nums text-ink-faint">{items.length}</span>
       </div>
+      <SiteGrid items={items} />
+    </div>
+  );
+}
 
+/* ------------------------------------------------------------------ *
+ * Shared: dense favicon-tile grid with a "load more" cap
+ * ------------------------------------------------------------------ */
+
+function SiteGrid({ items }: { items: Bookmark[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasMore = items.length > PER_SECTION_LIMIT;
+  const visible = expanded ? items : items.slice(0, PER_SECTION_LIMIT);
+
+  if (items.length === 0) return <p className="text-xs text-ink-faint">该分类下暂无书签。</p>;
+
+  return (
+    <div>
       <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {visible.map((b) => (
           <li key={b.id}>
@@ -290,20 +476,34 @@ function SubSection({
             onClick={() => setExpanded((v) => !v)}
             className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
           >
-            {expanded ? (
-              <>
-                <ChevronUp size={11} aria-hidden />
-                收起多余 {items.length - PER_SECTION_LIMIT} 个
-              </>
-            ) : (
-              <>
-                <ChevronDown size={11} aria-hidden />
-                加载更多（还有 {items.length - PER_SECTION_LIMIT} 个）
-              </>
-            )}
+            {expanded ? '收起多余' : `加载更多（还有 ${items.length - PER_SECTION_LIMIT} 个）`}
           </button>
         </div>
       )}
     </div>
+  );
+}
+
+function UntaggedBlock({ group, onOrganize }: { group: CategoryGroup; onOrganize: () => void }) {
+  const items = group.directItems;
+  return (
+    <section className="rounded-xl border border-line bg-surface/70">
+      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+        <Sparkles size={14} className="shrink-0 text-ink-faint" aria-hidden />
+        <h2 className="text-sm font-semibold text-ink">{group.name}</h2>
+        <span className="text-2xs tabular-nums text-ink-faint">{items.length} 个书签</span>
+      </div>
+      <div className="px-4 py-4">
+        <SiteGrid items={items} />
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
+            这些书签还没有主分类。运行一次「精确分类」，AI 会为每条书签指定唯一归属。
+          </p>
+          <Button size="sm" variant="secondary" iconLeft={<Wand2 size={14} />} onClick={onOrganize}>
+            立即整理
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
