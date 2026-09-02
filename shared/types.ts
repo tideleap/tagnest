@@ -623,7 +623,7 @@ export interface AiJobEstimate {
   bookmarks: number;
   /** Model calls (BATCH_SIZE bookmarks each). */
   batches: number;
-  /** Client-driven run iterations (RUN_CHUNK bookmarks each). */
+  /** Client-driven run iterations (RUN_CHUNK_LEGACY bookmarks each). */
   chunks: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;

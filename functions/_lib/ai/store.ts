@@ -27,8 +27,16 @@ import type { CategorizeResult, RenameResult, SuggestionResult } from './engine'
 /** Snapshot ceiling. Above this the UI asks the user to narrow the scope. */
 export const MAX_JOB_ITEMS = 2000;
 
-/** Bookmarks processed per `run` call. Sized to stay well inside request limits. */
-export const RUN_CHUNK = 20;
+/**
+ * Bookmarks processed per `run` call **in the legacy cursor (serial) mode only**.
+ *
+ * C-3: 方案A 的并行分片模式不使用它 —— 客户端按 `PARTITION = 4`
+ * （src/hooks/queries/organize.ts）切片并带 `{from,to}` 调用 /run，服务端只在
+ * 请求不带 body 时才回退到 `ids.slice(processed, processed + RUN_CHUNK_LEGACY)`。
+ * 名字里带 LEGACY 是为了避免有人误以为「一次 /run 处理 20 条」仍是当前行为、
+ * 或按它去调并发/预算参数。estimate 的 `chunks` 也仍按串行口径给出（见 estimate.ts）。
+ */
+export const RUN_CHUNK_LEGACY = 20;
 
 export type JobStatus = 'queued' | 'running' | 'finalizing' | 'done' | 'failed' | 'cancelled';
 
@@ -394,6 +402,41 @@ export async function listJobs(env: Env, userId: string, limit = 5): Promise<Job
  * ------------------------------------------------------------------ */
 
 /**
+ * B-5: 执行建议写入批次，并按 D1 回传的 `meta.changes` 汇总**真实**插入行数。
+ *
+ * 三个 save* 函数的 INSERT 都是 `INSERT ... SELECT ... WHERE NOT EXISTS`：书签
+ * 已带该标签、或该建议此前被用户拒绝过时，语句会一行都不写。原先按「打算插入的
+ * 条数」计数，于是 `job.suggested`（以及 /run 返回的 `suggested`）系统性虚高 ——
+ * 用户看到「已生成 40 条建议」但审阅队列里只有 12 条，进度与结论都失真。
+ *
+ * D1 的 batch 按语句顺序返回一一对应的结果，因此用一个与 statements 等长的
+ * `isInsert` 掩码挑出 INSERT 的 changes 求和；DELETE / UPDATE 不计入。
+ */
+async function runSuggestionBatches(
+  env: Env,
+  statements: D1PreparedStatement[],
+  isInsert: boolean[],
+): Promise<number> {
+  if (statements.length === 0) return 0;
+  // D1 caps a single batch at 100 statements. A full chunk of 20 bookmarks
+  // with 4 tags + delete + summary each can reach 120 statements, so split
+  // into safe slices rather than letting D1 reject the whole chunk.
+  const BATCH_STATEMENT_LIMIT = 100;
+  let written = 0;
+  for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
+    // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
+    const results = await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
+    if (!Array.isArray(results)) continue;
+    results.forEach((res, k) => {
+      if (!isInsert[i + k]) return;
+      const changes = (res as { meta?: { changes?: number } } | undefined)?.meta?.changes;
+      written += typeof changes === 'number' ? changes : 0;
+    });
+  }
+  return written;
+}
+
+/**
  * Replaces the pending suggestions for the given bookmarks.
  *
  * Delete-then-insert rather than upsert: re-running the organiser should
@@ -408,8 +451,9 @@ export async function saveSuggestions(
   results: SuggestionResult[],
 ): Promise<number> {
   const statements: D1PreparedStatement[] = [];
+  /** B-5: 与 statements 等长的掩码，标记哪几条是参与计数的 INSERT。 */
+  const isInsert: boolean[] = [];
   const ts = nowIso();
-  let written = 0;
 
   for (const result of results) {
     statements.push(
@@ -417,6 +461,7 @@ export async function saveSuggestions(
         `DELETE FROM tag_suggestions WHERE bookmark_id = ? AND user_id = ? AND kind = 'tag' AND status = 'pending'`,
       ).bind(result.bookmarkId, userId),
     );
+    isInsert.push(false);
 
     for (const tag of result.tags) {
       // A tag the bookmark already carries is not a suggestion.
@@ -453,7 +498,7 @@ export async function saveSuggestions(
           tag.name,
         ),
       );
-      written += 1;
+      isInsert.push(true);
     }
 
     if (result.summary) {
@@ -463,20 +508,11 @@ export async function saveSuggestions(
             WHERE id = ? AND user_id = ? AND (ai_summary IS NULL OR ai_summary = '')`,
         ).bind(result.summary, result.bookmarkId, userId),
       );
+      isInsert.push(false);
     }
   }
 
-  if (statements.length > 0) {
-    // D1 caps a single batch at 100 statements. A full chunk of 20 bookmarks
-    // with 4 tags + delete + summary each can reach 120 statements, so split
-    // into safe slices rather than letting D1 reject the whole chunk.
-    const BATCH_STATEMENT_LIMIT = 100;
-    for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
-      // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
-      await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
-    }
-  }
-  return written;
+  return runSuggestionBatches(env, statements, isInsert);
 }
 
 export interface SuggestionRow {
@@ -1003,8 +1039,9 @@ export async function saveCategorySuggestions(
   results: CategorizeResult[],
 ): Promise<number> {
   const statements: D1PreparedStatement[] = [];
+  /** B-5: 同 saveSuggestions —— 只统计 INSERT 的真实影响行数。 */
+  const isInsert: boolean[] = [];
   const ts = nowIso();
-  let written = 0;
 
   for (const result of results) {
     const candidate = result.category;
@@ -1016,6 +1053,7 @@ export async function saveCategorySuggestions(
           WHERE bookmark_id = ? AND user_id = ? AND kind = 'category' AND status = 'pending'`,
       ).bind(result.bookmarkId, userId),
     );
+    isInsert.push(false);
 
     const pathName = candidate.path.join(' > ');
     statements.push(
@@ -1053,17 +1091,10 @@ export async function saveCategorySuggestions(
         pathName,
       ),
     );
-    written += 1;
+    isInsert.push(true);
   }
 
-  if (statements.length > 0) {
-    const BATCH_STATEMENT_LIMIT = 100;
-    for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
-      // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
-      await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
-    }
-  }
-  return written;
+  return runSuggestionBatches(env, statements, isInsert);
 }
 
 /**
@@ -1695,8 +1726,9 @@ export async function saveRenameSuggestions(
   results: RenameResult[],
 ): Promise<number> {
   const statements: D1PreparedStatement[] = [];
+  /** B-5: 同 saveSuggestions —— 只统计 INSERT 的真实影响行数。 */
+  const isInsert: boolean[] = [];
   const ts = nowIso();
-  let written = 0;
 
   for (const result of results) {
     const candidate = result.rename;
@@ -1719,6 +1751,7 @@ export async function saveRenameSuggestions(
           WHERE bookmark_id = ? AND user_id = ? AND kind = 'rename' AND status = 'pending'`,
       ).bind(result.bookmarkId, userId),
     );
+    isInsert.push(false);
 
     statements.push(
       env.DB.prepare(
@@ -1745,17 +1778,10 @@ export async function saveRenameSuggestions(
         candidate.title.trim(),
       ),
     );
-    written += 1;
+    isInsert.push(true);
   }
 
-  if (statements.length > 0) {
-    const BATCH_STATEMENT_LIMIT = 100;
-    for (let i = 0; i < statements.length; i += BATCH_STATEMENT_LIMIT) {
-      // D1 并发写入偶发 SQLITE_BUSY / 连接器重置：批次整体原子回滚，重试安全。
-      await withD1Retry(() => env.DB.batch(statements.slice(i, i + BATCH_STATEMENT_LIMIT)));
-    }
-  }
-  return written;
+  return runSuggestionBatches(env, statements, isInsert);
 }
 
 /**

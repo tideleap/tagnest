@@ -1,10 +1,10 @@
-import type { AiJobRunResult, AutoGroupResult } from '../../../../../shared/types';
+import type { AiJobRunResult } from '../../../../../shared/types';
 import type { Env, RequestData } from '../../../../_lib/env';
 import { requireUserId } from '../../../../_lib/auth';
 import { conflict, json, notFound } from '../../../../_lib/http';
 import { createLogger } from '../../../../_lib/logger';
 import {
-  RUN_CHUNK,
+  RUN_CHUNK_LEGACY,
   aggregateCategoryTopics,
   aggregateTopics,
   categorizeBookmarks,
@@ -36,7 +36,7 @@ import {
  * ## Two drive modes
  *
  * **Cursor mode (legacy, serial).** The client loops, each call processes the
- * next `RUN_CHUNK` bookmarks starting at `job.processed`, and reports `done`
+ * next `RUN_CHUNK_LEGACY` bookmarks starting at `job.processed`, and reports `done`
  * when nothing is left. One round trip per 20 bookmarks; survives a reload and
  * is trivially resumable.
  *
@@ -103,7 +103,7 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     const to = Math.min(ids.length, Math.max(from, Math.floor(body.to as number)));
     slice = ids.slice(from, to);
   } else {
-    slice = ids.slice(job.processed, job.processed + RUN_CHUNK);
+    slice = ids.slice(job.processed, job.processed + RUN_CHUNK_LEGACY);
   }
 
   // Nothing to process.
@@ -151,6 +151,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // (含失败)、返回 200 + modelError，让其它分片继续、收尾分片仍能正常收口(finalizing)。
   // 受影响书签仅本轮拿不到建议，可重新整理补回，而不是全盘失败。
   try {
+  // 分片起止计时基准（D-2）：用于 ai.job.chunk 日志的 partitionMs，便于在
+  // 慢网关下调参（观察单分片墙钟占用是否逼近 budgetMs）。
+  const sliceStart = Date.now();
   // 每个分片独立把 queued 翻成 running（幂等，重复调用无副作用）。
   if (job.status === 'queued') {
     await updateJob(ctx.env, userId, jobId, { status: 'running' });
@@ -159,15 +162,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Config is re-read per slice on purpose: changing the model or the tag
   // budget mid-run takes effect on the next slice instead of being frozen at
   // job creation.
+  // 方案A 性能(A-1): 配置行只读取一次（含解密 API key），复用同一 row 推导
+  // local 与 effective，避免 getEffectiveAiConfig 内部二次读库/解密——并行 6
+  // 分片下每趟原 18 次 ai_settings 读 + 18 次解密，现降为 6 次，释放 25s 分区
+  // 预算给模型调用（详见 billing.ts getEffectiveAiConfig 注释）。
   const row = await loadConfigRow(ctx.env, userId);
   const local = toLocalConfig(row);
-  const effective = await getEffectiveAiConfig(ctx.env, userId);
+  const effective = await getEffectiveAiConfig(ctx.env, userId, row);
   const config = effective?.config ?? null;
 
   // Vocabulary is also re-read per slice, so tags accepted from the previous
   // slice are already part of the taxonomy the next slice normalises against.
   // That is what stops a long run from inventing "前端" and "Frontend" in two
   // different slices of the same job.
+  //
+  // A-2（审计结论，故意不优化）: 曾考虑把 vocab / feedback 提到分片循环外只读一次
+  // 以省 2 次 D1 查询。**否决** —— 每个分片是独立的 HTTP 请求，"循环外"并不存在；
+  // 而在同一请求内它们本就只读一次。跨分片共享则会冻结词表，正是上面这条归一化
+  // 保证要避免的（并行 6 分片下 A、B 两片会各自造出 "前端"/"Frontend"）。
+  // 正确性优先于这 2 次查询；A-1 已把更贵的配置解密从 3 次降到 1 次。
   const vocab = await loadVocabulary(ctx.env, userId);
   // Load the user's accept/reject history so this slice's proposals are bent by
   // what they have accepted or rejected before (the "越用越准" loop).
@@ -206,7 +219,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     });
     const updated = (await getJob(ctx.env, userId, jobId)) ?? job;
     const total = updated.total ?? ids.length;
-    const isFinal = !fatal && updated.processed >= total;
+    // 方案A(B-1): 收尾仅当本分片非致命、且任务仍处于可收尾状态（running/queued）。
+    // 必须排除已 failed / cancelled —— 失败隔离模式下，某分片 fatal 已把任务置
+    // failed，若另一非致命收尾分片仍把它覆盖回 finalizing，会静默掩盖致命错误
+    // 并对未成功推理的书签错误执行 auto-apply。
+    const isFinal =
+      !fatal &&
+      updated.status !== 'failed' &&
+      updated.status !== 'cancelled' &&
+      updated.processed >= total;
     if (isFinal) {
       // 方案A: 模型推理完成、待收尾，置 finalizing；finalize 由独立端点执行后置 done。
       await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
@@ -245,11 +266,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       outcome.fatal ? outcome.modelError : null,
     );
 
-    // 方案A: finalize 已剥离到独立端点 /finalize，/run 不再执行收尾
-    // （autoApplyCategories / 新标签统计）。收尾由前端在所有分片完成后单独触发，
-    // 避免慢网关 + 大范围下末片叠加 finalize 顶破 Cloudflare 30s 墙钟。
-    let autoApplied = 0;
-    let rebalanceWarning = false;
+    // C-6: 收尾（autoApplyCategories / 新标签统计）在 /finalize —— 理由见文件头
+    // "Why finalize runs on a separate endpoint"，此处不再复述。
 
     log.info('ai.job.chunk', {
       userId,
@@ -259,18 +277,19 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       processed: finalJob.processed,
       total: ids.length,
       suggested: written,
-      autoApplied,
       uncategorized: outcome.uncategorized,
       engine: outcome.engine,
       fatal: outcome.fatal,
+      partitionMs: Date.now() - sliceStart,
+      budgetMs: partitionBudgetMs,
     });
 
     const result: AiJobRunResult = {
       job: toApiJob(finalJob),
-      done: isFinal || Boolean(outcome.fatal),
+      done: isFinal,
       suggested: written,
-      autoApplied,
-      rebalanceWarning,
+      autoApplied: 0,
+      rebalanceWarning: false,
       uncovered: outcome.uncovered,
       uncoveredIds: outcome.uncoveredIds,
       uncategorized: outcome.uncategorized,
@@ -321,11 +340,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       unchanged: outcome.unchanged,
       engine: outcome.engine,
       fatal: outcome.fatal,
+      partitionMs: Date.now() - sliceStart,
+      budgetMs: partitionBudgetMs,
     });
 
     const result: AiJobRunResult = {
       job: toApiJob(finalJob),
-      done: isFinal || Boolean(outcome.fatal),
+      done: isFinal,
       suggested: written,
       autoApplied: 0,
       rebalanceWarning: false,
@@ -377,12 +398,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     outcome.fatal ? outcome.modelError : null,
   );
 
-  // 方案A: finalize 已剥离到独立端点 /finalize，/run 不再执行收尾
-  // （autoApply / applyTagHierarchy / 新标签统计）。收尾由前端在所有分片完成后
-  // 单独触发，避免慢网关 + 大范围下末片叠加 finalize 顶破 Cloudflare 30s 墙钟。
-  let autoApplied = 0;
-  let autoGrouped: AutoGroupResult | undefined;
-  let rebalanceWarning = false;
+  // C-6: 收尾（autoApply / applyTagHierarchy / 新标签统计）在 /finalize —— 理由见
+  // 文件头 "Why finalize runs on a separate endpoint"。因此本响应里的
+  // autoApplied / autoGrouped / rebalanceWarning 恒为空值，由 /finalize 产出。
 
   log.info('ai.job.chunk', {
     userId,
@@ -391,27 +409,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     processed: finalJob.processed,
     total: ids.length,
     suggested: written,
-    autoApplied,
-    autoGrouped: autoGrouped
-      ? { created: autoGrouped.createdCategories, relocated: autoGrouped.relocated }
-      : null,
     engine: outcome.engine,
     fatal: outcome.fatal,
+    partitionMs: Date.now() - sliceStart,
+    budgetMs: partitionBudgetMs,
   });
 
   const result: AiJobRunResult = {
     job: toApiJob(finalJob),
-    done: isFinal || Boolean(outcome.fatal),
+    done: isFinal,
     suggested: written,
-    autoApplied,
-    rebalanceWarning,
-      uncovered: outcome.uncovered,
-      uncoveredIds: outcome.uncoveredIds,
-      adultQuarantined: outcome.adultQuarantined,
+    autoApplied: 0,
+    rebalanceWarning: false,
+    uncovered: outcome.uncovered,
+    uncoveredIds: outcome.uncoveredIds,
+    adultQuarantined: outcome.adultQuarantined,
     engine: outcome.engine,
     modelError: outcome.modelError,
     topics: aggregateTopics(outcome.results),
-    autoGrouped,
+    autoGrouped: undefined,
   };
 
   return json(result);
@@ -420,6 +436,9 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     const msg = e instanceof Error ? e.message : String(e);
     log.error('ai.job.partition_failed', { userId, jobId, partition: usePartition, error: msg });
     // 推进计数器，使收尾分片仍能触发 finalize，避免整轮卡在 running。
+    // A-3: 计数后读到的 job 快照复用给响应体，不再第二次查库（原先连续两次
+    // getJob 只为拿同一行；异常路径也在 25s 分区预算内，能省就省）。
+    let recovered: Awaited<ReturnType<typeof getJob>> = null;
     try {
       await incrementJobCounters(ctx.env, userId, jobId, {
         processed: slice.length,
@@ -430,11 +449,15 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       const after = (await getJob(ctx.env, userId, jobId)) ?? job;
       if (after.processed >= (after.total ?? ids.length)) {
         await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
+        // 刚置 finalizing，就地合并状态即可，无需回查。
+        recovered = { ...after, status: 'finalizing' };
+      } else {
+        recovered = after;
       }
     } catch {
       /* 计数器本身也失败则放弃，其它分片会补齐 */
     }
-    const failedJob = (await getJob(ctx.env, userId, jobId)) ?? job;
+    const failedJob = recovered ?? job;
     const result: AiJobRunResult = {
       job: toApiJob(failedJob),
       done: false,

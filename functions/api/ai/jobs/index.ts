@@ -1,10 +1,11 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
-import { badRequest, badRequestCode, json, readJson } from '../../../_lib/http';
+import { badRequestCode, json, readJson } from '../../../_lib/http';
 import {
   MAX_JOB_ITEMS,
   createJob,
   listJobs,
+  parseJobScopeParams,
   resolveCategorizeScope,
   resolveScope,
   toApiJob,
@@ -49,23 +50,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // the legacy loose-label behaviour; 'categorize' runs the single-placement
   // pipeline (PRD §5.1 — reuses this endpoint rather than a new /api/ai/categorize).
   // Rename mode (Phase B) adds 'rename': conservative title cleanup.
-  const kind = String(body.kind ?? 'tagging');
-  if (kind !== 'tagging' && kind !== 'categorize' && kind !== 'rename') {
-    throw badRequest('任务类型无效');
-  }
-
-  const target = String(body.target ?? 'untagged');
-  if (target !== 'untagged' && target !== 'all' && target !== 'ids') {
-    throw badRequest('整理范围无效');
-  }
-
-  const explicitIds = Array.isArray(body.bookmarkIds)
-    ? [...new Set(body.bookmarkIds.map(String))].filter(Boolean).slice(0, MAX_JOB_ITEMS)
-    : [];
-
-  if (target === 'ids' && explicitIds.length === 0) {
-    throw badRequest('请选择要整理的书签');
-  }
+  //
+  // C-5: target / kind / bookmarkIds 的校验与 GET /api/ai/jobs/estimate 共用
+  // 同一实现（_lib/ai/job-params.ts）。创建任务时非法 kind 必须报错，故 strictKind。
+  const { target, kind, ids: explicitIds } = parseJobScopeParams(
+    { target: body.target, kind: body.kind, ids: body.bookmarkIds },
+    { strictKind: true },
+  );
 
   // Trial run (plan T2): `limit` clips the snapshot to the first N bookmarks,
   // so the user can sample a big library ("先试 20 条") before committing the

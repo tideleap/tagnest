@@ -1198,8 +1198,11 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
   const db = {
     prepare,
     batch(statements: Array<{ run: () => unknown }>) {
-      for (const s of statements) s.run();
-      return Promise.resolve([]);
+      // D1 的 batch 按语句顺序返回一一对应的结果（每项含 meta.changes）。
+      // store.ts 的 save*Suggestions 依赖它统计**真实**插入行数（B-5：
+      // INSERT ... WHERE NOT EXISTS 可能一行都不写），所以桩必须如实回传每条
+      // 语句的结果，而不是原先的空数组 —— 空数组会让真实写入数恒为 0。
+      return Promise.resolve(statements.map((s) => s.run()));
     },
   };
 

@@ -47,6 +47,7 @@ export * from './aliases';
 export * from './api';
 export * from './metrics';
 export * from './estimate';
+export * from './job-params';
 
 /**
  * Enriches one freshly saved bookmark. Safe to hand straight to `ctx.waitUntil`.

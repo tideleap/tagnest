@@ -3,7 +3,7 @@ import type { AiJobEstimate } from '../../../shared/types';
 import { BATCH_SIZE, buildCategorizePrompt, buildCoarsePrompt, buildRenamePrompt, buildTaggingPrompt } from './prompt';
 import { MAX_OUTPUT_TOKENS, RETRY_MAX_ATTEMPTS } from './providers';
 import { isModelReady, loadConfigRow, loadVocabulary } from './config';
-import { MAX_JOB_ITEMS, RUN_CHUNK, loadBookmarkInputs, resolveCategorizeScope, resolveScope } from './store';
+import { MAX_JOB_ITEMS, RUN_CHUNK_LEGACY, loadBookmarkInputs, resolveCategorizeScope, resolveScope } from './store';
 import type { JobScope } from './store';
 
 /**
@@ -123,7 +123,10 @@ export async function estimateJob(
         );
   const bookmarks = ids.length;
   const batches = Math.ceil(bookmarks / BATCH_SIZE);
-  const chunks = Math.ceil(bookmarks / RUN_CHUNK);
+  // C-3: `chunks` 是「旧游标(串行)模式下的 /run 往返次数」口径。方案A 的并行分片
+  // 模式实际往返数为 ceil(bookmarks / PARTITION=4)，但那只影响进度条粒度、不影响
+  // 成本（成本由 batches 决定），预估卡片沿用串行口径以保持历史可比性。
+  const chunks = Math.ceil(bookmarks / RUN_CHUNK_LEGACY);
 
   const row = await loadConfigRow(env, userId);
   const modelReady = isModelReady(row);

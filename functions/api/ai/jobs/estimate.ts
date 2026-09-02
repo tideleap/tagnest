@@ -1,7 +1,7 @@
 import type { Env, RequestData } from '../../../_lib/env';
 import { requireUserId } from '../../../_lib/auth';
-import { badRequest, json } from '../../../_lib/http';
-import { MAX_JOB_ITEMS, estimateJob } from '../../../_lib/ai';
+import { json } from '../../../_lib/http';
+import { estimateJob, parseJobScopeParams } from '../../../_lib/ai';
 
 /**
  * Cost forecast for a batch run — the "how much will this cost before I press
@@ -20,24 +20,14 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   const userId = requireUserId(ctx);
   const url = new URL(ctx.request.url);
 
-  const target = String(url.searchParams.get('target') ?? 'untagged');
-  if (target !== 'untagged' && target !== 'all' && target !== 'ids') {
-    throw badRequest('整理范围无效');
-  }
-
-  const rawKind = url.searchParams.get('kind');
-  const kind = rawKind === 'categorize' || rawKind === 'rename' ? rawKind : 'tagging';
-
-  const explicitIds =
-    target === 'ids'
-      ? [...new Set(String(url.searchParams.get('ids') ?? '').split(',').map((s) => s.trim()))]
-          .filter(Boolean)
-          .slice(0, MAX_JOB_ITEMS)
-      : [];
-
-  if (target === 'ids' && explicitIds.length === 0) {
-    throw badRequest('请选择要整理的书签');
-  }
+  // C-5: 与 POST /api/ai/jobs 共用同一份范围校验（_lib/ai/job-params.ts），
+  // 保证预估算的范围和真实任务算的范围永远一致。预估是只读的，非法 kind 沿用
+  // 历史行为静默回落到 tagging（strictKind 不开）。
+  const { target, kind, ids: explicitIds } = parseJobScopeParams({
+    target: url.searchParams.get('target'),
+    kind: url.searchParams.get('kind'),
+    ids: url.searchParams.get('ids'),
+  });
 
   const estimate = await estimateJob(ctx.env, userId, target, explicitIds, kind);
   return json({ estimate });

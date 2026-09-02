@@ -4,6 +4,7 @@ import { onRequestGet as treeHandler } from '../functions/api/category/tree';
 import { onRequestPost as assignHandler } from '../functions/api/category/assign';
 import { onRequestPost as createJobHandler } from '../functions/api/ai/jobs/index';
 import { onRequestPost as runHandler } from '../functions/api/ai/jobs/[id]/run';
+import { onRequestPost as finalizeHandler } from '../functions/api/ai/jobs/[id]/finalize';
 import { onRequestPost as undoHandler } from '../functions/api/ai/jobs/[id]/undo';
 import { onRequestGet as suggestionsHandler } from '../functions/api/ai/suggestions/index';
 import { onRequestPost as applyHandler } from '../functions/api/ai/suggestions/apply';
@@ -65,6 +66,15 @@ function jobCtx(env: Env, body: Record<string, unknown>) {
 function runCtx(env: Env, jobId: string) {
   return {
     request: new Request(`https://tagnest.test/api/ai/jobs/${jobId}/run`, { method: 'POST' }),
+    env,
+    data: { userId: USER },
+    params: { id: jobId },
+  } as any;
+}
+
+function finalizeCtx(env: Env, jobId: string) {
+  return {
+    request: new Request(`https://tagnest.test/api/ai/jobs/${jobId}/finalize`, { method: 'POST' }),
     env,
     data: { userId: USER },
     params: { id: jobId },
@@ -400,10 +410,17 @@ describe('POST /api/ai/jobs/:id/run — categorize', () => {
     expect(catSuggestions[0].bookmark_id).toBe('b1');
     expect(catSuggestions[0].status).toBe('pending');
 
-    // Job is marked done.
-    const job = state.ai_jobs.find((j) => j.id === 'cj1');
-    expect(job!.status).toBe('done');
-    expect(job!.processed).toBe(1);
+    // 方案A：/run 不再内联 finalize，末分片仅将任务置为 finalizing 待收尾。
+    let job = state.ai_jobs.find((j) => j.id === 'cj1')!;
+    expect(job.status).toBe('finalizing');
+    expect(job.processed).toBe(1);
+
+    // 真实生产流程由前端在 finalizing 后调用独立的 /finalize 端点完成收尾置 done。
+    const fres = await finalizeHandler(finalizeCtx(env, 'cj1'));
+    expect(fres.status).toBe(200);
+    job = state.ai_jobs.find((j) => j.id === 'cj1')!;
+    expect(job.status).toBe('done');
+    expect(job.processed).toBe(1);
   });
 
   it('returns 404 for unknown job', async () => {

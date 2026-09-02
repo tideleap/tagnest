@@ -141,8 +141,9 @@ describe('saveRenameSuggestions', () => {
     const written = await saveRenameSuggestions(env, 'u1', 'j1', [
       candidate('b2', '首页', 'Vite：下一代前端构建工具'),
     ]);
-    // written counts the intent, but the NOT EXISTS guard suppressed the row.
-    expect(written).toBe(1);
+    // B-5: `written` 现返回**真实**插入行数（D1 meta.changes 汇总），不再按意图计数。
+    // 该候选标题已被用户拒绝，NOT EXISTS 守卫抑制了 INSERT，故实际写入为 0。
+    expect(written).toBe(0);
     expect(state.tag_suggestions.filter((s) => s.bookmark_id === 'b2')).toHaveLength(1);
     expect(state.tag_suggestions[0].status).toBe('rejected');
   });

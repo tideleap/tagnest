@@ -132,8 +132,17 @@ export function isModelReady(row: ConfigRow): boolean {
  * Null is not an error: it means "fall back to the domain-derived fallback",
  * which is a fully supported mode rather than a failure.
  */
-export async function loadAiConfig(env: Env, userId: string): Promise<AiConfig | null> {
-  const row = await loadConfigRow(env, userId);
+/**
+ * @param preloadedRow 已读取的配置行（可选）。调用方若已持有 `loadConfigRow`
+ *   的结果（含解密后的 API key），传入它即可避免二次读库 + 二次解密——并行
+ *   分片下每趟可省大量 `ai_settings` 读与 AES 解密（见 getEffectiveAiConfig）。
+ */
+export async function loadAiConfig(
+  env: Env,
+  userId: string,
+  preloadedRow?: ConfigRow,
+): Promise<AiConfig | null> {
+  const row = preloadedRow ?? (await loadConfigRow(env, userId));
   if (!isModelReady(row)) return null;
 
   return {

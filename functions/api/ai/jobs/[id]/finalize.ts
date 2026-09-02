@@ -40,6 +40,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     throw conflict(`当前状态（${job.status}）不支持收尾`);
   }
 
+  // C-2: 已 done 的任务直接返回成功，不重跑收尾。
+  // 重跑本身是安全的（autoApply 只挑 status='pending' 的建议，applyTagHierarchy
+  // 按名查重 + parentId 等值跳过，都是幂等的），但它会白花一次「auto-apply 全量
+  // 扫描 + 整棵标签树重建」—— 大库上这是收尾里最贵的一段，而结果必然是
+  // autoApplied = 0。重复调用只可能来自客户端重试/双击，因此在此短路。
+  if (job.status === 'done') {
+    const already: AiJobRunResult = {
+      job: toApiJob(job),
+      done: true,
+      suggested: 0,
+      autoApplied: 0,
+      rebalanceWarning: false,
+      uncovered: 0,
+      engine: 'none',
+      modelError: null,
+    };
+    return json(already);
+  }
+
   let autoApplied = 0;
   let autoGrouped: AutoGroupResult | undefined;
   let rebalanceWarning = false;
@@ -105,9 +124,8 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     }
     // rename 无 auto-apply / 建组，仅置 done。
 
-    if (job.status !== 'done') {
-      await updateJob(ctx.env, userId, jobId, { status: 'done' });
-    }
+    // 到这里 status 必为 finalizing（done 已在上面短路），无条件置 done。
+    await updateJob(ctx.env, userId, jobId, { status: 'done' });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log.error('ai.job.finalize_failed', { userId, jobId, error: msg });

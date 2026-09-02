@@ -309,6 +309,15 @@ const IDLE: RunState = {
 /**
  * Merges per-chunk topic counts into a running total. Topics are de-duplicated
  * by name and summed, so the same topic appearing across chunks accumulates.
+ *
+ * A-4（审计结论，故意不优化）: 审计建议「topics 只在 finalize/organize 末段聚合一次，
+ * run 不再返回 topics」以省每分片的 O(n) 聚合。本实现**保留**每分片的 topics 聚合，原因：
+ * 1) 主题分类只发生在服务端 engine（`aggregateTopics`），前端/organize 层拿不到书签级
+ *    topic 归属，唯一能累加的入口就是各分片回传的 `result.topics`；
+ * 2) 本函数 `mergeTopicCounts` 依赖各分片 topics 做跨分片求和，若 run 不再返回，前端
+ *    分布图将无数据来源；
+ * 3) 单分片聚合成本几乎可忽略（审计原文也标注「可不做」）。
+ * 因此该微优化在现有架构下不划算，保持现状并文档化，避免误删导致图表缺数据。
  */
 function mergeTopicCounts(
   prev: AiTopicCount[],
@@ -345,8 +354,10 @@ function mergeTopicCounts(
  *
  *  - **Real progress.** Every partition returns fresh counters (read back from
  *    the atomic increment), so the bar moves for actual work completed.
- *  - **Interruptibility.** `stop()` flips `cancelled` / aborts the controller;
- *    in-flight partitions are cancelled and proposals already written stay.
+ *  - **Interruptibility.** `stop()` flips `cancelled` and tells the server to
+ *    mark the job `cancelled` (B-4). In-flight partitions are deliberately NOT
+ *    aborted — they are already paid for, and their proposals land in the queue;
+ *    the loop simply stops handing out new partitions and ignores late results.
  *  - **Concurrency safety.** Partitions own disjoint bookmark IDs, so their
  *    suggestion writes never collide; the counter increment is atomic, and the
  *    finalize runs exactly once, on the finisher.
@@ -358,10 +369,24 @@ export function useOrganizeRun() {
   const qc = useQueryClient();
   const [state, setState] = useState<RunState>(IDLE);
   const cancelled = useRef(false);
+  /**
+   * B-4: 当前在跑的任务 ID，供 stop() 通知服务端取消。
+   * 客户端 cancelled 只让本地循环停下来，服务端的 ai_jobs 行会永远停在
+   * running/finalizing —— 任务历史一直显示「整理中」，且后续 /run 仍会被接受。
+   */
+  const activeJobId = useRef<string | null>(null);
 
   const stop = useCallback(() => {
     cancelled.current = true;
     setState((s) => ({ ...s, running: false }));
+    // B-4: 同步把服务端任务行转为 cancelled（幂等；端点只在 queued/running 时改状态）。
+    // best-effort：网络失败也不阻塞 UI 停止。已写入的建议保留，用户可继续审阅。
+    const jobId = activeJobId.current;
+    if (jobId) {
+      void api.delete(`/ai/jobs/${jobId}`).catch(() => {
+        /* 取消是 best-effort：服务端未响应不影响客户端停止 */
+      });
+    }
   }, []);
 
   const reset = useCallback(() => {
@@ -393,10 +418,12 @@ export function useOrganizeRun() {
       let lastJob: AiJob | null = null;
       let error: string | null = null;
       let autoApplied = 0;
-      let uncovered = 0; // 累计显示用；最终值由 finalUncovered 覆盖（避免跨 pass 重复计数）
       let uncategorized = 0;
       let adultQuarantined = 0;
       let finalUncovered = 0; // 末趟仍未覆盖的书签数（真正需要人工复核的量）
+      // B-2: 致命错误（无效 key / 未知模型）一旦发生，补跑必然同样失败 ——
+      // 置位后跳出整个 pass 循环，避免白烧 MAX_PASSES 轮任务与配额。
+      let fatal = false;
 
       // 方案F：未覆盖（域名兜底/分片错误）书签自动补跑。
       // 不原地重放分片——那会让服务端重复计数 processed、破坏收尾判定。改为把这批
@@ -423,6 +450,7 @@ export function useOrganizeRun() {
         }
         if (!job) break;
         const jobId = job.id;
+        activeJobId.current = jobId; // B-4: 供 stop() 通知服务端取消
         setState((s) => ({ ...s, job, running: true }));
 
         // 方案A: 把整理范围切成多个不重叠的分片，用固定并发的 worker 池并行打出
@@ -472,15 +500,17 @@ export function useOrganizeRun() {
           }
 
           autoApplied += result.autoApplied;
-          uncovered += result.uncovered;
           uncategorized += result.uncategorized ?? 0;
           adultQuarantined += result.adultQuarantined ?? 0;
           lastJob = result.job;
           for (const id of result.uncoveredIds ?? []) passUncovered.add(id);
 
           // 致命（fatal）模型错误：服务端已把任务置 failed，整体中止。
+          // B-2: 同时置 fatal，让外层补跑循环直接跳出 —— 补跑用的是同一份配置，
+          // 只会把同样的致命错误再犯 MAX_PASSES 次。
           if (result.job.status === 'failed' && result.modelError) {
             error = result.job.error ?? result.modelError;
+            fatal = true;
             abort.abort();
           }
 
@@ -490,7 +520,10 @@ export function useOrganizeRun() {
             engine: result.engine,
             modelError: result.modelError,
             autoApplied,
-            uncovered,
+            // C-4: 实时未覆盖数取本趟去重集合的大小，而不是各分片 uncovered 的裸累加。
+            // 裸累加有两个问题：同一书签在补跑中再次未覆盖会被重复计数；异常分片
+            // （run.ts catch 路径）返回 uncovered:0 但携带 uncoveredIds，会被漏计。
+            uncovered: passUncovered.size,
             uncategorized,
             adultQuarantined,
             error: result.job.status === 'failed' ? result.job.error : null,
@@ -515,12 +548,17 @@ export function useOrganizeRun() {
         for (let i = 0; i < workerCount; i += 1) workers.push(worker());
         await Promise.all(workers);
 
-        if (cancelled.current) break;
+        // B-4: 取消时若模型推理其实已经全部完成（服务端已置 finalizing），仍然收尾
+        // 一次再退出 —— 建议全部落库、finalize 幂等且不含模型调用（约 1 次 D1 批量
+        // 写）。直接 break 会把任务永久留在 finalizing：stop() 的取消端点只处理
+        // queued/running，finalizing 不在其列，任务历史会一直显示「整理中」。
+        const pendingFinalize = lastJob?.status === 'finalizing';
+        if (cancelled.current && !pendingFinalize) break;
 
         // 方案A: 模型推理分片全部完成后，独立调用 /finalize 收尾（auto-apply + 三级归类
         // 重建 + 新标签统计），使单请求不叠加模型推理、不越 30s 墙钟。仅当任务进入
         // finalizing（模型完成、待收尾）时触发；failed/cancelled/未收尾跳过。
-        if (lastJob && lastJob.status === 'finalizing') {
+        if (pendingFinalize) {
           try {
             setState((s) => ({ ...s, applying: true }));
             const fr = await api.post<AiJobRunResult>(
@@ -547,12 +585,16 @@ export function useOrganizeRun() {
 
         // 末趟仍未覆盖的书签数 = 真正需要人工复核的量（避免跨 pass 重复计入）。
         finalUncovered = passUncovered.size;
-        // 全覆盖 / 已达补跑上限 / 真错误且无补跑空间：停止补跑。
+        // 取消 / 致命错误 / 全覆盖 / 已达补跑上限：停止补跑。
+        if (cancelled.current) break;
+        if (fatal) break; // B-2: 致命错误补跑必然同样失败，不再新建任务
         if (passUncovered.size === 0) break;
         if (pass === MAX_PASSES) break;
-        if (error && passUncovered.size === 0) break;
         scopeIds = [...passUncovered];
       }
+
+      // B-4: 本轮已结束，stop() 不应再对一个已收尾/已失败的任务发取消请求。
+      activeJobId.current = null;
 
       if (!job) {
         setState({ ...IDLE, error: error ?? '无法创建整理任务' });
@@ -592,7 +634,9 @@ export function useOrganizeRun() {
         void qc.invalidateQueries({ queryKey: keys.tags });
       }
 
-      setState((s) => ({ ...s, running: false }));
+      // C-1 延伸：此处原有一次 `setState({...s, running:false})` —— 上面的收尾
+      // setState 已经把 running 置 false，其间没有任何代码把它翻回 true，
+      // 属于纯多余的一次重渲染，删除。
       return job;
     },
     [qc],

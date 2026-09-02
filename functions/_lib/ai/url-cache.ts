@@ -61,6 +61,10 @@ async function sha256Hex(text: string): Promise<string> {
 /**
  * Builds the cache key for one URL under one model + prompt revision.
  * Shape: `ai:tag:<promptVersion>:<model>:<sha256(url)>`.
+ *
+ * D-3（审计核查结论）: `PROMPT_VERSION` 必须留在 key 里 —— 提示词一改，旧条目的
+ * 输出口径就失效了；带上版本号等于「一次提示词升级自动使全部旧缓存作废」，
+ * 无需手动清 KV。model 同理：不同模型的输出不可互换。请勿为了缩短 key 去掉它们。
  */
 export async function cacheKeyFor(url: string, model: string): Promise<string> {
   const hash = await sha256Hex(normalizeUrlForCache(url));
