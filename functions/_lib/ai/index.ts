@@ -77,7 +77,10 @@ export async function enrichBookmark(
   try {
     const row = await loadConfigRow(env, userId);
     const local = toLocalConfig(row);
-    const effective = await getEffectiveAiConfig(env, userId);
+    // A-4（第二轮审计）: 复用已读取的配置行。enrichBookmark 是保存热路径（每次
+    // 保存书签都走），此前未传 row 导致 getEffectiveAiConfig 内部二次读
+    // ai_settings + 二次解密；现每次保存省一次读库+解密。
+    const effective = await getEffectiveAiConfig(env, userId, row);
     const config = effective?.config ?? null;
 
     // When no model is configured the caller (a job run) still gets

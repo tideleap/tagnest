@@ -107,6 +107,9 @@ export async function estimateJob(
   target: JobScope['target'],
   explicitIds: string[] = [],
   kind: 'tagging' | 'categorize' | 'rename' = 'tagging',
+  // B-15: categorize 轨道是否纳入已有 browser_folder 归属的书签。创建任务端点
+  // 接受该参数，预估必须同口径透传，否则预估范围与真实任务范围分叉。
+  includeBrowserFolder = false,
 ): Promise<AiJobEstimate> {
   // CategorySync: the categorize track resolves scope differently (skips
   // browser_folder placements, treats `untagged` as "no primary category").
@@ -114,7 +117,7 @@ export async function estimateJob(
   // it promotes to `all` (mirroring jobs/index.ts) to keep the forecast honest.
   const ids =
     kind === 'categorize'
-      ? await resolveCategorizeScope(env, userId, target, explicitIds)
+      ? await resolveCategorizeScope(env, userId, target, explicitIds, includeBrowserFolder)
       : await resolveScope(
           env,
           userId,

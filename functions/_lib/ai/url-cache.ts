@@ -60,16 +60,50 @@ async function sha256Hex(text: string): Promise<string> {
 
 /**
  * Builds the cache key for one URL under one model + prompt revision.
- * Shape: `ai:tag:<promptVersion>:<model>:<sha256(url)>`.
+ * Shape: `ai:tag:<promptVersion>:<model>[:<variant>]:<sha256(url)>`.
  *
  * D-3（审计核查结论）: `PROMPT_VERSION` 必须留在 key 里 —— 提示词一改，旧条目的
  * 输出口径就失效了；带上版本号等于「一次提示词升级自动使全部旧缓存作废」，
  * 无需手动清 KV。model 同理：不同模型的输出不可互换。请勿为了缩短 key 去掉它们。
+ *
+ * A-3（第二轮审计）: `variant` 把影响输出形态的配置开关折入 key。此前 key 只含
+ * promptVersion + model + url，`autoSummarize`/`fetchContent`/`twoPass`/`maxTags`
+ * 均不在其中——关闭摘要时写入的 `summary: null` 缓存，在开启摘要后命中同一 URL
+ * 会永远拿不到摘要（TTL 30 天），配置切换后行为不一致且不可解释。现由调用方把
+ * 这些开关编码成短标志位（见 `tagCacheVariant`）传入，切换配置即换 key、旧条目
+ * 自然失效。缺省 `variant=''` 时 key 形态与旧版完全一致（向后兼容）。
  */
-export async function cacheKeyFor(url: string, model: string): Promise<string> {
+export async function cacheKeyFor(url: string, model: string, variant = ''): Promise<string> {
   const hash = await sha256Hex(normalizeUrlForCache(url));
   const safeModel = model.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
-  return `ai:tag:${PROMPT_VERSION}:${safeModel}:${hash}`;
+  const variantPart = variant ? `:${variant}` : '';
+  return `ai:tag:${PROMPT_VERSION}:${safeModel}${variantPart}:${hash}`;
+}
+
+/**
+ * A-3（第二轮审计）: 把影响打标输出形态的配置开关编码为一个短字符串，供
+ * `cacheKeyFor` 折入 key。每个开关对应一个标志位：
+ *   - `s1/s0` — autoSummarize（是否产出摘要）
+ *   - `f1/f0` — fetchContent（是否抓取正文喂给模型，直接改变输入与输出）
+ *   - `t1/t0` — twoPass（是否走粗→精二次细化）
+ *   - `m{n}`  — maxTags（标签数上限，>0 时才编入）
+ * 任一开关变化都会改变 variant，从而令旧缓存自动作废。纯函数、无副作用，便于单测。
+ */
+export function tagCacheVariant(config: {
+  autoSummarize?: boolean;
+  fetchContent?: boolean;
+  twoPass?: boolean;
+  maxTags?: number;
+}): string {
+  const parts: string[] = [
+    config.autoSummarize ? 's1' : 's0',
+    config.fetchContent ? 'f1' : 'f0',
+    config.twoPass ? 't1' : 't0',
+  ];
+  if (typeof config.maxTags === 'number' && config.maxTags > 0) {
+    parts.push(`m${Math.trunc(config.maxTags)}`);
+  }
+  return parts.join('.');
 }
 
 /* ------------------------------------------------------------------ *

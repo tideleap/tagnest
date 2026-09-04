@@ -14,6 +14,8 @@ import { classifyTag, countPending, listPendingSuggestions, toApiSuggestion } fr
  *
  * Query params:
  *   `limit`  1-500, default 200
+ *   `offset` 0+, default 0 — B-20: page through the queue (limit alone capped
+ *            review at the first 500 rows; anything beyond was unreachable)
  *   `jobId`  restrict to one run, for the "review what I just generated" view
  *   `kind`   'tag' | 'category' (CategorySync migration 0024). Filters the
  *            unified queue to one proposal type; absent returns both.
@@ -24,6 +26,8 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
 
   const rawLimit = Number(url.searchParams.get('limit') ?? 200);
   const limit = Number.isFinite(rawLimit) ? Math.min(500, Math.max(1, Math.trunc(rawLimit))) : 200;
+  const rawOffset = Number(url.searchParams.get('offset') ?? 0);
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.trunc(rawOffset)) : 0;
   const jobId = url.searchParams.get('jobId');
 
   const rawKind = url.searchParams.get('kind');
@@ -31,8 +35,9 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
     rawKind === 'tag' || rawKind === 'category' || rawKind === 'rename' ? rawKind : null;
 
   const [rows, total] = await Promise.all([
-    listPendingSuggestions(ctx.env, userId, limit, jobId, kind),
-    countPending(ctx.env, userId),
+    listPendingSuggestions(ctx.env, userId, limit, jobId, kind, offset),
+    // B-20: total 与列表同口径（按 kind / jobId 过滤），前端分页才有意义。
+    countPending(ctx.env, userId, kind, jobId),
   ]);
 
   // Enrich each suggestion with its 一级/二级 hierarchy path so the review

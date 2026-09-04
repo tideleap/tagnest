@@ -109,22 +109,30 @@ describe('applyAliases (DB-backed)', () => {
         prepare(sql: string) {
           return {
             bind(...args: unknown[]) {
-              if (sql.startsWith('SELECT name, aliases')) {
-                const [id] = args as [string, string];
-                const row = tags.get(id);
-                return {
-                  first: async () =>
-                    row ? { name: row.name, aliases: JSON.stringify(row.aliases) } : null,
-                };
+              // Chunked read: `SELECT id, name, aliases FROM tags WHERE user_id = ? AND id IN (...)`
+              if (sql.startsWith('SELECT id, name, aliases')) {
+                const ids = args.slice(1) as string[];
+                const results = ids
+                  .filter((id) => tags.has(id))
+                  .map((id) => ({
+                    id,
+                    name: tags.get(id)!.name,
+                    aliases: JSON.stringify(tags.get(id)!.aliases),
+                  }));
+                return { all: async () => ({ results }) };
               }
+              // Write: statements are collected then flushed via DB.batch().
               if (sql.startsWith('UPDATE tags')) {
                 const [json, id, _userId] = args as [string, string, string];
-                lastUpdate = { id, json };
-                return { run: async () => ({}) };
+                return { _update: { id, json } };
               }
-              return { first: async () => null, run: async () => ({}) };
+              return { all: async () => ({ results: [] }), run: async () => ({}) };
             },
           };
+        },
+        async batch(stmts: Array<{ _update?: { id: string; json: string } }>) {
+          for (const s of stmts) if (s._update) lastUpdate = s._update;
+          return [];
         },
       },
       _lastUpdate: () => lastUpdate,
@@ -166,12 +174,15 @@ describe('generateModelAliases', () => {
   };
 
   it('parses model output into suggestions', async () => {
-    const fetchImpl = (async () => ({
-      ok: true,
-      json: async () => ({
-        choices: [{ message: { content: JSON.stringify({ aliases: { 前端: ['frontend', 'fe'] } }) } }],
-      }),
-    })) as unknown as typeof fetch;
+    // D-5: callProvider now reads content-length + text() instead of json(),
+    // so the mock must be a real Response (the old {ok, json} stub lacks both).
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ aliases: { 前端: ['frontend', 'fe'] } }) } }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as unknown as typeof fetch;
 
     const out = await generateModelAliases(config, ['前端'], fetchImpl);
     expect(out).toHaveLength(1);
@@ -180,7 +191,7 @@ describe('generateModelAliases', () => {
   });
 
   it('returns [] on a provider failure (degrade, do not throw)', async () => {
-    const fetchImpl = (async () => ({ ok: false, status: 500, text: async () => '' })) as unknown as typeof fetch;
+    const fetchImpl = (async () => new Response('', { status: 500 })) as unknown as typeof fetch;
     const out = await generateModelAliases(config, ['前端'], fetchImpl);
     expect(out).toEqual([]);
   });

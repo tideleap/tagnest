@@ -310,14 +310,29 @@ export async function loadFeedbackMetrics(
       .all<{ status: string; c: number }>(),
   ]);
 
-  // The query returns one row per action with a count; expand it back into a
-  // flat per-event list so `summarizeFeedback` (which reasons about individual
-  // decisions, e.g. treating a rename as "kept") can do its job unchanged.
-  const flatActions: FeedbackAction[] = [];
+  // A-5（第二轮审计）: the query already returns one row per action with its
+  // count — tally straight from those counts instead of expanding them back
+  // into a flat per-event array just to re-count it (O(total) allocation for
+  // no behavioural gain). `summarizeFeedback` stays for callers that hold a
+  // genuine per-event list.
+  let accepted = 0;
+  let rejected = 0;
+  let modified = 0;
   for (const r of actionRows.results) {
-    for (let i = 0; i < Number(r.c); i += 1) flatActions.push(r.action);
+    const c = Number(r.c);
+    if (r.action === 'accepted') accepted += c;
+    else if (r.action === 'rejected') rejected += c;
+    else if (r.action === 'modified') modified += c;
   }
-  const tally = summarizeFeedback(flatActions);
+  const kept = accepted + modified;
+  const resolved = accepted + rejected + modified;
+  const tally: FeedbackTally = {
+    total: actionRows.results.reduce((sum, r) => sum + Number(r.c), 0),
+    accepted,
+    rejected,
+    modified,
+    acceptanceRate: resolved === 0 ? 0 : kept / resolved,
+  };
 
   const byStatus = new Map(statusRows.results.map((r) => [String(r.status), Number(r.c)]));
   const proposalAccepted = byStatus.get('accepted') ?? 0;
@@ -388,14 +403,21 @@ export async function loadFeedbackProfile(env: Env, userId: string): Promise<Fee
     .bind(userId, FEEDBACK_PROFILE_LIMIT)
     .all<Record<string, unknown>>();
 
+  // B-22: only the three known actions may feed the profile. A dirty row with
+  // any other value used to be coerced to 'accepted' (String(r.action ??
+  // 'accepted')), silently inflating the accept side of the user's feedback
+  // memory. Unknown values are dropped outright.
+  const KNOWN_ACTIONS: ReadonlySet<string> = new Set(['accepted', 'rejected', 'modified']);
   return buildFeedbackProfile(
-    rows.results.map((r) => ({
-      tagName: String(r.tag_name ?? ''),
-      action: String(r.action ?? 'accepted') as FeedbackAction,
-      domain: (r.domain as string | null) ?? null,
-      finalTagId: (r.final_tag_id as string | null) ?? null,
-      context: (r.context as string | null) ?? null,
-    })),
+    rows.results
+      .filter((r) => KNOWN_ACTIONS.has(String(r.action ?? '')))
+      .map((r) => ({
+        tagName: String(r.tag_name ?? ''),
+        action: String(r.action) as FeedbackAction,
+        domain: (r.domain as string | null) ?? null,
+        finalTagId: (r.final_tag_id as string | null) ?? null,
+        context: (r.context as string | null) ?? null,
+      })),
   );
 }
 

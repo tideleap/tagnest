@@ -102,13 +102,53 @@ const GENERIC_TITLES = new Set([
 ]);
 
 /**
+ * Minimal public-suffix set (D-1, round-2 audit). Without it, `brandFromHost`
+ * treats the label before the TLD as the registrable name, so multi-level
+ * public suffixes produce garbage: `bbc.co.uk` → `Co`, `example.com.cn` →
+ * `Com`. When the trailing labels form a known public suffix, the registrable
+ * label is one position further left. Deliberately small — a last-resort
+ * safety net, not a full PSL.
+ */
+const PUBLIC_SUFFIXES = new Set([
+  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'net.uk',
+  'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'ac.cn',
+  'com.hk', 'org.hk', 'edu.hk', 'gov.hk',
+  'com.tw', 'org.tw', 'edu.tw', 'gov.tw',
+  'co.jp', 'or.jp', 'ne.jp', 'ac.jp', 'go.jp',
+  'com.au', 'net.au', 'org.au', 'edu.au', 'gov.au',
+  'co.kr', 'or.kr', 'ne.kr',
+  'com.br', 'com.mx', 'com.sg', 'com.my', 'com.ph',
+  'co.in', 'co.nz', 'co.za', 'co.il',
+]);
+
+/**
  * Turns a host into a readable tag: the registrable second-level label,
  * Title-cased. `news.ycombinator.com` → `Ycombinator` (leading subdomain
  * dropped when there are 3+ labels); `example.com` → `Example`.
+ *
+ * D-1（第二轮审计）: 感知公共后缀。`bbc.co.uk` 的注册标签是 `bbc` 而非 `co`；
+ * 当末尾两级构成已知公共后缀（见 {@link PUBLIC_SUFFIXES}）时，注册标签再左移
+ * 一级，消除「Co」「Com」类垃圾兜底标签。
  */
 export function brandFromHost(host: string): string {
-  const labels = host.split('.');
-  const sld = labels.length >= 3 ? labels[labels.length - 2] : labels[0];
+  const labels = host.split('.').filter(Boolean);
+  if (labels.length === 0) return '未命名站点';
+  let sld: string;
+  if (labels.length >= 3) {
+    const tail2 = `${labels[labels.length - 2]}.${labels[labels.length - 1]}`.toLowerCase();
+    if (PUBLIC_SUFFIXES.has(tail2)) {
+      // e.g. bbc.co.uk → labels[len-3] = 'bbc'
+      sld = labels[labels.length - 3];
+    } else {
+      // e.g. news.ycombinator.com → labels[len-2] = 'ycombinator'
+      sld = labels[labels.length - 2];
+    }
+  } else if (labels.length === 2) {
+    sld = labels[0];
+  } else {
+    sld = labels[0];
+  }
+  if (!sld) return '未命名站点';
   return sld.charAt(0).toUpperCase() + sld.slice(1);
 }
 

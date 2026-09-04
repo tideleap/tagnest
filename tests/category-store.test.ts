@@ -222,7 +222,7 @@ describe('saveCategorySuggestions — kind-isolated queue writes', () => {
  * ensureCategoryPath
  * ------------------------------------------------------------------ */
 
-describe('ensureCategoryPath — parent-scoped reuse + chain wiring', () => {
+describe('ensureCategoryPath — global-name reuse + chain wiring (B-5)', () => {
   it('creates every level of a brand-new path and wires parent_id', async () => {
     const { env, state } = makeEnv({});
     const { leafTagId, created } = await ensureCategoryPath(env, 'u1', ['开发技术', '前端开发']);
@@ -245,21 +245,25 @@ describe('ensureCategoryPath — parent-scoped reuse + chain wiring', () => {
     expect(state.tags).toHaveLength(2);
   });
 
-  it('does not collapse same-named nodes under different parents', async () => {
+  // B-5（第二轮审计）: 复用改为按名全局。`tags` 的唯一索引
+  // idx_tags_user_name(user_id, name) 使同名标签全局唯一，「不同父节点下的两个
+  // 同名节点」在真实 DB 中不可能存在——旧实现按 parent 查复用、查不到就 INSERT，
+  // 必然撞唯一索引使 auto-apply 崩溃。新语义：命中同名节点即复用（保留其既有
+  // parent），绝不新建第二个同名节点。
+  it('reuses a same-named node globally instead of inserting a duplicate', async () => {
     const { env, state } = makeEnv({
       tags: [
         tag('work', '工作'),
         tag('study', '学习'),
-        // Both parents own a "资料" child — they must stay distinct.
+        // 「资料」已存在于「工作」之下；唯一索引决定全局只能有这一个。
         tag('workDoc', '资料', 'work'),
-        tag('studyDoc', '资料', 'study'),
       ],
     });
     const { leafTagId, created } = await ensureCategoryPath(env, 'u1', ['学习', '资料']);
+    // 复用既有的「资料」节点，不新建（旧实现会在此 INSERT 撞唯一索引）。
     expect(created).toBe(0);
-    // Reused 学习's 资料, not 工作's.
-    expect(leafTagId).toBe('studyDoc');
-    expect(state.tags).toHaveLength(4);
+    expect(leafTagId).toBe('workDoc');
+    expect(state.tags).toHaveLength(3);
   });
 });
 

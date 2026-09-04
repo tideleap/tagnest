@@ -188,14 +188,39 @@ const CATEGORY_RULES: CategoryRule[] = [
   },
 ];
 
+/**
+ * Precompiled word-boundary matchers, one per rule key (A-5, round-2 audit).
+ * The old `keyHit` built a fresh RegExp for every (tag × key) pair — at
+ * thousand-tag scale that is ~200k compilations per grouping pass. Keys are a
+ * fixed module-level table, so compiling once at load is free.
+ */
+const KEY_MATCHERS = new Map<string, { ascii: boolean; exact: string; re?: RegExp }>();
+
+function matcherFor(key: string): { ascii: boolean; exact: string; re?: RegExp } {
+  let m = KEY_MATCHERS.get(key);
+  if (!m) {
+    const needle = key.toLowerCase();
+    const ascii = /^[\x20-\x7e]+$/.test(needle);
+    m = {
+      ascii,
+      exact: needle,
+      // CJK keys can only match as substrings — no regex needed.
+      re: ascii
+        ? new RegExp(`(^|[^a-z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`)
+        : undefined,
+    };
+    KEY_MATCHERS.set(key, m);
+  }
+  return m;
+}
+
 /** Word-boundary test on the normalised tag name: is this key present? */
 function keyHit(name: string, key: string): boolean {
+  const m = matcherFor(key);
   const lower = name.toLowerCase();
-  const needle = key.toLowerCase();
-  if (name === needle) return true; // exact match always hits
-  // CJK keys can only match as substrings.
-  if (!/^[\x20-\x7e]+$/.test(needle)) return lower.includes(needle);
-  return new RegExp(`(^|[^a-z0-9])${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(lower);
+  if (lower === m.exact) return true; // exact match always hits
+  if (!m.ascii) return lower.includes(m.exact);
+  return m.re!.test(lower);
 }
 
 /** Matches a tag against every rule; returns [category, subcategory] or null. */

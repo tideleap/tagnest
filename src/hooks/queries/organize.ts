@@ -175,10 +175,16 @@ export function useDecideSuggestions() {
 
   return useMutation({
     mutationFn: (input: DecideInput) =>
-      api.post<{ accepted: number; rejected: number; tagsCreated: number; pending: number }>(
-        '/ai/suggestions/apply',
-        input,
-      ),
+      api.post<{
+        accepted: number;
+        rejected: number;
+        tagsCreated: number;
+        pending: number;
+        // B-20（第二轮审计）: 整批应用命中单次上限（500）时服务端回传截断标志，
+        // 前端提示用户分次确认，而不是静默只处理前 500 条。
+        truncated?: boolean;
+        totalMatched?: number;
+      }>('/ai/suggestions/apply', input),
     onSuccess: (result, input) => {
       void qc.invalidateQueries({ queryKey: keys.aiSuggestionsRoot });
       void qc.invalidateQueries({ queryKey: keys.aiOverview });
@@ -214,6 +220,12 @@ export function useDecideSuggestions() {
         );
       } else {
         toast.success(`已忽略 ${result.rejected} 条建议`);
+      }
+
+      // B-20: 截断提示 —— 单次最多处理 500 条，队列里还有剩余，引导分次确认。
+      if (result.truncated) {
+        const remaining = Math.max(0, (result.totalMatched ?? 0) - (result.accepted + result.rejected));
+        toast.info(`单次最多处理 500 条，队列中还有约 ${remaining} 条，请再次应用以继续`);
       }
     },
     onError: (e: Error) => toast.error('操作失败', e.message),
@@ -288,6 +300,14 @@ export interface RunState {
   rebalanceWarning: boolean;
   /** 方案A: 模型推理分片全部完成、正在调用 /finalize 收尾（auto-apply + 建组）时的瞬时状态。 */
   applying: boolean;
+  /**
+   * B-19（第二轮审计）: 当前是第几趟（0 = 主跑，≥1 = 补跑）。补跑会新建任务，
+   * 计数器归零；UI 凭此展示「第 N 趟」徽标，进度条改按累计口径，用户才不会
+   * 把「进度从 ~100% 跳回 0%」误读成整理倒退。
+   */
+  pass: number;
+  /** B-19: 之前各趟的书签量之和 —— 累计进度条的基数（当前趟从基数往上加）。 */
+  passBase: number;
 }
 
 const IDLE: RunState = {
@@ -304,6 +324,8 @@ const IDLE: RunState = {
   autoGrouped: null,
   rebalanceWarning: false,
   applying: false,
+  pass: 0,
+  passBase: 0,
 };
 
 /**
@@ -375,9 +397,39 @@ export function useOrganizeRun() {
    * running/finalizing —— 任务历史一直显示「整理中」，且后续 /run 仍会被接受。
    */
   const activeJobId = useRef<string | null>(null);
+  /**
+   * B-8: 重入守卫。setState 是异步的，快速双击开始按钮（或「先试 20 条」+「开始整理」
+   * 连点）可以在重渲染隐藏按钮之前再次进入 start()：两个循环、两个任务、两个 job 行，
+   * activeJobId 被后者覆盖，stop() 只能取消后一个，且双倍消耗模型配额。ref 的读写是
+   * 同步的，能堵住这个状态异步窗口。
+   */
+  const runningRef = useRef(false);
+  /**
+   * B-18（第二轮审计）: 当前 pass 的分片 AbortController 提为 ref。旧实现里 abort 是
+   * start() 的局部变量，stop() 与卸载清理够不着它：停止后在途分片继续跑完（服务端
+   * 照常计配额），成功返回后还会 setState 把 running 翻回 true（停止按钮短暂重现）；
+   * 卸载时在途最多 6 个请求也不会中止。提为 ref 后 stop()/卸载可立即 abort 全部在途。
+   */
+  const abortRef = useRef<AbortController | null>(null);
+  /**
+   * B-14: 运行结束后延时自动复位的定时器。结束后 `run.job` 一直非空，导致成本预估
+   * （以 `!run.job` 为 enabled 条件）在整个会话里永久失效；到点后把状态复位回 IDLE，
+   * 预估块即可重新渲染。新一次 start() 或组件卸载时清除。
+   */
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearResetTimer = useCallback(() => {
+    if (resetTimer.current) {
+      clearTimeout(resetTimer.current);
+      resetTimer.current = null;
+    }
+  }, []);
 
   const stop = useCallback(() => {
     cancelled.current = true;
+    // B-18: 立即中止全部在途分片请求 —— 停止即真停，不再等它们跑完（省配额，
+    // 也杜绝迟到分片把 running 翻回 true）。
+    abortRef.current?.abort();
     setState((s) => ({ ...s, running: false }));
     // B-4: 同步把服务端任务行转为 cancelled（幂等；端点只在 queued/running 时改状态）。
     // best-effort：网络失败也不阻塞 UI 停止。已写入的建议保留，用户可继续审阅。
@@ -390,9 +442,10 @@ export function useOrganizeRun() {
   }, []);
 
   const reset = useCallback(() => {
+    clearResetTimer();
     cancelled.current = false;
     setState(IDLE);
-  }, []);
+  }, [clearResetTimer]);
 
   // If the user leaves the page mid-run, stop the long-poll loop — otherwise it
   // keeps firing /ai/jobs/:id/run in the background, invalidating caches and
@@ -400,8 +453,11 @@ export function useOrganizeRun() {
   useEffect(() => {
     return () => {
       cancelled.current = true;
+      // B-18: 卸载即断流 —— 在途分片一并中止，服务端不再为无人等待的请求计配额。
+      abortRef.current?.abort();
+      clearResetTimer();
     };
-  }, [cancelled]);
+  }, [clearResetTimer]);
 
   const start = useCallback(
     async (
@@ -411,6 +467,10 @@ export function useOrganizeRun() {
       kind: 'tagging' | 'categorize' | 'rename' = 'tagging',
       includeBrowserFolder?: boolean,
     ) => {
+      // B-8: 重入守卫 —— setState 异步，按钮隐藏前可能被再次点击。
+      if (runningRef.current) return null;
+      runningRef.current = true;
+      clearResetTimer();
       cancelled.current = false;
       setState({ ...IDLE, running: true });
 
@@ -430,9 +490,15 @@ export function useOrganizeRun() {
       // 书签作为一次全新任务重跑：新任务计数器独立、建议写入幂等（DELETE+INSERT），安全。
       const MAX_PASSES = 2; // 主跑 + 最多 2 次补跑
       let scopeIds: string[] | undefined = bookmarkIds;
+      // B-19: 累计进度基数 —— 之前各趟的书签量之和。补跑新建任务后计数器归零，
+      // 进度条若只看当前趟会从 ~100% 跳回 0%，被误读为整理倒退；UI 改按
+      // (passBase + processed) / (passBase + total) 的累计口径展示。
+      let passBase = 0;
 
       for (let pass = 0; pass <= MAX_PASSES; pass += 1) {
         if (cancelled.current) break;
+        // 上一趟的范围成为本趟的累计基数（上一趟的 job 即当前 `job` 变量）。
+        if (pass > 0 && job) passBase += job.total;
 
         // 创建本次任务：首次用原始范围；补跑只针对上一趟未覆盖的书签 ID（target='ids'）。
         try {
@@ -451,7 +517,8 @@ export function useOrganizeRun() {
         if (!job) break;
         const jobId = job.id;
         activeJobId.current = jobId; // B-4: 供 stop() 通知服务端取消
-        setState((s) => ({ ...s, job, running: true }));
+        // B-19: 同步趟次与累计基数，RunPanel 据此展示「第 N 趟补跑」徽标与累计进度。
+        setState((s) => ({ ...s, job, running: true, pass, passBase }));
 
         // 方案A: 把整理范围切成多个不重叠的分片，用固定并发的 worker 池并行打出
         // 去。每个分片带 {from,to} 认领一段书签，服务端用原子计数推进进度，所以
@@ -471,7 +538,10 @@ export function useOrganizeRun() {
         }
 
         // 取消 / 致命错误时让所有在途分片一并中止。
+        // B-18: 挂到 ref 上，使 stop()/卸载清理能够立即 abort（旧实现是局部变量，
+        // 外部够不着，停止后在途分片照常跑完并可能把 running 翻回 true）。
         const abort = new AbortController();
+        abortRef.current = abort;
         const passUncovered = new Set<string>();
 
         const runPartition = async (part: { from: number; to: number }): Promise<void> => {
@@ -514,9 +584,18 @@ export function useOrganizeRun() {
             abort.abort();
           }
 
+          // B-18: stop()/卸载已把 cancelled 置位（并 abort）后，迟到返回的分片
+          // 不得再 setState —— 否则会把 stop 刚置的 running:false 翻回 true，
+          // 停止按钮短暂重现。
+          if (cancelled.current || abort.signal.aborted) return;
+
           setState((s) => ({
             job: result.job,
             running: true,
+            // B-19: 全量重建 state 时同样要带上趟次口径，否则分片进度更新
+            // 会把第 521 行写入的 pass/passBase 冲回旧值。
+            pass,
+            passBase,
             engine: result.engine,
             modelError: result.modelError,
             autoApplied,
@@ -595,8 +674,12 @@ export function useOrganizeRun() {
 
       // B-4: 本轮已结束，stop() 不应再对一个已收尾/已失败的任务发取消请求。
       activeJobId.current = null;
+      // B-18: 同理，本轮的 AbortController 已无在途请求可中止，清掉以免 stop()
+      // 误伤下一轮（下一轮 start 会重新赋值）。
+      abortRef.current = null;
 
       if (!job) {
+        runningRef.current = false;
         setState({ ...IDLE, error: error ?? '无法创建整理任务' });
         return null;
       }
@@ -637,9 +720,23 @@ export function useOrganizeRun() {
       // C-1 延伸：此处原有一次 `setState({...s, running:false})` —— 上面的收尾
       // setState 已经把 running 置 false，其间没有任何代码把它翻回 true，
       // 属于纯多余的一次重渲染，删除。
+
+      // B-8: 本轮结束，放行下一次 start()。
+      runningRef.current = false;
+
+      // B-14: 运行结束（含停止/失败）后延时自动复位回 IDLE。不复位的话 `run.job`
+      // 永久非空，成本预估（`!run.job` 才 enabled）在整个会话里失效，进度条与
+      // 提示也长期残留。延时 12s 让用户先看到结果摘要；期间任何新一次运行或
+      // 手动重置都会取消这个定时器。
+      clearResetTimer();
+      resetTimer.current = setTimeout(() => {
+        resetTimer.current = null;
+        setState(IDLE);
+      }, 12_000);
+
       return job;
     },
-    [qc],
+    [qc, clearResetTimer],
   );
 
   return { ...state, start, stop, reset };

@@ -8,6 +8,7 @@ import {
   aggregateCategoryTopics,
   aggregateTopics,
   categorizeBookmarks,
+  claimPartition,
   getJob,
   getEffectiveAiConfig,
   consumeAiCredit,
@@ -27,6 +28,7 @@ import {
   suggestForBookmarks,
   toApiJob,
   toLocalConfig,
+  tryMarkFinalizing,
   updateJob,
 } from '../../../../_lib/ai';
 
@@ -102,6 +104,30 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     const from = Math.max(0, Math.floor(body.from as number));
     const to = Math.min(ids.length, Math.max(from, Math.floor(body.to as number)));
     slice = ids.slice(from, to);
+
+    // B-17（第二轮审计）: 服务端分片幂等闸门。{from,to} 由客户端声明，重放同一
+    // 分片会让 `processed` 重复累加（可能提前触发 finalizing，此时其它分片建议
+    // 尚未落库，auto-apply 不完整）并重复扣费。以 (job, from) 为主键原子认领：
+    // 首个认领者继续处理，重放者直接返回当前任务快照，不再推理、不再计费。
+    // 游标(串行)模式不带 from，天然不受此闸门影响（其幂等性由 processed 游标保证）。
+    if (slice.length > 0) {
+      const claimed = await claimPartition(ctx.env, jobId, from, to);
+      if (!claimed) {
+        log.info('ai.job.partition_replay', { userId, jobId, from, to });
+        const current = (await getJob(ctx.env, userId, jobId)) ?? job;
+        const result: AiJobRunResult = {
+          job: toApiJob(current),
+          done: false,
+          suggested: 0,
+          autoApplied: 0,
+          rebalanceWarning: false,
+          uncovered: 0,
+          engine: 'none',
+          modelError: null,
+        };
+        return json(result);
+      }
+    }
   } else {
     slice = ids.slice(job.processed, job.processed + RUN_CHUNK_LEGACY);
   }
@@ -116,9 +142,19 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       const current = settled ?? job;
       const done = current.processed >= ids.length;
       // 方案A: 游标(串行)模式收尾同样置 finalizing，交由 /finalize 完成收尾。
-      if (done) await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
-      // 复用 current（置 finalizing 后就地合并状态），彻底去掉原先紧跟其后的第二次查库。
-      const finalJob = done ? ({ ...current, status: 'finalizing' } as typeof current) : current;
+      // B-2（第二轮审计）: 改用原子条件转移，排除已 failed/cancelled 的任务
+      // （此前此处无守卫，可把终态任务复活成 finalizing）。
+      let finalJob = current;
+      if (done) {
+        const acquired = await tryMarkFinalizing(ctx.env, userId, jobId);
+        if (acquired) {
+          // 复用 current（置 finalizing 后就地合并状态），彻底去掉原先紧跟其后的第二次查库。
+          finalJob = { ...current, status: 'finalizing' } as typeof current;
+        } else {
+          // 未抢到收尾权（任务已终态）：重读最新状态返回。
+          finalJob = (await getJob(ctx.env, userId, jobId)) ?? current;
+        }
+      }
       const result: AiJobRunResult = {
         job: toApiJob(finalJob),
         done: finalJob.processed >= ids.length,
@@ -219,20 +255,22 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     });
     const updated = (await getJob(ctx.env, userId, jobId)) ?? job;
     const total = updated.total ?? ids.length;
-    // 方案A(B-1): 收尾仅当本分片非致命、且任务仍处于可收尾状态（running/queued）。
-    // 必须排除已 failed / cancelled —— 失败隔离模式下，某分片 fatal 已把任务置
-    // failed，若另一非致命收尾分片仍把它覆盖回 finalizing，会静默掩盖致命错误
-    // 并对未成功推理的书签错误执行 auto-apply。
-    const isFinal =
-      !fatal &&
-      updated.status !== 'failed' &&
-      updated.status !== 'cancelled' &&
-      updated.processed >= total;
-    if (isFinal) {
-      // 方案A: 模型推理完成、待收尾，置 finalizing；finalize 由独立端点执行后置 done。
-      await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
-      // 刚置 finalizing，直接在返回对象上合并状态即可，省一次 D1 查询（E3：去掉冗余 getJob）。
-      return { finalJob: { ...updated, status: 'finalizing' }, isFinal: true };
+    // 方案A + B-2/B-6（第二轮审计）: 收尾收敛为原子条件转移。
+    // 仅当本分片非致命、计数已达 total 时尝试置 finalizing；tryMarkFinalizing
+    // 内部以 `status IN ('queued','running')` 为前置条件单语句 UPDATE，天然
+    // 排除已 failed / cancelled 的任务（第一轮 B-1 的守卫），并消除读-写之间
+    // 的 TOCTOU 窗口（B-6：DELETE 取消不再可能被末片覆盖回 finalizing）。
+    // 转移失败（任务已被置终态）则放弃收尾，返回最新快照。
+    const shouldFinalize = !fatal && updated.processed >= total;
+    if (shouldFinalize) {
+      const acquired = await tryMarkFinalizing(ctx.env, userId, jobId);
+      if (acquired) {
+        // 刚置 finalizing，直接在返回对象上合并状态即可，省一次 D1 查询。
+        return { finalJob: { ...updated, status: 'finalizing' }, isFinal: true };
+      }
+      // 未抢到收尾权（任务已 failed/cancelled/finalizing/done）：重读最新状态返回。
+      const latest = (await getJob(ctx.env, userId, jobId)) ?? updated;
+      return { finalJob: latest, isFinal: false };
     }
     return { finalJob: updated as NonNullable<Awaited<ReturnType<typeof getJob>>>, isFinal: false };
   };
@@ -247,14 +285,21 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       feedback,
       categoryCache: ctx.env.AI_CACHE ? makeKvCategoryCache(ctx.env.AI_CACHE) : undefined,
       signal: partitionSignal,
+      // D-3: 与打标轨道一致透传分区预算，超时诊断才不会因 budget=0 误判
+      // 「网页抓取挤占模型时间」（本轨道根本不抓取网页）。
+      partitionBudgetMs,
     });
 
     const written = await saveCategorySuggestions(ctx.env, userId, jobId, outcome.results);
 
     // Meter the hosted tier per bookmark analysed; best-effort.
+    // B-12（第二轮审计）: 按实际分析数计费。inputs 已排除 missing（快照后消失的
+    // 书签），再扣除 adultQuarantined（隔离的成人内容书签从未送模型、不耗 token）。
+    // 口径「1 credit = 1 bookmark analysed」由此对得上。
     if (effective?.managed && outcome.engine === 'model') {
       try {
-        await consumeAiCredit(ctx.env, userId, slice.length, 'ai.job.categorize', jobId);
+        const analysed = Math.max(0, inputs.length - (outcome.adultQuarantined ?? 0));
+        await consumeAiCredit(ctx.env, userId, analysed, 'ai.job.categorize', jobId);
       } catch {
         /* meter is best-effort */
       }
@@ -310,14 +355,18 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       config,
       renameCache: ctx.env.AI_CACHE ? makeKvRenameCache(ctx.env.AI_CACHE) : undefined,
       signal: partitionSignal,
+      // D-3: 与打标轨道一致透传分区预算，超时诊断三轨道口径统一。
+      partitionBudgetMs,
     });
 
     const written = await saveRenameSuggestions(ctx.env, userId, jobId, outcome.results);
 
     // Meter the hosted tier per bookmark analysed; best-effort.
+    // B-12（第二轮审计）: 同 categorize 轨道——按实际送模型的数量计费。
     if (effective?.managed && outcome.engine === 'model') {
       try {
-        await consumeAiCredit(ctx.env, userId, slice.length, 'ai.job.rename', jobId);
+        const analysed = Math.max(0, inputs.length - (outcome.adultQuarantined ?? 0));
+        await consumeAiCredit(ctx.env, userId, analysed, 'ai.job.rename', jobId);
       } catch {
         /* meter is best-effort */
       }
@@ -384,9 +433,11 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const written = await saveSuggestions(ctx.env, userId, jobId, outcome.results);
 
   // Meter the hosted tier per bookmark analysed; best-effort.
+  // B-12（第二轮审计）: 同 categorize 轨道——按实际送模型的数量计费。
   if (effective?.managed && outcome.engine === 'model') {
     try {
-      await consumeAiCredit(ctx.env, userId, slice.length, 'ai.job.tagging', jobId);
+      const analysed = Math.max(0, inputs.length - (outcome.adultQuarantined ?? 0));
+      await consumeAiCredit(ctx.env, userId, analysed, 'ai.job.tagging', jobId);
     } catch {
       /* meter is best-effort */
     }
@@ -446,11 +497,19 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
       });
       // 方案A: 若该失败分片恰是末片（计数后已抵 total），把任务标为 finalizing，
       // 使前端仍能触发 /finalize 收尾（建议已落库），避免整轮卡在 running。
+      // B-2（第二轮审计）: 改用原子条件转移。此前此处直接 updateJob 置
+      // finalizing，无 failed/cancelled 守卫——若另一分片已把任务置 failed，
+      // 本路径会把致命错误复活成 finalizing 并触发 auto-apply。
       const after = (await getJob(ctx.env, userId, jobId)) ?? job;
       if (after.processed >= (after.total ?? ids.length)) {
-        await updateJob(ctx.env, userId, jobId, { status: 'finalizing' });
-        // 刚置 finalizing，就地合并状态即可，无需回查。
-        recovered = { ...after, status: 'finalizing' };
+        const acquired = await tryMarkFinalizing(ctx.env, userId, jobId);
+        if (acquired) {
+          // 刚置 finalizing，就地合并状态即可，无需回查。
+          recovered = { ...after, status: 'finalizing' };
+        } else {
+          // 未抢到收尾权（任务已终态）：重读最新状态返回。
+          recovered = (await getJob(ctx.env, userId, jobId)) ?? after;
+        }
       } else {
         recovered = after;
       }

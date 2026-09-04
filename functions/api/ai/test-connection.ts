@@ -145,12 +145,26 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   });
 };
 
+/** Credential-bearing headers that must never leave the original origin. */
+const CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'x-goog-api-key'];
+
 /** Follows redirects manually, re-validating every hop against the blocklist. */
 async function safeFetch(req: ProbeRequest): Promise<Response | null> {
   let current = req.url;
+  // C-5（第二轮审计）: 跨 origin 重定向时剥离凭据头，与 providers.ts 的
+  // ssrfSafeFetch 同一防线——用户端点 302 到任意主机不得带走密钥。
+  const originOf = (u: string): string => {
+    try {
+      return new URL(u).origin;
+    } catch {
+      return '';
+    }
+  };
+  const initialOrigin = originOf(req.url);
+  let headers: Record<string, string> = { ...req.headers };
   const init: RequestInit = {
     method: req.method,
-    headers: req.headers,
+    headers,
     redirect: 'manual',
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {}),
@@ -170,6 +184,15 @@ async function safeFetch(req: ProbeRequest): Promise<Response | null> {
         }
         if (next.protocol !== 'http:' && next.protocol !== 'https:') return null;
         if (isBlockedHost(next.hostname)) return null;
+        // Strip credentials when the redirect leaves the original origin.
+        if (next.origin !== initialOrigin) {
+          const stripped: Record<string, string> = {};
+          for (const [k, v] of Object.entries(headers)) {
+            if (!CREDENTIAL_HEADERS.includes(k.toLowerCase())) stripped[k] = v;
+          }
+          headers = stripped;
+          init.headers = headers;
+        }
         current = next.toString();
         await res.arrayBuffer().catch(() => null);
         continue;

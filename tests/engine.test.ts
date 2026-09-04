@@ -609,4 +609,35 @@ describe('suggestForBookmarks — tag governance integration (PRD-TAG-QUALITY)',
     expect(prompt).toContain('共 30 条书签');
     expect(prompt).toContain('不超过 10 个');
   });
+
+  // B-1（第二轮审计）回归：排序比较器曾写成
+  // `b.confidence - a.name.localeCompare(b.name)`（绝对置信度减 ±1 名称比较值），
+  // 非传递且与置信度无关，高置信标签可能被排到截断线之外、topic 取错。
+  // 三个标签均为已有词汇（治理保留）、标题与标签名无词汇重叠（无加分干扰），
+  // 断言输出严格按置信度降序、且 topic 兜底取最高置信标签。
+  it('B-1: tags sorted by confidence descending; topic picks the top tag', async () => {
+    const json = JSON.stringify({
+      results: [
+        {
+          i: 1,
+          tags: [
+            { name: '低分标签', confidence: 0.5, reason: '弱相关' },
+            { name: '高分标签', confidence: 0.9, reason: '强相关' },
+            { name: '中分标签', confidence: 0.7, reason: '中等相关' },
+          ],
+        },
+      ],
+    });
+    mockedCall.mockResolvedValue({ ok: true, text: json });
+    const out = await suggestForBookmarks(
+      [{ id: 'b1', url: 'https://example.com/x', title: 'Some unrelated title' }],
+      { vocab: vocabWith('低分标签', '高分标签', '中分标签'), config: modelConfig, local },
+    );
+    const tags = out.results[0].tags;
+    expect(tags.map((t) => t.name)).toEqual(['高分标签', '中分标签', '低分标签']);
+    for (let i = 1; i < tags.length; i += 1) {
+      expect(tags[i - 1].confidence).toBeGreaterThanOrEqual(tags[i].confidence);
+    }
+    expect(out.results[0].topic).toBe('高分标签');
+  });
 });

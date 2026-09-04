@@ -82,6 +82,7 @@ export {
   useAiJobs,
   useAiJob,
   useCancelJob,
+  useFinalizeJob,
   useUndoJob,
 } from './queries/aiJobs';
 

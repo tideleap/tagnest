@@ -3,7 +3,7 @@ import { normalizeKey, SYNONYMS } from './taxonomy';
 import { callProvider } from './providers';
 import { loadVocabulary, parseAliases } from './config';
 import type { Env } from '../env';
-import { PRIVATE_BOOKMARK_CLAUSE } from '../db';
+import { PRIVATE_BOOKMARK_CLAUSE, queryInChunks } from '../db';
 
 /**
  * Semantic aggregation + automatic alias expansion.
@@ -122,7 +122,12 @@ export function buildAliasSuggestions(
   }
 
   // Most-used, highest-value tags first so the audit shows the best wins.
-  return out.sort((a, b) => b.tagId.localeCompare(a.tagId));
+  // B-21: sort by live usage count (the comment's promise), not by tag id —
+  // the old `tagId.localeCompare` ordered by opaque identifier and never by value.
+  const countById = new Map(entries.map((e) => [e.id, e.count]));
+  return out.sort(
+    (a, b) => (countById.get(b.tagId) ?? 0) - (countById.get(a.tagId) ?? 0),
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -224,24 +229,39 @@ export async function applyAliases(
   userId: string,
   items: ApplyAliasItem[],
 ): Promise<{ updated: number }> {
-  let updated = 0;
-
+  // A-5（第二轮审计）: one chunked read + one batched write replace the old
+  // per-item SELECT+UPDATE (N+1 round trips) and the double `parseAliases`.
+  // Merge aliases per tagId first so duplicate tagIds in one payload behave
+  // exactly like the old sequential application (dedupe is order-preserving).
+  const wanted = new Map<string, string[]>();
   for (const item of items) {
     if (!item.tagId || !Array.isArray(item.aliases) || item.aliases.length === 0) continue;
+    const list = wanted.get(item.tagId) ?? [];
+    for (const raw of item.aliases) list.push(String(raw));
+    wanted.set(item.tagId, list);
+  }
+  if (wanted.size === 0) return { updated: 0 };
 
-    const row = await env.DB.prepare(
-      `SELECT name, aliases FROM tags WHERE id = ? AND user_id = ? LIMIT 1`,
-    )
-      .bind(item.tagId, userId)
-      .first<{ name: string; aliases: string | null }>();
-    if (!row) continue;
+  const rows = await queryInChunks<{ id: string; name: string; aliases: string | null }>(
+    env.DB,
+    [...wanted.keys()],
+    [userId],
+    (ph) => `SELECT id, name, aliases FROM tags WHERE user_id = ? AND id IN (${ph})`,
+    (row) => row,
+  );
 
-    const merged = [...parseAliases(row.aliases)];
+  const updates: D1PreparedStatement[] = [];
+  for (const row of rows) {
+    const incoming = wanted.get(row.id);
+    if (!incoming) continue;
+
+    const existing = parseAliases(row.aliases);
+    const merged = [...existing];
     const seen = new Set(merged.map(normalizeKey));
     seen.add(normalizeKey(String(row.name)));
 
-    for (const raw of item.aliases) {
-      const candidate = String(raw).trim();
+    for (const raw of incoming) {
+      const candidate = raw.trim();
       if (!candidate) continue;
       const key = normalizeKey(candidate);
       if (seen.has(key)) continue;
@@ -249,15 +269,22 @@ export async function applyAliases(
       merged.push(candidate);
     }
 
-    if (merged.length === parseAliases(row.aliases).length) continue;
+    if (merged.length === existing.length) continue;
 
-    await env.DB.prepare(`UPDATE tags SET aliases = ? WHERE id = ? AND user_id = ?`)
-      .bind(JSON.stringify(merged), item.tagId, userId)
-      .run();
-    updated += 1;
+    updates.push(
+      env.DB.prepare(`UPDATE tags SET aliases = ? WHERE id = ? AND user_id = ?`).bind(
+        JSON.stringify(merged),
+        row.id,
+        userId,
+      ),
+    );
   }
 
-  return { updated };
+  for (let i = 0; i < updates.length; i += 90) {
+    await env.DB.batch(updates.slice(i, i + 90));
+  }
+
+  return { updated: updates.length };
 }
 
 /** Loads offline alias proposals for the whole vocabulary. */

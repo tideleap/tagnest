@@ -111,6 +111,21 @@ export async function loadConfigRow(env: Env, userId: string): Promise<ConfigRow
 }
 
 /**
+ * A-5（第二轮审计）: read ONLY the managed-consent flag. `getBillingStatus`
+ * used to call `loadConfigRow` for this single boolean, which pulled the whole
+ * row and paid the API-key decryption cost on every settings render. Same
+ * default semantics as `loadConfigRow`: a missing row or column reads as
+ * enabled (`!== 0`).
+ */
+export async function loadManagedEnabled(env: Env, userId: string): Promise<boolean> {
+  const row = await env.DB.prepare(`SELECT managed_enabled FROM ai_settings WHERE user_id = ? LIMIT 1`)
+    .bind(userId)
+    .first<{ managed_enabled: number | null }>();
+  if (!row) return true;
+  return row.managed_enabled !== 0;
+}
+
+/**
  * Whether a model call is possible with this configuration.
  *
  * Shared by the backend gate and — mirrored in `src/lib/ai-readiness.ts` — the

@@ -130,8 +130,10 @@ interface TagStat {
   confCount: number;
   /** Whether the name already exists in the user's vocabulary. */
   existing: boolean;
-  /** Indices of bookmarks proposing this name (each index once). */
-  holders: number[];
+  /** Indices of bookmarks proposing this name (each index once). A Set so the
+   *  per-candidate membership test is O(1) — the old array `.includes` made the
+   *  whole pass O(N²·T) at large batch sizes (A-5, round-2 audit). */
+  holders: Set<number>;
 }
 
 /**
@@ -214,15 +216,15 @@ export function governTaxonomy(
           confSum: 0,
           confCount: 0,
           existing: Boolean(entry),
-          holders: [],
+          holders: new Set<number>(),
         };
         stats.set(statKey, stat);
       }
       if (!rawToStat.has(rawKey)) rawToStat.set(rawKey, statKey);
       // One bookmark counts once per tag even if the model repeated it.
-      if (!stat.holders.includes(index)) {
+      if (!stat.holders.has(index)) {
         stat.batchSupport += 1;
-        stat.holders.push(index);
+        stat.holders.add(index);
       }
       stat.confSum += cand.confidence;
       stat.confCount += 1;
@@ -357,7 +359,7 @@ export function governTaxonomy(
     }
 
     rewrite.set(statKey, resolved);
-    const affected = stat.holders.length;
+    const affected = stat.holders.size;
     if (action === 'merged') metrics.merged += affected;
     else if (action === 'rolledUp') metrics.rolledUp += affected;
     else if (action === 'demoted') metrics.demoted += affected;

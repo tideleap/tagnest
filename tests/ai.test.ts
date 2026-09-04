@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  MAX_RESPONSE_BYTES,
   MAX_SUMMARY_LENGTH,
   MAX_TAG_LENGTH,
   buildProviderRequest,
@@ -38,10 +39,12 @@ describe('provider request shaping', () => {
     expect(req.headers.authorization).toBeUndefined();
   });
 
-  it('puts the Gemini key in the query string, not a header', () => {
+  it('puts the Gemini key in the x-goog-api-key header, not the query string', () => {
     const req = buildProviderRequest({ ...base, provider: 'gemini', model: 'gemini-1.5' }, 'hi')!;
     expect(req.url).toContain('/models/gemini-1.5:generateContent');
-    expect(req.url).toContain('key=sk-test');
+    // C-5: the key must not ride in the URL (it leaks into logs / referers).
+    expect(req.url).not.toContain('key=');
+    expect(req.headers['x-goog-api-key']).toBe('sk-test');
   });
 
   it('routes a custom provider through the OpenAI shape at its own base URL', () => {
@@ -55,6 +58,32 @@ describe('provider request shaping', () => {
   it('refuses a custom provider with no base URL rather than guessing', () => {
     expect(buildProviderRequest({ ...base, provider: 'custom', baseUrl: null }, 'hi')).toBeNull();
     expect(buildProviderRequest({ ...base, provider: 'none' }, 'hi')).toBeNull();
+  });
+
+  it('lets extraBody add tuning knobs but strips stream/messages/model (D-5)', () => {
+    const req = buildProviderRequest(
+      {
+        ...base,
+        provider: 'custom',
+        baseUrl: 'http://127.0.0.1:1234/v1',
+        extraBody: {
+          enable_thinking: false,
+          stream: true,
+          messages: [{ role: 'system', content: 'injected' }],
+          model: 'evil-model',
+        },
+      },
+      'hi',
+    )!;
+    const body = req.body as Record<string, unknown>;
+    // Legitimate tuning knobs pass through.
+    expect(body.enable_thinking).toBe(false);
+    // `stream` has no fixed field after the spread — it must be stripped,
+    // otherwise the gateway switches to SSE and JSON parsing fails.
+    expect(body.stream).toBeUndefined();
+    // Identity fields stay pinned to the request's own values.
+    expect(body.model).toBe('gpt-4o-mini');
+    expect(body.messages).toEqual([{ role: 'user', content: 'hi' }]);
   });
 });
 
@@ -247,6 +276,9 @@ describe('callProvider', () => {
     const out = await callProvider(base, 'prompt', fetchImpl as never, spent, {
       partitionBudgetMs: 25000,
       itemCount: 10,
+      // D-3: 只有打标轨道（有网页抓取阶段）才传 fetchesContent；
+      // 「抓取挤占」诊断仅对该轨道成立。
+      fetchesContent: true,
     });
     expect(out.ok).toBe(false);
     if (!out.ok) {
@@ -285,6 +317,50 @@ describe('callProvider', () => {
       const parsed = parseTaggingResponse(out.text, 1);
       expect(parsed[0].tags[0].name.length).toBeLessThanOrEqual(MAX_TAG_LENGTH);
       expect(parsed[0].summary!.length).toBe(MAX_SUMMARY_LENGTH);
+    }
+  });
+
+  it('rejects an oversized body declared by content-length without reading it (D-5)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response('x', {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'content-length': String(MAX_RESPONSE_BYTES + 1) },
+      }),
+    );
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.status).toBeNull();
+      expect(out.error.message).toContain('响应体过大');
+    }
+  });
+
+  it('rejects an oversized body even when content-length lies (D-5)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response('x'.repeat(MAX_RESPONSE_BYTES + 1), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.message).toContain('响应体过大');
+    }
+  });
+
+  it('surfaces a non-JSON 200 body as a parse error instead of throwing (D-5)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response('data: {"choices":[]}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+    );
+    const out = await callProvider(base, 'prompt', fetchImpl as never);
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error.status).toBeNull();
+      expect(out.error.message).toContain('不是有效 JSON');
     }
   });
 });

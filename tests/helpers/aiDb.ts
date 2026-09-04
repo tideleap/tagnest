@@ -138,6 +138,8 @@ export interface AiDbState {
   ai_jobs: JobRow[];
   ai_settings: SettingsRow[];
   bookmark_primary_category: PrimaryCategoryRow[];
+  /** B-17: claimed partition slots (job_id, partition_from) — dedup gate. */
+  ai_job_partitions: Array<{ job_id: string; partition_from: number; partition_to: number; created_at: string }>;
 }
 
 export interface AiDb {
@@ -168,6 +170,7 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
     ai_jobs: seed?.ai_jobs ?? [],
     ai_settings: seed?.ai_settings ?? [],
     bookmark_primary_category: seed?.bookmark_primary_category ?? [],
+    ai_job_partitions: seed?.ai_job_partitions ?? [],
   };
 
   function prepare(sql: string) {
@@ -669,6 +672,18 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       return t ? [{ id: t.id }] : [];
     }
 
+    // ensureCategoryPath (B-5): global-name reuse — the unique index
+    // idx_tags_user_name makes tag names globally unique per user, so the
+    // lookup no longer scopes by parent.
+    if (sql.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND NAME = ?')) {
+      const userId = String(params[0]);
+      const name = String(params[1]).toLowerCase();
+      const t = state.tags.find(
+        (x) => x.user_id === userId && x.name.toLowerCase() === name,
+      );
+      return t ? [{ id: t.id }] : [];
+    }
+
     // loadCategoryTree: full tag listing for one user.
     if (sql.startsWith('SELECT ID, NAME, PARENT_ID FROM TAGS WHERE USER_ID = ?')) {
       const userId = String(params[0]);
@@ -722,6 +737,22 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
   /** INSERT / UPDATE / DELETE side effects. Returns the affected-row count,
    *  which `run()` surfaces as D1's `meta.changes`. */
   function applyMutation(sql: string, rawSql: string, params: unknown[]): number {
+    // B-17: claimPartition — INSERT OR IGNORE against the composite PK
+    // (job_id, partition_from). First claim wins (changes=1); a replay of the
+    // same (job, from) is ignored (changes=0) so /run short-circuits.
+    if (sql.startsWith('INSERT OR IGNORE INTO AI_JOB_PARTITIONS')) {
+      const jobId = String(params[0]);
+      const from = Number(params[1]);
+      const to = Number(params[2]);
+      const createdAt = String(params[3]);
+      const exists = state.ai_job_partitions.some(
+        (p) => p.job_id === jobId && p.partition_from === from,
+      );
+      if (exists) return 0;
+      state.ai_job_partitions.push({ job_id: jobId, partition_from: from, partition_to: to, created_at: createdAt });
+      return 1;
+    }
+
     // createJob — columns: id, user_id, kind, status('queued'), scope, total,
     // processed(0), suggested(0), failed(0), created_at, updated_at, prompt_version.
     // processed/suggested/failed are literal 0 in the SQL, so the bound params
@@ -753,31 +784,56 @@ export function createAiDb(seed?: Partial<AiDbState>): AiDb {
       if (!job) return 0;
       const setPart = sql.substring(sql.indexOf(' SET ') + 5, sql.indexOf(' WHERE '));
       const assignments = setPart.split(',').map((c) => c.trim());
+      // norm() uppercases the whole statement, including string literals, so a
+      // literal like 'finalizing' arrives here as 'FINALIZING'. Pull the SET
+      // clause from rawSql too so literal values keep their original case
+      // (the mock stores statuses lowercase). Same comma-split arity as above.
+      const rawSetMatch = rawSql.match(/\bSET\b([\s\S]*?)\bWHERE\b/i);
+      const rawAssignments = rawSetMatch
+        ? rawSetMatch[1].split(',').map((c: string) => c.trim())
+        : assignments;
       // Param order mirrors the SET order; the last param is the id.
       const values = params.slice(0, -1);
       let vi = 0;
-      for (const assignment of assignments) {
+      for (let ai = 0; ai < assignments.length; ai += 1) {
+        const assignment = assignments[ai];
         const eq = assignment.indexOf('=');
         const col = assignment.substring(0, eq).trim().toLowerCase();
         const rhs = assignment.substring(eq + 1).trim();
-        // Arithmetic form `col = col + ?` / `col = col - ?` (used by
-        // incrementJobCounters for race-free parallel progress). Add/subtract
-        // the bound delta from the current value; a plain `col = ?` just assigns.
-        const arith = rhs.match(/^([a-z_]+)\s*([+-])\s*\?$/i);
         let v: unknown;
-        if (arith && arith[1].toLowerCase() === col) {
-          const delta = Number(values[vi]);
-          const current =
-            col === 'processed'
-              ? Number(job.processed)
-              : col === 'suggested'
-                ? Number(job.suggested)
-                : Number(job.failed);
-          v = arith[2] === '+' ? current + delta : current - delta;
+        if (!rhs.includes('?')) {
+          // Literal assignment — no bound param consumed. tryMarkFinalizing
+          // writes `status = 'finalizing'` inline (atomic CAS), so the parser
+          // must read the value from the SQL itself instead of advancing the
+          // param cursor (which would misalign the remaining `?` slots and
+          // assign e.g. the timestamp to `status`). Read from rawSql to keep
+          // the literal's original case.
+          const rawAssignment = rawAssignments[ai] ?? assignment;
+          const rawRhs = rawAssignment.substring(rawAssignment.indexOf('=') + 1).trim();
+          const t = rawRhs.trim();
+          if (/^null$/i.test(t)) v = null;
+          else if (/^'.*'$/.test(t)) v = t.slice(1, -1).replace(/''/g, "'");
+          else if (/^-?\d+(\.\d+)?$/.test(t)) v = Number(t);
+          else v = t;
         } else {
-          v = values[vi];
+          // Arithmetic form `col = col + ?` / `col = col - ?` (used by
+          // incrementJobCounters for race-free parallel progress). Add/subtract
+          // the bound delta from the current value; a plain `col = ?` just assigns.
+          const arith = rhs.match(/^([a-z_]+)\s*([+-])\s*\?$/i);
+          if (arith && arith[1].toLowerCase() === col) {
+            const delta = Number(values[vi]);
+            const current =
+              col === 'processed'
+                ? Number(job.processed)
+                : col === 'suggested'
+                  ? Number(job.suggested)
+                  : Number(job.failed);
+            v = arith[2] === '+' ? current + delta : current - delta;
+          } else {
+            v = values[vi];
+          }
+          vi += 1;
         }
-        vi += 1;
         if (col === 'updated_at') job.updated_at = String(v);
         else if (col === 'status') job.status = String(v);
         else if (col === 'processed') job.processed = Number(v);

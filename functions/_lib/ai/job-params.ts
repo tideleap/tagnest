@@ -22,6 +22,12 @@ export interface JobScopeParams {
   kind: AiJobKind;
   /** 去重、去空、按 MAX_JOB_ITEMS 截断后的显式 ID 列表；target !== 'ids' 时为空。 */
   ids: string[];
+  /**
+   * B-15: categorize 轨道专用 —— 是否把已有 browser_folder 归属的书签也纳入范围。
+   * 创建任务（JSON body 布尔值）与预估（query string 'true'/'1'）必须解析出同一个
+   * 布尔值，否则预估范围与真实任务范围分叉。
+   */
+  includeBrowserFolder: boolean;
 }
 
 /**
@@ -38,7 +44,7 @@ function normalizeIds(raw: unknown): string[] {
 }
 
 export function parseJobScopeParams(
-  input: { target?: unknown; kind?: unknown; ids?: unknown },
+  input: { target?: unknown; kind?: unknown; ids?: unknown; includeBrowserFolder?: unknown },
   opts: { strictKind?: boolean } = {},
 ): JobScopeParams {
   const rawKind = String(input.kind ?? 'tagging');
@@ -62,5 +68,12 @@ export function parseJobScopeParams(
     throw badRequest('请选择要整理的书签');
   }
 
-  return { target, kind, ids };
+  // B-15: 布尔值（JSON body）与 'true'/'1'（query string）都解析为 true，
+  // 其余一律 false —— 与创建端点 `body.includeBrowserFolder === true` 的语义对齐。
+  const includeBrowserFolder =
+    input.includeBrowserFolder === true ||
+    input.includeBrowserFolder === 'true' ||
+    input.includeBrowserFolder === '1';
+
+  return { target, kind, ids, includeBrowserFolder };
 }

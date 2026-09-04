@@ -108,6 +108,19 @@ export const SYNONYMS: Record<string, string> = {
 };
 
 /**
+ * B-9（第二轮审计）: 语言名白名单。`+` 与 `#` 在 C++/C#/F# 里是名称的一部分，
+ * 但分隔符正则会剥离 `+`，使 `c++` → `c`，与裸「C」标签碰撞——`buildVocabulary`
+ * 会把 C++/C 视为同一标签（计数高者赢），`findDuplicateClusters` 会建议合并两个
+ * 完全不同的技术标签。归一化前先按白名单整体保护这些名称（大小写不敏感），命中
+ * 即原样返回小写形式，不再走剥离逻辑。
+ *
+ * 刻意只收录 `+`/`#` 语义必需项：`node.js`/`vue.js` 等含 `.` 的名称**不入**白名单，
+ * 否则 `node.js` 与 `nodejs` 将不再归一为同一 key，反而破坏既有去重（grouping.ts
+ * 的分类规则同时列有 'nodejs' 与 'node.js'，依赖二者归一）。
+ */
+const LANGUAGE_NAME_WHITELIST = new Set(['c++', 'c#', 'f#']);
+
+/**
  * Reduces a tag name to a comparison key.
  *
  * Strips the differences that are never semantic: case, full-width forms,
@@ -118,11 +131,18 @@ export const SYNONYMS: Record<string, string> = {
 export function normalizeKey(name: string): string {
   let key = name.normalize('NFKC').trim().toLowerCase();
 
+  // B-9（第二轮审计）: 语言名白名单整体保护，`c++`/`c#`/`f#` 不再被剥成 `c`/`f`。
+  if (LANGUAGE_NAME_WHITELIST.has(key)) return key;
+
   // Separators carry no meaning in a tag: "front-end" == "front end".
   key = key.replace(/[\s\-_.·・/\\|,，、+&]+/g, '');
 
   // Decorative punctuation only.
   key = key.replace(/["'`“”‘’()（）[\]{}<>!！?？:：;；]/g, '');
+
+  // B-9（第二轮审计）: 剥离装饰符后若整体恰为白名单语言名（如 `"c#"` 引号包裹、
+  // `（f#）` 括号包裹），同样保护，不被后续复数规则截断。
+  if (LANGUAGE_NAME_WHITELIST.has(key)) return key;
 
   // English plurals. Guarded by length so "css" and "js" survive intact.
   if (/[a-z]$/.test(key)) {
@@ -178,8 +198,17 @@ export function similarity(a: string, b: string): number {
  */
 export function buildVocabulary(entries: VocabEntry[]): Vocabulary {
   const byKey = new Map<string, VocabEntry>();
+  const byId = new Map<string, VocabEntry>();
+  const byName = new Map<string, VocabEntry>();
 
   for (const entry of entries) {
+    // First-match-wins mirrors the old `entries.find` semantics for both
+    // id and name lookups (duplicate ids/names keep the earliest entry).
+    if (!byId.has(entry.id)) byId.set(entry.id, entry);
+    const nameKey = normalizeKey(entry.name);
+    // Keep the FIRST entry in array order for a given name key — that is what
+    // the old `entries.find` fallback returned; do not re-rank by count here.
+    if (nameKey && !byName.has(nameKey)) byName.set(nameKey, entry);
     const keys = [entry.name, ...entry.aliases].map(normalizeKey).filter(Boolean);
     for (const key of keys) {
       const held = byKey.get(key);
@@ -187,7 +216,7 @@ export function buildVocabulary(entries: VocabEntry[]): Vocabulary {
     }
   }
 
-  return { entries, byKey };
+  return { entries, byKey, byId, byName };
 }
 
 export interface ResolveResult {

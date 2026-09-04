@@ -177,17 +177,27 @@ export interface SynthesizeResult {
  * consistent hierarchy. Skips (empty tree, no model call) when there is too
  * little signal to organise. Retries transient failures and stops the job on a
  * fatal provider error, mirroring the tagging path.
+ *
+ * D-2（第二轮审计）: 透传分区 `signal` / `partitionBudgetMs`。此调用发生在主批次
+ * 循环之后，此时分区预算可能已近耗尽；此前未接信号，只受 28s REQUEST_TIMEOUT_MS
+ * 约束，一旦启用（synthesizeTree 为 opt-in）单分片可突破 25s 预算撞 30s 墙钟。
+ * 现调用前检查 `signal?.aborted`，并把信号与预算传入 callProvider，预算链完整。
  */
 export async function synthesizeTaxonomy(
   tags: TagCount[],
   config: AiConfig,
   fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
+  partitionBudgetMs?: number,
 ): Promise<SynthesizeResult> {
   if (tags.length < TREE_MIN_TAGS) return { tree: [], fatal: false, error: null };
+  // Budget already spent by the main batch loop — don't start a call that will
+  // die instantly on the aborted signal.
+  if (signal?.aborted) return { tree: [], fatal: false, error: null };
 
   const prompt = buildTreePrompt(tags);
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl),
+    () => callProvider(config, prompt, fetchImpl, signal, { partitionBudgetMs }),
     (outcome) => {
       if (!outcome.ok) {
         if (isFatal(outcome.error)) return 'stop';

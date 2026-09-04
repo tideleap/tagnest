@@ -328,6 +328,61 @@ export async function updateJob(env: Env, userId: string, jobId: string, patch: 
 }
 
 /**
+ * B-2+B-6（第二轮审计）: 原子条件转移 —— 仅当任务仍处于可收尾状态
+ * （queued/running）时才置 `finalizing`，以 `meta.changes > 0` 判定是否成功。
+ *
+ * 取代 run.ts 三条收尾路径各自的「先读后写」：
+ *  - 主路径（commit）：读-写之间存在 TOCTOU 窗口，DELETE 取消可被末片覆盖；
+ *  - catch 兜底路径与游标空分片路径：第一轮 B-1 的守卫只加在主路径，这两条
+ *    路径仍会把已 `failed`/`cancelled` 的任务复活成 `finalizing`。
+ * 单条带状态前置条件的 UPDATE 天然闭合上述全部竞态：转移要么整体成立、要么
+ * 整体不成立，不存在中间态。返回 false 表示任务已被置终态（或不存在），
+ * 调用方必须放弃收尾。
+ */
+export async function tryMarkFinalizing(env: Env, userId: string, jobId: string): Promise<boolean> {
+  const result = await withD1Retry(() =>
+    env.DB.prepare(
+      `UPDATE ai_jobs SET status = 'finalizing', updated_at = ?
+       WHERE user_id = ? AND id = ? AND status IN ('queued', 'running')`,
+    )
+      .bind(nowIso(), userId, jobId)
+      .run(),
+  );
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/**
+ * B-17（第二轮审计）: server-side partition idempotency gate.
+ *
+ * Claims the (job, from) partition slot atomically. Returns true when this
+ * call is the first to claim the slot (the caller may proceed); false when the
+ * partition was already claimed — a replayed or duplicated `/run` must then
+ * short-circuit without re-processing, so `processed` counters and
+ * `consumeAiCredit` can never be double-applied by a malicious or buggy client.
+ *
+ * The claim is a single `INSERT OR IGNORE` against the composite primary key
+ * `(job_id, partition_from)` (migration 0027): exactly one concurrent writer
+ * sees `meta.changes = 1`, every other writer sees 0. No read-then-write, no
+ * TOCTOU window.
+ */
+export async function claimPartition(
+  env: Env,
+  jobId: string,
+  from: number,
+  to: number,
+): Promise<boolean> {
+  const result = await withD1Retry(() =>
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO ai_job_partitions (job_id, partition_from, partition_to, created_at)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(jobId, from, to, nowIso())
+      .run(),
+  );
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/**
  * Atomically advances a job's counters by a delta rather than overwriting them.
  *
  * The parallel-partition run path launches N concurrent `/run` calls, each
@@ -548,13 +603,16 @@ export async function listPendingSuggestions(
   limit = 200,
   jobId?: string | null,
   kind?: 'tag' | 'category' | 'rename' | null,
+  // B-20（第二轮审计）: offset 分页。队列原先只有 limit（≤500）无 offset，
+  // 一次运行产生 >500 条待确认时后面的建议永远审不到。现在客户端可翻页。
+  offset = 0,
 ): Promise<SuggestionRow[]> {
   const jobClause = jobId ? 'AND s.job_id = ?' : '';
   const kindClause = kind ? 'AND s.kind = ?' : '';
   const params: unknown[] = [userId];
   if (jobId) params.push(jobId);
   if (kind) params.push(kind);
-  params.push(limit);
+  params.push(limit, offset);
 
   const rows = await env.DB.prepare(
     `SELECT s.id, s.bookmark_id, s.tag_name, s.tag_id, s.confidence, s.source, s.reason,
@@ -563,7 +621,7 @@ export async function listPendingSuggestions(
        JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
       WHERE s.user_id = ? AND s.status = 'pending' ${jobClause} ${kindClause}
       ORDER BY s.confidence DESC, s.created_at DESC
-      LIMIT ?`,
+      LIMIT ? OFFSET ?`,
   )
     .bind(...params)
     .all<Record<string, unknown>>();
@@ -814,13 +872,27 @@ export async function autoApply(
 }
 
 /** Counts pending proposals, for the nav badge. */
-export async function countPending(env: Env, userId: string): Promise<number> {
+export async function countPending(
+  env: Env,
+  userId: string,
+  // B-20（第二轮审计）: 队列端点的 `total` 原先不分 kind，与过滤后列表口径不一
+  // （kind=category 时 total 仍含 tag 建议）。现在按 kind（可选 jobId）过滤，
+  // 与 listPendingSuggestions 的 WHERE 完全对齐。不传则维持旧的全量口径。
+  kind?: 'tag' | 'category' | 'rename' | null,
+  jobId?: string | null,
+): Promise<number> {
+  const kindClause = kind ? 'AND s.kind = ?' : '';
+  const jobClause = jobId ? 'AND s.job_id = ?' : '';
+  const params: unknown[] = [userId];
+  if (kind) params.push(kind);
+  if (jobId) params.push(jobId);
+
   const row = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM tag_suggestions s
        JOIN bookmarks b ON b.id = s.bookmark_id AND b.deleted_at IS NULL AND ${PRIVATE_BOOKMARK_CLAUSE}
-      WHERE s.user_id = ? AND s.status = 'pending'`,
+      WHERE s.user_id = ? AND s.status = 'pending' ${kindClause} ${jobClause}`,
   )
-    .bind(userId)
+    .bind(...params)
     .first<{ n: number }>();
   return Number(row?.n ?? 0);
 }
@@ -1101,9 +1173,13 @@ export async function saveCategorySuggestions(
  * Creates (or reuses) the tag nodes along a category path and wires their
  * `parent_id` chain, returning the deepest node's id.
  *
- * Reuse is case-insensitive per level, matching `ensureTags` semantics, but a
- * level only reuses a tag whose PARENT matches the previous level — otherwise
- * two unrelated "前端开发" nodes under different tops would collapse into one.
+ * B-5（第二轮审计）: 复用改为**按名全局**（不再限定 parent）。`tags` 上的唯一
+ * 索引是 `idx_tags_user_name ON tags(user_id, name COLLATE NOCASE)` —— 每个用户
+ * 同名标签全局唯一，根本不存在「不同父节点下的两个同名节点」。原实现刻意按
+ * 「parent + name」查复用，查不到不同父节点下的同名标签就 INSERT，必然撞唯一
+ * 索引抛错，使 categorize 收尾 auto-apply 在跨分支同名层级（如「开发技术>前端
+ * 开发」与「设计>前端开发」）时确定性崩溃。按名全局复用与 DB 约束对齐：命中即
+ * 复用（保留其既有 parent），未命中才新建，INSERT 永不撞索引。
  * New nodes get a deterministic colour from their name.
  */
 export async function ensureCategoryPath(
@@ -1122,20 +1198,13 @@ export async function ensureCategoryPath(
   const ts = nowIso();
 
   for (const name of cleaned) {
-    // Look for an existing node with this name under the current parent.
-    const existing = parentId
-      ? await env.DB.prepare(
-          `SELECT id FROM tags
-            WHERE user_id = ? AND parent_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
-        )
-          .bind(userId, parentId, name)
-          .first<{ id: string }>()
-      : await env.DB.prepare(
-          `SELECT id FROM tags
-            WHERE user_id = ? AND parent_id IS NULL AND name = ? COLLATE NOCASE LIMIT 1`,
-        )
-          .bind(userId, name)
-          .first<{ id: string }>();
+    // B-5: 按名全局复用（唯一索引即按 user+name 全局唯一），不再限定 parent。
+    const existing = await env.DB.prepare(
+      `SELECT id FROM tags
+        WHERE user_id = ? AND name = ? COLLATE NOCASE LIMIT 1`,
+    )
+      .bind(userId, name)
+      .first<{ id: string }>();
 
     if (existing) {
       leafTagId = existing.id;
@@ -1608,9 +1677,28 @@ export async function assignPrimaryCategory(
     .first<{ id: string; name: string }>();
   if (!tag) return 0;
 
+  // C-1（第二轮审计）: 书签归属校验。此前只校验目标标签归属，攻击者携带他人
+  // bookmark_id 即可改写他人书签的主分类（IDOR）。先过滤出本人书签，后续写入、
+  // sync bump、feedback 全部基于过滤后的集合；跨用户 ID 自然失配被丢弃。
+  const uniqueIds = [...new Set(bookmarkIds)];
+  const owned = new Set<string>();
+  const OWNED_BATCH = 90; // D1 绑定参数上限内留余量
+  for (let i = 0; i < uniqueIds.length; i += OWNED_BATCH) {
+    const chunk = uniqueIds.slice(i, i + OWNED_BATCH);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const rows = await env.DB.prepare(
+      `SELECT id FROM bookmarks WHERE user_id = ? AND id IN (${placeholders})`,
+    )
+      .bind(userId, ...chunk)
+      .all<{ id: string }>();
+    for (const row of rows.results) owned.add(row.id);
+  }
+  const ownBookmarkIds = uniqueIds.filter((id) => owned.has(id));
+  if (ownBookmarkIds.length === 0) return 0;
+
   const ts = nowIso();
   const statements: D1PreparedStatement[] = [];
-  for (const bookmarkId of bookmarkIds) {
+  for (const bookmarkId of ownBookmarkIds) {
     statements.push(
       env.DB.prepare(
         `INSERT INTO bookmark_primary_category
@@ -1634,14 +1722,14 @@ export async function assignPrimaryCategory(
 
   // A manual move is a category change the user's other browsers must see:
   // bump updated_at so the row enters the sync-pull incremental stream (C5-2).
-  await bumpBookmarksUpdatedAt(env, userId, bookmarkIds, ts);
+  await bumpBookmarksUpdatedAt(env, userId, ownBookmarkIds, ts);
 
   // Record the hand move as feedback so future categorize runs respect it.
-  const path = await deriveCategoryPath(env, userId, bookmarkIds[0]);
+  const path = await deriveCategoryPath(env, userId, ownBookmarkIds[0]);
   await recordFeedback(
     env,
     userId,
-    bookmarkIds.map((bookmarkId) => ({
+    ownBookmarkIds.map((bookmarkId) => ({
       bookmarkId,
       tagName: path?.join(' > ') ?? tag.name,
       action: 'modified' as const,
@@ -1652,7 +1740,7 @@ export async function assignPrimaryCategory(
     })),
   );
 
-  return bookmarkIds.length;
+  return ownBookmarkIds.length;
 }
 
 /**

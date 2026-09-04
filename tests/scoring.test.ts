@@ -37,6 +37,27 @@ describe('lexicalEvidence', () => {
   it('handles empty text', () => {
     expect(lexicalEvidence({ url: 'https://x', title: '', description: '' }, '任何')).toBeNull();
   });
+
+  // B-10: a single ASCII word must match on whole tokens, not substrings —
+  // otherwise short tags ("ai", "go") score full evidence inside unrelated
+  // words ("email", "google") and inflate past the auto-apply threshold.
+  it('does not score a short ASCII tag that only appears as a substring', () => {
+    expect(lexicalEvidence({ url: 'u', title: 'Check your email inbox', description: '' }, 'ai')).toBeNull();
+    expect(lexicalEvidence({ url: 'u', title: 'google search tips', description: '' }, 'go')).toBeNull();
+    expect(lexicalEvidence({ url: 'u', title: 'catalog of resources', description: '' }, 'cat')).toBeNull();
+  });
+  it('scores a single ASCII tag on a whole-token hit', () => {
+    expect(lexicalEvidence({ url: 'u', title: 'Learn AI fundamentals', description: '' }, 'ai')).toBe(1);
+    expect(lexicalEvidence({ url: 'u', title: 'go concurrency patterns', description: '' }, 'go')).toBe(1);
+  });
+  it('keeps substring containment for CJK names (no word boundaries in the script)', () => {
+    expect(lexicalEvidence({ url: 'u', title: '前端开发最佳实践', description: '' }, '前端')).toBe(1);
+  });
+  it('keeps substring containment for multi-word phrases', () => {
+    expect(lexicalEvidence({ url: 'u', title: 'machine learning basics', description: '' }, 'machine learning')).toBe(1);
+    // No phrase hit: falls back to token overlap (1 of 2 tokens present).
+    expect(lexicalEvidence({ url: 'u', title: 'machine learning basics', description: '' }, 'deep learning')).toBeCloseTo(0.5);
+  });
 });
 
 describe('scoreTagCandidate — confidence floor + signal boosts', () => {

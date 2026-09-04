@@ -70,9 +70,11 @@ describe('buildModelsRequest', () => {
     expect(req?.headers['x-api-key']).toBe('sk-ant');
   });
 
-  it('puts the gemini key in the query string', () => {
+  it('puts the gemini key in the x-goog-api-key header, not the query string', () => {
     const req = buildModelsRequest('gemini', null, 'gm-key');
-    expect(req?.url).toBe('https://generativelanguage.googleapis.com/v1beta/models?key=gm-key');
+    // C-5: the key must not ride in the URL (it leaks into logs / referers).
+    expect(req?.url).toBe('https://generativelanguage.googleapis.com/v1beta/models');
+    expect(req?.headers['x-goog-api-key']).toBe('gm-key');
   });
 });
 

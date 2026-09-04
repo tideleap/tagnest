@@ -3,7 +3,7 @@ import type { Env } from '../functions/_lib/env';
 import type { AiJobEstimate } from '../shared/types';
 import { estimateJob, representativeOutput, tokensFromChars } from '../functions/_lib/ai/estimate';
 import { BATCH_SIZE } from '../functions/_lib/ai/prompt';
-import { MAX_JOB_ITEMS, RUN_CHUNK } from '../functions/_lib/ai/store';
+import { MAX_JOB_ITEMS, RUN_CHUNK_LEGACY } from '../functions/_lib/ai/store';
 import { onRequestGet as estimateHandler } from '../functions/api/ai/jobs/estimate';
 import { createAiDb, type AiDbState, type BookmarkRow } from './helpers/aiDb';
 import { MockDb, makeEnv } from './_support/dbMock';
@@ -90,7 +90,7 @@ describe('estimateJob — store level', () => {
     const est = await estimateJob(env, 'u1', 'untagged');
     expect(est.bookmarks).toBe(25);
     expect(est.batches).toBe(Math.ceil(25 / BATCH_SIZE));
-    expect(est.chunks).toBe(Math.ceil(25 / RUN_CHUNK));
+    expect(est.chunks).toBe(Math.ceil(25 / RUN_CHUNK_LEGACY));
     expect(est.estimatedInputTokens).toBeGreaterThan(0);
     expect(est.estimatedOutputTokens).toBeGreaterThan(0);
     expect(est.capped).toBe(false);

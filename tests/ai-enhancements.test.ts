@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   effectiveEnrichBudgetMs,
   extractExcerptFromHtml,
+  fetchPageExcerpt,
   isFetchable,
   renderExcerpt,
 } from '../functions/_lib/ai/enrich';
@@ -235,5 +236,89 @@ describe('buildCoarsePrompt / parseCoarseResponse', () => {
       null,
       null,
     ]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A-1（第二轮审计）— streaming body cap
+ *
+ * fetchPageExcerpt must stop downloading once it has read MAX_BODY_BYTES
+ * (300KB) instead of buffering the entire response. We instrument a streaming
+ * body that is far larger than the cap and assert (a) the reader is cancelled
+ * early and (b) the number of bytes actually pulled off the wire stays at or
+ * just above the cap — never the full multi-MB payload.
+ * ------------------------------------------------------------------ */
+
+describe('A-1: fetchPageExcerpt — streaming 300KB hard cap', () => {
+  const MAX_BODY_BYTES = 300_000;
+
+  /** Builds a fetch stub whose body streams `totalBytes` in fixed chunks,
+   *  recording how many bytes were actually read and whether cancel() fired. */
+  function streamingFetch(totalBytes: number, chunkSize: number) {
+    const stats = { bytesRead: 0, cancelled: false };
+    const head = '<html><head><title>Streaming Cap Page</title></head><body>';
+    const headBytes = new TextEncoder().encode(head);
+
+    const fetchImpl = (async () => {
+      let emitted = 0;
+      let first = true;
+      const reader = {
+        async read(): Promise<{ done: boolean; value?: Uint8Array }> {
+          if (emitted >= totalBytes) return { done: true };
+          let value: Uint8Array;
+          if (first) {
+            // First chunk carries the HTML head so the excerpt can be parsed.
+            value = headBytes;
+            first = false;
+          } else {
+            value = new Uint8Array(chunkSize).fill(0x61); // 'a' filler
+          }
+          const take = Math.min(value.byteLength, totalBytes - emitted);
+          emitted += take;
+          stats.bytesRead += take;
+          return { done: false, value: value.subarray(0, take) };
+        },
+        async cancel() {
+          stats.cancelled = true;
+          return undefined;
+        },
+      };
+      return {
+        ok: true,
+        headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? 'text/html' : null) },
+        body: { getReader: () => reader },
+      };
+    }) as unknown as typeof fetch;
+
+    return { fetchImpl, stats };
+  }
+
+  it('cancels the stream early and reads at most ~300KB of a multi-MB page', async () => {
+    const total = 5 * 1024 * 1024; // 5MB page
+    const { fetchImpl, stats } = streamingFetch(total, 64 * 1024);
+
+    const excerpt = await fetchPageExcerpt('https://example.com/big', fetchImpl);
+
+    // The head was parsed, so enrichment still succeeds.
+    expect(excerpt).not.toBeNull();
+    expect(excerpt!.pageTitle).toBe('Streaming Cap Page');
+    // The reader was cancelled once the cap was reached.
+    expect(stats.cancelled).toBe(true);
+    // Bytes pulled off the wire stay at/just-above the cap — nowhere near 5MB.
+    expect(stats.bytesRead).toBeLessThanOrEqual(MAX_BODY_BYTES + 64 * 1024);
+    expect(stats.bytesRead).toBeLessThan(total);
+  });
+
+  it('reads a small page to completion without cancelling', async () => {
+    const total = 50_000; // well under the cap
+    const { fetchImpl, stats } = streamingFetch(total, 10_000);
+
+    const excerpt = await fetchPageExcerpt('https://example.com/small', fetchImpl);
+
+    expect(excerpt).not.toBeNull();
+    expect(excerpt!.pageTitle).toBe('Streaming Cap Page');
+    // Small page: everything is read, no early cancel needed.
+    expect(stats.bytesRead).toBe(total);
+    expect(stats.cancelled).toBe(false);
   });
 });

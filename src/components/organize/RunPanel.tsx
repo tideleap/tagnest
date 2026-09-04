@@ -76,7 +76,13 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
   const estimate = estimateData?.estimate;
 
   const job = run.job;
-  const percent = job && job.total > 0 ? Math.round((job.processed / job.total) * 100) : 0;
+  // B-19（第二轮审计）: 补跑会新建任务、计数器归零，进度条若只看当前趟会从
+  // ~100% 跳回 0%，被误读为整理倒退。改按累计口径：之前各趟的量（passBase）
+  // 作为基数，当前趟的 processed/total 叠加其上，进度只增不减。
+  const base = run.passBase ?? 0;
+  const cumProcessed = base + (job?.processed ?? 0);
+  const cumTotal = base + (job?.total ?? 0);
+  const percent = cumTotal > 0 ? Math.round((cumProcessed / cumTotal) * 100) : 0;
 
   // No model configured means the button cannot do anything useful; say why
   // rather than letting the request fail.
@@ -209,8 +215,15 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
             />
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs tabular-nums text-ink-faint">
+            {/* B-19: 补跑趟次徽标 —— 让用户明白进度条为何从新基数继续爬升，
+                而不是误以为整理倒退。 */}
+            {run.pass > 0 && (
+              <span className="rounded bg-caution-soft px-1.5 py-0.5 font-medium text-caution-ink">
+                第 {run.pass + 1} 趟 · 补跑未覆盖 {job?.total ?? 0} 条
+              </span>
+            )}
             <span>
-              {job.processed} / {job.total} 已分析
+              {cumProcessed} / {cumTotal} 已分析
             </span>
             <span>{job.suggested} 条建议</span>
             {run.autoApplied > 0 && <span>{run.autoApplied} 条已自动应用</span>}

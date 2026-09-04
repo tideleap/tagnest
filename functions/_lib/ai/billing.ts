@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import { nowIso, newId } from '../ids';
-import { loadAiConfig, loadConfigRow, isModelReady } from './config';
+import { loadAiConfig, loadConfigRow, isModelReady, loadManagedEnabled } from './config';
 import type { ConfigRow } from './config';
 import type { AiConfig } from './types';
 import type { BillingInfo, PlanId, SubStatus } from '../../../shared/types';
@@ -139,20 +139,41 @@ export interface ManagedFacts {
   managedEnabled: boolean;
   /** Remaining hosted credits. */
   creditBalance: number;
+  /**
+   * B-3（第二轮审计）: subscription window bounds (ISO-8601 strings), null =
+   * open-ended. `trialEndsAt` gates a `trialing` sub, `periodEndsAt` an
+   * `active` one. Without a payment gateway nothing ever flips an expired
+   * trial back to `none`, so the eligibility gate must check the clock itself.
+   */
+  trialEndsAt?: string | null;
+  periodEndsAt?: string | null;
 }
 
 /**
  * Pure decision: should this request run on the hosted model?
  *
  * Own key always wins (a paying user shouldn't burn credits they don't have
- * to). Otherwise the user must be on a paid, non-cancelled plan, have consented,
- * and have credits left. Every clause is independently testable.
+ * to). Otherwise the user must be on a paid, non-cancelled plan **inside its
+ * validity window**, have consented, and have credits left. Every clause is
+ * independently testable.
+ *
+ * `now` is injectable so the expiry branches are deterministic under test.
  */
-export function resolveManagedEligibility(f: ManagedFacts): boolean {
+export function resolveManagedEligibility(f: ManagedFacts, now: number = Date.now()): boolean {
   if (f.ownModelReady) return false;
   if (!f.managedAvailable) return false;
   if (!f.managedEnabled) return false;
   if (f.plan === 'free' || f.status === 'none' || f.status === 'canceled') return false;
+  // B-3（第二轮审计）: enforce the subscription window. A `trialing` sub is only
+  // usable before `trialEndsAt`; an `active` sub only before `periodEndsAt`.
+  // A null/absent/unparseable bound is treated as open-ended (no expiry).
+  if (f.status === 'trialing') {
+    const ends = f.trialEndsAt ? Date.parse(f.trialEndsAt) : Number.NaN;
+    if (Number.isFinite(ends) && now >= ends) return false;
+  } else if (f.status === 'active') {
+    const ends = f.periodEndsAt ? Date.parse(f.periodEndsAt) : Number.NaN;
+    if (Number.isFinite(ends) && now >= ends) return false;
+  }
   if (f.creditBalance <= 0) return false;
   return true;
 }
@@ -170,10 +191,20 @@ export interface EffectiveConfig {
  * the instance has no hosted model — so a free, BYO-key deployment behaves
  * exactly as before and never touches the billing tables.
  */
-export async function getEffectiveAiConfig(env: Env, userId: string): Promise<EffectiveConfig | null> {
-  const ownRow = await loadConfigRow(env, userId);
+/**
+ * @param preloadedRow 已读取的配置行（可选）。方案A 性能优化：run.ts 每分片
+ *   只调一次 `loadConfigRow`（含解密 API key），把同一行传入此处，避免
+ *   getEffectiveAiConfig 内部二次读库 + 二次解密。并行 6 分片下每趟原 18 次
+ *   读 ai_settings + 18 次解密，改为 6 次，释放 25s 分区预算给模型调用。
+ */
+export async function getEffectiveAiConfig(
+  env: Env,
+  userId: string,
+  preloadedRow?: ConfigRow,
+): Promise<EffectiveConfig | null> {
+  const ownRow = preloadedRow ?? (await loadConfigRow(env, userId));
   if (isModelReady(ownRow)) {
-    const config = await loadAiConfig(env, userId);
+    const config = await loadAiConfig(env, userId, ownRow);
     return config ? { config, managed: false } : null;
   }
 
@@ -189,6 +220,9 @@ export async function getEffectiveAiConfig(env: Env, userId: string): Promise<Ef
     status: sub.status,
     managedEnabled: ownRow.managedEnabled,
     creditBalance: bal.balance,
+    // B-3（第二轮审计）: 把订阅窗口交给资格判定，过期试用/订阅不再放行。
+    trialEndsAt: sub.trialEndsAt,
+    periodEndsAt: sub.periodEndsAt,
   });
   if (!eligible) return null;
 
@@ -239,9 +273,15 @@ export async function getAiCreditBalance(env: Env, userId: string): Promise<{ ba
  * ------------------------------------------------------------------ */
 
 /**
- * Decrements the meter by `units` and appends a ledger row. Clamps the balance
- * at 0 so a concurrent over-spend can't drive it negative. Returns the
+ * Decrements the meter by `units` and appends a ledger row. Returns the
  * remaining balance (so a caller can short-circuit a run at empty if it wants).
+ *
+ * B-4（第二轮审计）: 原子扣减。旧实现先 SELECT 余额、再按**绝对值** UPSERT
+ * (`balance = excluded.balance`)——两次并发调用各自读到旧余额、各写
+ * `current.balance - spend`，产生丢失更新（余额 5 可被并行 6 分片超扣）。
+ * 现改为单语句相对量扣减 `balance = MAX(balance - ?, 0), used = used + ?`：
+ * 无论多少分片并发，D1 逐语句串行执行，各自从当前余额扣自己的量，互不覆盖；
+ * `MAX(…, 0)` 保证余额永不为负。扣减后再读回真实余额返回。
  */
 export async function consumeAiCredit(
   env: Env,
@@ -254,25 +294,26 @@ export async function consumeAiCredit(
   if (spend === 0) return (await getAiCreditBalance(env, userId)).balance;
 
   const ts = nowIso();
-  const current = await getAiCreditBalance(env, userId);
-  const remaining = Math.max(0, current.balance - spend);
 
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO ai_credit_balances (user_id, balance, used, updated_at)
-       VALUES (?, ?, ?, ?)
+       VALUES (?, 0, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
-         balance = excluded.balance,
-         used = excluded.used,
+         balance = MAX(balance - ?, 0),
+         used = used + ?,
          updated_at = excluded.updated_at`,
-    ).bind(userId, remaining, current.used + spend, ts),
+    ).bind(userId, spend, ts, spend, spend),
     env.DB.prepare(
       `INSERT INTO ai_credit_ledger (id, user_id, delta, reason, ref, created_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
     ).bind(newId(), userId, -spend, reason, ref ?? null, ts),
   ]);
 
-  return remaining;
+  // Read back the post-decrement balance. Under concurrency this may already
+  // reflect a later decrement, but the stored balance itself is correct — the
+  // decrement above is atomic, so no update is ever lost.
+  return (await getAiCreditBalance(env, userId)).balance;
 }
 
 export interface GrantResult {
@@ -372,7 +413,10 @@ export function requireAdmin(env: Env, request: Request): boolean {
 export async function getBillingStatus(env: Env, userId: string): Promise<BillingInfo> {
   const sub = await getSubscription(env, userId);
   const bal = await getAiCreditBalance(env, userId);
-  const ownRow = await loadConfigRow(env, userId);
+  // A-5（第二轮审计）: only the consent flag is needed here — the old
+  // `loadConfigRow` pulled the whole row and decrypted the API key on every
+  // settings render just to read one boolean.
+  const managedEnabled = await loadManagedEnabled(env, userId);
   const managedAvailable = isManagedAiAvailable(env);
   const plan = PLANS[sub.plan]?.allowance ?? 0;
 
@@ -380,7 +424,7 @@ export async function getBillingStatus(env: Env, userId: string): Promise<Billin
     plan: sub.plan,
     status: sub.status,
     managedAvailable,
-    managedEnabled: ownRow.managedEnabled,
+    managedEnabled,
     credits: {
       balance: bal.balance,
       used: bal.used,

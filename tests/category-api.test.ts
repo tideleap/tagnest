@@ -72,6 +72,20 @@ function runCtx(env: Env, jobId: string) {
   } as any;
 }
 
+/** Partition-mode /run: carries the client-declared {from,to} slice. */
+function runPartitionCtx(env: Env, jobId: string, from: number, to: number) {
+  return {
+    request: new Request(`https://tagnest.test/api/ai/jobs/${jobId}/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from, to }),
+    }),
+    env,
+    data: { userId: USER },
+    params: { id: jobId },
+  } as any;
+}
+
 function finalizeCtx(env: Env, jobId: string) {
   return {
     request: new Request(`https://tagnest.test/api/ai/jobs/${jobId}/finalize`, { method: 'POST' }),
@@ -442,6 +456,47 @@ describe('POST /api/ai/jobs/:id/run — categorize', () => {
     ];
     const { env } = makeAiEnv(seed);
     await expect(runHandler(runCtx(env, 'cj1'))).rejects.toMatchObject({ status: 409 });
+  });
+
+  // B-17（第二轮审计）: 服务端分片幂等。重放同一 {from} 分片不得重复处理、
+  // 不得重复累加 processed / 计费 —— 第二次调用直接返回当前快照。
+  it('rejects a replayed partition (B-17 idempotency)', async () => {
+    const seed = baseSeed();
+    seed.ai_jobs = [
+      {
+        id: 'cj1', user_id: USER, kind: 'categorize', status: 'queued',
+        scope: JSON.stringify({ target: 'ids', ids: ['b1'] }),
+        total: 1, processed: 0, suggested: 0, failed: 0,
+        engine: null, error: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        prompt_version: null,
+      },
+    ];
+    const { env, state } = makeAiEnv(seed);
+
+    // First claim of partition [0,1) processes normally.
+    const first = await runHandler(runPartitionCtx(env, 'cj1', 0, 1));
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as { suggested: number; engine: string };
+    expect(firstBody.suggested).toBe(1);
+    expect(state.ai_job_partitions).toHaveLength(1);
+
+    const jobAfterFirst = state.ai_jobs.find((j) => j.id === 'cj1')!;
+    expect(jobAfterFirst.processed).toBe(1);
+    const suggestionsAfterFirst = state.tag_suggestions.filter((s) => s.kind === 'category').length;
+
+    // Replay the same partition: must NOT re-process. No new suggestion rows,
+    // no extra processed increment, no second partition claim.
+    const replay = await runHandler(runPartitionCtx(env, 'cj1', 0, 1));
+    expect(replay.status).toBe(200);
+    const replayBody = (await replay.json()) as { suggested: number; engine: string };
+    expect(replayBody.suggested).toBe(0);
+    expect(replayBody.engine).toBe('none');
+
+    const jobAfterReplay = state.ai_jobs.find((j) => j.id === 'cj1')!;
+    expect(jobAfterReplay.processed).toBe(1); // unchanged — no double count
+    expect(state.tag_suggestions.filter((s) => s.kind === 'category').length).toBe(suggestionsAfterFirst);
+    expect(state.ai_job_partitions).toHaveLength(1); // still a single claim
   });
 });
 

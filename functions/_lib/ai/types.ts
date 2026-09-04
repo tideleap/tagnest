@@ -132,4 +132,9 @@ export interface Vocabulary {
   entries: VocabEntry[];
   /** normalised key -> entry. Covers names and aliases. */
   byKey: Map<string, VocabEntry>;
+  /** tag id -> entry. O(1) lookup for the hot scoring path (A-5, round-2 audit). */
+  byId: Map<string, VocabEntry>;
+  /** normalised *name* -> entry (aliases excluded). Preserves the old
+   *  name-only fallback semantics of `vocabularyEntryFor` while making it O(1). */
+  byName: Map<string, VocabEntry>;
 }

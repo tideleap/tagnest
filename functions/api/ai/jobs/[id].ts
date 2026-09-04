@@ -24,6 +24,13 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
  * Suggestions already written stay in the queue — they are perfectly good
  * proposals, and throwing away completed work because the user stopped early
  * would be the wrong call.
+ *
+ * B-7: the response carries an explicit `cancelled` flag plus the resulting
+ * job, so the client can toast the truth instead of assuming success. Only a
+ * `queued`/`running` job actually flips to `cancelled`; a `finalizing` job has
+ * already finished its partitions (it needs the finalize recovery path, not a
+ * cancel) and a settled job is returned untouched — both report
+ * `cancelled: false`.
  */
 export const onRequestDelete: PagesFunction<Env, string, RequestData> = async (ctx) => {
   const userId = requireUserId(ctx);
@@ -32,10 +39,12 @@ export const onRequestDelete: PagesFunction<Env, string, RequestData> = async (c
   const job = await getJob(ctx.env, userId, jobId);
   if (!job) throw notFound('整理任务不存在');
 
+  let cancelled = false;
   if (job.status === 'queued' || job.status === 'running') {
     await updateJob(ctx.env, userId, jobId, { status: 'cancelled' });
+    cancelled = true;
   }
 
   const updated = await getJob(ctx.env, userId, jobId);
-  return json({ job: toApiJob(updated ?? job) });
+  return json({ cancelled, job: toApiJob(updated ?? job) });
 };

@@ -27,6 +27,7 @@ import {
   cacheKeyFor,
   categoryCacheKeyFor,
   renameCacheKeyFor,
+  tagCacheVariant,
   type CategoryCache,
   type CategoryCacheEntry,
   type RenameCache,
@@ -192,7 +193,7 @@ async function callTagWithRetryAndRepair(
   partitionBudgetMs?: number,
 ): Promise<{ items: import('./prompt').ParsedItem[]; fatal: boolean; error: string | null }> {
   const result = await withRetry(
-    () => callProvider(config, prompt, fetchImpl, signal, { partitionBudgetMs, itemCount: batchSize }),
+    () => callProvider(config, prompt, fetchImpl, signal, { partitionBudgetMs, itemCount: batchSize, fetchesContent: true }),
     (outcome) => {
       if (outcome.ok) return 'ok';
       if (isFatal(outcome.error)) return 'stop';
@@ -227,7 +228,7 @@ async function callTagWithRetryAndRepair(
       `${prompt}\n\n注意：刚才的回复没有为书签产出任何可用标签。请重新生成：为每一条书签至少输出 1 个具体、可复用的标签（避免「网站」「链接」「资料」「文章」等宽泛词）。严格只输出合法 JSON（不要 markdown 代码块、不要解释文字），以 { 或 [ 开头。`,
       fetchImpl,
       signal,
-      { partitionBudgetMs, itemCount: batchSize },
+      { partitionBudgetMs, itemCount: batchSize, fetchesContent: true },
     );
     if (repairOutcome.ok && typeof repairOutcome.text === 'string') {
       lastRaw = repairOutcome.text;
@@ -435,7 +436,11 @@ export async function suggestForBookmarks(
     const cache = options.tagCache;
     const pending: Array<{ input: BookmarkInput; globalIndex: number; key: string }> = [];
     if (cache) {
-      const keys = await Promise.all(enrichedModel.map((input) => cacheKeyFor(input.url, config.model)));
+      // A-3（第二轮审计）: 把影响输出形态的开关折入 key，切换配置后旧缓存自动失效。
+      const variant = tagCacheVariant(config);
+      const keys = await Promise.all(
+        enrichedModel.map((input) => cacheKeyFor(input.url, config.model, variant)),
+      );
       const hits = await Promise.all(keys.map((key) => cache.get(key)));
       enrichedModel.forEach((input, k) => {
         const globalIndex = modelIndices[k];
@@ -469,6 +474,7 @@ export async function suggestForBookmarks(
           () => callProvider(config, coarsePrompt, options.fetchImpl, options.signal, {
             partitionBudgetMs: options.partitionBudgetMs,
             itemCount: slice.length,
+            fetchesContent: true,
           }),
           (o) => {
             if (o.ok) return 'ok';
@@ -569,7 +575,15 @@ export async function suggestForBookmarks(
       }
       if (tagCounts.size >= 8) {
         const counts = [...tagCounts.entries()].map(([name, count]) => ({ name, count }));
-        const synth = await synthesizeTaxonomy(counts, config, options.fetchImpl);
+        // D-2（第二轮审计）: 透传分区 signal / partitionBudgetMs，树合成调用不再
+        // 脱离预算链（详见 taxonomy-tree.ts synthesizeTaxonomy 注释）。
+        const synth = await synthesizeTaxonomy(
+          counts,
+          config,
+          options.fetchImpl,
+          options.signal,
+          options.partitionBudgetMs,
+        );
         if (synth.fatal) {
           fatal = true;
           if (synth.error) modelError = synth.error;
@@ -696,7 +710,11 @@ export async function suggestForBookmarks(
       );
       if (boosted) scored.push(boosted);
     }
-    scored.sort((a, b) => b.confidence - a.name.localeCompare(b.name));
+    // B-1（第二轮审计）: 修正比较器。原式 `b.confidence - a.name.localeCompare(b.name)`
+    // 把 b 的绝对置信度与 ±1 的名称比较整数相减，非传递且与置信度无关——
+    // 高置信标签可能被排到截断线之外。改为双键比较：置信度降序为主键，
+    // 同分按名称升序保证稳定。
+    scored.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
 
     // Prefer the model's own topic phrase; fall back to the top resolved tag
     // so the in-job topic distribution is still populated for fallback runs.

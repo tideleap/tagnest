@@ -9,7 +9,7 @@ import {
   loadTopicClusters,
   type ApplyAliasItem,
 } from '../../../_lib/ai';
-import { getEffectiveAiConfig, consumeAiCredit, loadVocabulary } from '../../../_lib/ai';
+import { getEffectiveAiConfig, consumeAiCredit, loadConfigRow, loadVocabulary } from '../../../_lib/ai';
 
 /**
  * Automatic alias expansion + topic clustering for the taxonomy health page.
@@ -49,7 +49,10 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   }
 
   if (action === 'generate') {
-    const effective = await getEffectiveAiConfig(ctx.env, userId);
+    // A-4（第二轮审计）: 读取一次配置行并复用，避免 getEffectiveAiConfig 内部
+    // 二次读 ai_settings + 二次解密。
+    const row = await loadConfigRow(ctx.env, userId);
+    const effective = await getEffectiveAiConfig(ctx.env, userId, row);
     const config = effective?.config ?? null;
     const vocab = await loadVocabulary(ctx.env, userId);
     const requested = new Set(Array.isArray(body.tagIds) ? body.tagIds : []);

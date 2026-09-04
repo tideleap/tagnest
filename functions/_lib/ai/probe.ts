@@ -49,10 +49,11 @@ export function buildModelsRequest(
   if (!endpoint) return null;
 
   if (provider === 'gemini') {
+    // C-5（第二轮审计）: 密钥改走 `x-goog-api-key` 请求头，不再拼进 URL 查询串。
     return {
       method: 'GET',
-      url: `${endpoint}/models?key=${encodeURIComponent(apiKey)}`,
-      headers: { accept: 'application/json' },
+      url: `${endpoint}/models`,
+      headers: { accept: 'application/json', 'x-goog-api-key': apiKey },
     };
   }
 
@@ -107,10 +108,11 @@ export function buildMinimalInferenceRequest(
   }
 
   if (provider === 'gemini') {
+    // C-5（第二轮审计）: 密钥改走 `x-goog-api-key` 请求头，不再拼进 URL 查询串。
     return {
       method: 'POST',
-      url: `${endpoint}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      headers: { 'content-type': 'application/json' },
+      url: `${endpoint}/models/${encodeURIComponent(model)}:generateContent`,
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: {
         contents: [{ parts: [{ text: 'ping' }] }],
         generationConfig: { maxOutputTokens: 1 },

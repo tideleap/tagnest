@@ -64,9 +64,25 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   // Bulk shapes resolve to ids server-side so the decision logic stays in one
   // place and ownership is enforced by the same WHERE clause. The resolution is
   // scoped to the requested kind so a "apply the whole run" never mixes queues.
+  //
+  // B-20（第二轮审计）: 整批解析带 LIMIT（MAX_DECISIONS）。一次运行产生 >500 条
+  // 待确认时，「全部应用」原先静默只处理前 500 条。现在先数一遍匹配总量，命中
+  // LIMIT 就在响应里带 `truncated: true` + `totalMatched`，由前端提示分次确认，
+  // 批量操作语义不再撒谎。
+  let truncated = false;
+  let totalMatched = 0;
   if (ids.length === 0 && (body.jobId || body.bookmarkId)) {
     const clause = body.jobId ? 'job_id = ?' : 'bookmark_id = ?';
     const value = String(body.jobId ?? body.bookmarkId);
+
+    const countRow = await ctx.env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM tag_suggestions
+        WHERE user_id = ? AND status = 'pending' AND kind = ? AND ${clause}`,
+    )
+      .bind(userId, kind, value)
+      .first<{ n: number }>();
+    totalMatched = Number(countRow?.n ?? 0);
+    truncated = totalMatched > MAX_DECISIONS;
 
     const rows = await ctx.env.DB.prepare(
       `SELECT id FROM tag_suggestions
@@ -93,13 +109,13 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   if (kind === 'category') {
     const outcome = await decideCategorySuggestions(ctx.env, userId, ids, action);
     const pending = await countPending(ctx.env, userId);
-    return json({ ...outcome, pending });
+    return json({ ...outcome, pending, truncated, totalMatched });
   }
 
   if (kind === 'rename') {
     const outcome = await decideRenameSuggestions(ctx.env, userId, ids, action);
     const pending = await countPending(ctx.env, userId);
-    return json({ ...outcome, pending, tagsCreated: 0 });
+    return json({ ...outcome, pending, tagsCreated: 0, truncated, totalMatched });
   }
 
   // Edit-before-accept is single-suggestion only; pass the new spelling so
@@ -109,5 +125,5 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   const outcome = await decideSuggestions(ctx.env, userId, ids, action, opts);
   const pending = await countPending(ctx.env, userId);
 
-  return json({ ...outcome, pending });
+  return json({ ...outcome, pending, truncated, totalMatched });
 };

@@ -298,6 +298,74 @@ export class MockDb {
       return [];
     }
 
+    // --- ai_jobs: loadAiUsage window listing (metrics B-11) ---------
+    // `SELECT id, status, engine, scope, total, created_at FROM ai_jobs
+    //   WHERE user_id = ? AND created_at >= ? ORDER BY created_at DESC`.
+    if (
+      u.startsWith('SELECT ID, STATUS, ENGINE, SCOPE, TOTAL, CREATED_AT FROM AI_JOBS WHERE USER_ID = ? AND CREATED_AT >= ?')
+    ) {
+      const userId = params[0] as string;
+      const cutoff = params[1] as string;
+      return this.ai_jobs
+        .filter((r) => r.user_id === userId && String(r.created_at) >= cutoff)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .map((r) => ({
+          id: r.id,
+          status: r.status,
+          engine: r.engine ?? null,
+          scope: r.scope ?? null,
+          total: Number(r.total ?? 0),
+          created_at: r.created_at,
+        }));
+    }
+
+    // --- tag_suggestions: loadAiUsage attribution + funnel (B-11) ---
+    // Distinct (job_id, bookmark_id) pairs written in the window.
+    if (u.startsWith('SELECT DISTINCT JOB_ID, BOOKMARK_ID FROM TAG_SUGGESTIONS WHERE USER_ID = ? AND CREATED_AT >= ?')) {
+      const userId = params[0] as string;
+      const cutoff = params[1] as string;
+      const seen = new Set<string>();
+      const rows: MockRow[] = [];
+      for (const s of this.tag_suggestions) {
+        if (s.user_id !== userId) continue;
+        if (String(s.created_at) < cutoff) continue;
+        const key = `${s.job_id ?? ''}\u0000${s.bookmark_id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push({ job_id: s.job_id ?? null, bookmark_id: s.bookmark_id });
+      }
+      return rows;
+    }
+    // Status funnel: `SELECT status, COUNT(*) AS c ... GROUP BY status`.
+    if (u.startsWith('SELECT STATUS, COUNT(*) AS C FROM TAG_SUGGESTIONS WHERE USER_ID = ? GROUP BY STATUS')) {
+      const userId = params[0] as string;
+      const counts = new Map<string, number>();
+      for (const s of this.tag_suggestions) {
+        if (s.user_id !== userId) continue;
+        counts.set(String(s.status), (counts.get(String(s.status)) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([status, c]) => ({ status, c }));
+    }
+    // Auto-applied share: accepted at/above the threshold.
+    if (
+      u.startsWith('SELECT COUNT(*) AS C FROM TAG_SUGGESTIONS WHERE USER_ID = ?') &&
+      u.includes("STATUS = 'ACCEPTED'") &&
+      u.includes('CONFIDENCE >= ?')
+    ) {
+      const userId = params[0] as string;
+      const threshold = Number(params[1]);
+      return [
+        {
+          c: this.tag_suggestions.filter(
+            (s) =>
+              s.user_id === userId &&
+              s.status === 'accepted' &&
+              Number(s.confidence ?? 0) >= threshold,
+          ).length,
+        },
+      ];
+    }
+
     // --- collections (design plan module) --------------------------
     if (
       u.startsWith(
@@ -1497,23 +1565,17 @@ export class MockDb {
       return [];
     }
 
-    // --- category: ensureCategoryPath existing-node lookup (C4-3) ---
-    // Child variant: `... AND parent_id = ? AND name = ? COLLATE NOCASE LIMIT 1`.
-    if (u.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND PARENT_ID = ? AND NAME = ?')) {
-      const userId = params[0] as string;
-      const parentId = params[1] as string;
-      const name = String(params[2]).toLowerCase();
-      const t = this.tags.find(
-        (x) => x.user_id === userId && x.parent_id === parentId && String(x.name).toLowerCase() === name,
-      );
-      return t ? [{ id: t.id }] : [];
-    }
-    // Root variant: `... AND parent_id IS NULL AND name = ? COLLATE NOCASE LIMIT 1`.
-    if (u.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND PARENT_ID IS NULL AND NAME = ?')) {
+    // --- category: ensureCategoryPath existing-node lookup (B-5) ---
+    // Global-name reuse: `SELECT id FROM tags WHERE user_id = ? AND name = ?
+    // COLLATE NOCASE LIMIT 1`. Matches the unique index `idx_tags_user_name`
+    // (user_id + name, global — NOT scoped to parent), so a same-named node is
+    // reused wherever it lives instead of inserting a duplicate that would
+    // collide with the unique index.
+    if (u.startsWith('SELECT ID FROM TAGS WHERE USER_ID = ? AND NAME = ?')) {
       const userId = params[0] as string;
       const name = String(params[1]).toLowerCase();
       const t = this.tags.find(
-        (x) => x.user_id === userId && (x.parent_id ?? null) === null && String(x.name).toLowerCase() === name,
+        (x) => x.user_id === userId && String(x.name).toLowerCase() === name,
       );
       return t ? [{ id: t.id }] : [];
     }

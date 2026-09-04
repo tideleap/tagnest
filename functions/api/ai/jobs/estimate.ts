@@ -23,12 +23,20 @@ export const onRequestGet: PagesFunction<Env, string, RequestData> = async (ctx)
   // C-5: 与 POST /api/ai/jobs 共用同一份范围校验（_lib/ai/job-params.ts），
   // 保证预估算的范围和真实任务算的范围永远一致。预估是只读的，非法 kind 沿用
   // 历史行为静默回落到 tagging（strictKind 不开）。
-  const { target, kind, ids: explicitIds } = parseJobScopeParams({
+  // B-15: includeBrowserFolder 一并解析透传，否则 categorize 预估恒按
+  // `false` 解析，与真实任务范围分叉。
+  const {
+    target,
+    kind,
+    ids: explicitIds,
+    includeBrowserFolder,
+  } = parseJobScopeParams({
     target: url.searchParams.get('target'),
     kind: url.searchParams.get('kind'),
     ids: url.searchParams.get('ids'),
+    includeBrowserFolder: url.searchParams.get('includeBrowserFolder'),
   });
 
-  const estimate = await estimateJob(ctx.env, userId, target, explicitIds, kind);
+  const estimate = await estimateJob(ctx.env, userId, target, explicitIds, kind, includeBrowserFolder);
   return json({ estimate });
 };

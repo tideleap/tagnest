@@ -89,6 +89,13 @@ export function tokensOf(text: string): Set<string> {
  * Returns a 0..1 score: exact containment of the tag in the title/description
  * scores high; weaker is a partial token overlap. `null` when there is no
  * meaningful lexical relation (no overlap).
+ *
+ * B-10: bare substring containment is only safe for CJK names (the script has
+ * no word boundaries, so containment *is* the match) and for multi-word
+ * phrases (specific enough that accidental substring hits are rare). A single
+ * ASCII word must match on whole tokens instead — otherwise "ai" scores full
+ * evidence inside "email" and "go" inside "google", systematically inflating
+ * short-tag confidence past the auto-apply threshold.
  */
 export function lexicalEvidence(input: EnrichInput, tagName: string): number | null {
   const haystack = `${input.title ?? ''} ${input.description ?? ''}`.toLowerCase();
@@ -97,11 +104,17 @@ export function lexicalEvidence(input: EnrichInput, tagName: string): number | n
   const name = tagName.toLowerCase().trim();
   if (!name) return null;
 
-  // Direct containment is the strongest, simplest signal ("python" in "Python
-  // 教程: ..."). Multi-word tags need a near-exact phrase match to count.
-  if (name.length >= 2 && haystack.includes(name)) return 1;
+  const hasCjk = /[\u4e00-\u9fff]/.test(name);
+  const isMultiWord = /\s/.test(name);
 
-  // Single-word ASCII: any token overlap is meaningful.
+  // Direct containment is the strongest, simplest signal ("python" in "Python
+  // 教程: ...") — but only for CJK names and multi-word phrases. Single ASCII
+  // words fall through to the token-boundary check below.
+  if (name.length >= 2 && (hasCjk || isMultiWord) && haystack.includes(name)) return 1;
+
+  // ASCII / token-level: any whole-token overlap is meaningful. For a
+  // single-word ASCII tag this is an exact word-boundary match (full score on
+  // a whole-token hit, no score on a mere substring hit).
   const nameTokens = tokensOf(name);
   if (nameTokens.size === 0) return null;
   const hayTokens = tokensOf(haystack);
@@ -207,9 +220,11 @@ export function scoreTagCandidate(
 /** Highest-frequency existing tag for a candidate, for the reuse boost. */
 export function vocabularyEntryFor(vocab: Vocabulary, tagId: string | null, name: string): VocabEntry | null {
   if (tagId) {
-    const hit = vocab.entries.find((e) => e.id === tagId);
+    // A-5（第二轮审计）: O(1) id lookup via the prebuilt index instead of a
+    // linear `entries.find` per candidate on the hot scoring path.
+    const hit = vocab.byId.get(tagId);
     if (hit) return hit;
   }
   const key = normalizeKey(name);
-  return vocab.entries.find((e) => normalizeKey(e.name) === key) ?? null;
+  return vocab.byName.get(key) ?? null;
 }

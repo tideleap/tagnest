@@ -4,6 +4,8 @@ import { requireUserId } from '../../_lib/auth';
 import { badRequest, json, readJson } from '../../_lib/http';
 import { nowIso } from '../../_lib/ids';
 import { encryptField } from '../../_lib/crypto';
+import { isBlockedHost } from '../../_lib/ssrf';
+import { parseUrl } from '../../_lib/urlkey';
 
 /**
  * AI configuration storage.
@@ -115,7 +117,18 @@ export const onRequestPut: PagesFunction<Env, string, RequestData> = async (ctx)
     merged.provider = provider;
   }
   if ('baseUrl' in body) {
-    merged.baseUrl = body.baseUrl ? String(body.baseUrl).trim().slice(0, 300) : null;
+    const raw = body.baseUrl ? String(body.baseUrl).trim().slice(0, 300) : null;
+    // C-3（第二轮审计）: 写入时即校验。此前只做长度截断，用户可把推理地址
+    // 指向内网/元数据地址，保存后每次 /run 都会服务端代打。与推理路径
+    // （providers.ts callProvider）同一防线：协议限定 + 主机黑名单。
+    if (raw) {
+      const parsed = parseUrl(raw);
+      if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+        throw badRequest('接口地址必须是 http/https URL');
+      }
+      if (isBlockedHost(parsed.hostname)) throw badRequest('接口地址不被允许');
+    }
+    merged.baseUrl = raw;
   }
   if ('model' in body) {
     merged.model = body.model ? String(body.model).trim().slice(0, 120) : null;

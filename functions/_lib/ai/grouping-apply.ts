@@ -75,6 +75,19 @@ export async function applyTagHierarchy(db: D1Database, userId: string): Promise
 
   // 3) Assign each original tag its parent id.
   const byId = new Map(currentTags.map((t) => [t.id, t]));
+  // B-13: cycle guard. `ensureTag` may reuse an existing same-name tag as a
+  // category node, and that tag carries its own ancestry — so a rewrite like
+  // "前端开发 under 前端" closes a cycle when the live tree already has
+  // 前端→前端开发. Simulate the evolving parent map (existing tags + freshly
+  // inserted categories + each rewrite as it is accepted) and check the
+  // proposed parent's ancestor chain before every write; a hit skips that
+  // assignment entirely rather than corrupting the tree.
+  const parentOf = new Map<string, string | null>();
+  for (const t of currentTags) parentOf.set(t.id, t.parentId);
+  for (const { name, parentId } of toInsert) {
+    const id = idByName.get(normalizeKey(name));
+    if (id) parentOf.set(id, parentId);
+  }
   const updates: D1PreparedStatement[] = [];
   for (const a of result.assignments) {
     const tag = byId.get(a.tagId);
@@ -83,6 +96,8 @@ export async function applyTagHierarchy(db: D1Database, userId: string): Promise
       ? (subId.get(keyForSub(a.category, a.subcategory)) ?? null)
       : (categoryId.get(a.category) ?? null);
     if (tag.parentId === parentId) continue;
+    if (wouldCreateCycle(parentOf, a.tagId, parentId)) continue;
+    parentOf.set(a.tagId, parentId);
     updates.push(
       db.prepare(`UPDATE tags SET parent_id = ? WHERE id = ? AND user_id = ?`).bind(parentId, a.tagId, userId),
     );
@@ -118,4 +133,35 @@ function buildNameIndex(tags: Tag[]): Map<string, string> {
   const index = new Map<string, string>();
   for (const t of tags) index.set(normalizeKey(t.name), t.id);
   return index;
+}
+
+/**
+ * B-13: would setting `tagId`'s parent to `newParentId` close a cycle in the
+ * (possibly simulated) parent map?
+ *
+ * Walks the ancestor chain starting from the proposed parent; if `tagId` is
+ * ever reached, the rewrite would make the tag its own ancestor. A `null`
+ * parent can never cycle; a self-parent is the degenerate case. The guard
+ * bound keeps a pre-existing (corrupt) cycle from hanging the walk — such a
+ * chain is reported as "would cycle" only when it actually passes through
+ * `tagId`, otherwise the walk simply terminates at the guard.
+ *
+ * Exported for unit testing; `applyTagHierarchy` calls it before every
+ * `parent_id` rewrite and skips the assignment on a hit.
+ */
+export function wouldCreateCycle(
+  parentOf: Map<string, string | null>,
+  tagId: string,
+  newParentId: string | null,
+): boolean {
+  if (newParentId === null) return false;
+  if (newParentId === tagId) return true;
+  let cursor: string | null | undefined = newParentId;
+  let guard = 0;
+  while (cursor && guard < 100) {
+    if (cursor === tagId) return true;
+    cursor = parentOf.get(cursor) ?? null;
+    guard += 1;
+  }
+  return false;
 }

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, RotateCcw, Sparkles, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, RotateCcw, Sparkles, XCircle } from 'lucide-react';
 import type { AiJob, AiJobStatus, AiJobTarget } from '@shared/types';
 import { Button, ConfirmDialog, Skeleton } from '@/components/ui';
 import { relativeTime } from '@/lib/url';
 import { Card } from './Card';
-import { useAiJobs, useAiJob, useCancelJob, useUndoJob } from '@/hooks/queries';
+import { useAiJobs, useAiJob, useCancelJob, useFinalizeJob, useUndoJob } from '@/hooks/queries';
 
 /**
  * AI batch-run history.
@@ -132,9 +132,13 @@ export function JobsSection() {
                   </span>
                 </button>
 
-                {isActive(job.status) && (
+                {/* B-7: `finalizing` 的任务不能取消（分片已全部完成），它需要的是
+                    恢复收尾而不是取消；取消按钮对它是 no-op 且 toast 误导。 */}
+                {job.status === 'finalizing' ? (
+                  <FinalizeButton id={job.id} />
+                ) : isActive(job.status) ? (
                   <CancelButton id={job.id} />
-                )}
+                ) : null}
               </div>
 
               <div className="px-3 pb-2.5">
@@ -236,6 +240,42 @@ function CancelButton({ id }: { id: string }) {
       onClick={() => cancel.mutate(id)}
     >
       取消
+    </Button>
+  );
+}
+
+/**
+ * B-7: recovery entry point for a job stuck in `finalizing`.
+ *
+ * A job reaches `finalizing` when every partition has finished but the client
+ * never called `/finalize` (tab closed, crash, or a stop at an unlucky moment).
+ * Its proposals are already saved — only the wrap-up (auto-apply + hierarchy
+ * rebuild) is missing. The endpoint is idempotent, so this button also fires
+ * once automatically on mount: merely opening the jobs list heals a stuck run
+ * without the user having to notice it. The ref keeps the auto-fire to one
+ * attempt per mount even under React StrictMode's double effect.
+ */
+function FinalizeButton({ id }: { id: string }) {
+  const finalize = useFinalizeJob();
+  const autoFired = useRef(false);
+
+  useEffect(() => {
+    if (autoFired.current || finalize.isPending || finalize.isSuccess) return;
+    autoFired.current = true;
+    finalize.mutate(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      className="shrink-0"
+      iconLeft={<CheckCircle2 size={15} />}
+      loading={finalize.isPending}
+      onClick={() => finalize.mutate(id)}
+    >
+      完成收尾
     </Button>
   );
 }

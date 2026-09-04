@@ -125,12 +125,17 @@ export async function loadAiUsage(
       ORDER BY created_at DESC`,
   )
     .bind(userId, cutoff)
-    .all<{ status: string; engine: string | null; scope: string | null; total: number }>();
+    .all<{ id: string; status: string; engine: string | null; scope: string | null; total: number }>();
 
   // Distinct bookmarks touched in the window, each attributed to the scope of
   // the most recent run that included it (ORDER BY created_at DESC above makes
   // the last write in the map the freshest target — a clean partition).
   const touchedTarget = new Map<string, 'untagged' | 'all' | 'ids'>();
+  // Which scope target each in-window job used, so bookmarks reached by
+  // 'all'/'untagged' runs (whose scope carries no id list) can still be
+  // attributed below. B-11: without this, whole-library runs — the largest
+  // usage scenario — contributed zero touched bookmarks.
+  const jobTarget = new Map<string, 'untagged' | 'all' | 'ids'>();
   const scopeJobCounts: Record<'untagged' | 'all' | 'ids', number> = {
     untagged: 0,
     all: 0,
@@ -155,10 +160,29 @@ export async function loadAiUsage(
       ? scope?.target
       : 'untagged') as 'untagged' | 'all' | 'ids';
     scopeJobCounts[target] += 1;
+    jobTarget.set(job.id, target);
 
     for (const id of asIdList(scope?.ids)) {
       touchedTarget.set(id, target);
     }
+  }
+
+  // B-11: 'all'/'untagged' runs carry no id list, so attribute their touched
+  // bookmarks through the suggestions they actually wrote in the window. This
+  // also picks up one-off (job_id NULL) single-bookmark suggestions, treated
+  // as 'ids' scope. Merging into the same map keeps ids-scoped bookmarks that
+  // produced no suggestion counted, so this strictly widens — never narrows —
+  // the touched set.
+  const suggRows = await env.DB.prepare(
+    `SELECT DISTINCT job_id, bookmark_id
+       FROM tag_suggestions
+      WHERE user_id = ? AND created_at >= ?`,
+  )
+    .bind(userId, cutoff)
+    .all<{ job_id: string | null; bookmark_id: string }>();
+  for (const s of suggRows.results) {
+    const target = s.job_id ? jobTarget.get(s.job_id) : 'ids';
+    if (target) touchedTarget.set(s.bookmark_id, target);
   }
 
   const touchedBookmarks = touchedTarget.size;

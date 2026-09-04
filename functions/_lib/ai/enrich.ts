@@ -1,4 +1,5 @@
 import type { EnrichInput } from './types';
+import { isBlockedHost } from '../ssrf';
 
 /**
  * Page-content enrichment (design doc 方案A).
@@ -169,38 +170,151 @@ export function extractExcerptFromHtml(html: string): PageExcerpt | null {
   return { text, metaDescription, pageTitle };
 }
 
+/** Upper bound on manual redirects followed during enrichment. */
+const MAX_ENRICH_REDIRECTS = 5;
+
+/**
+ * C-4（第二轮审计）: SSRF-safe fetch for page enrichment.
+ *
+ * `isFetchable` only checks the protocol (http/https); it does NOT filter
+ * private / loopback / link-local / metadata hosts, and `redirect: 'follow'`
+ * would let a legitimate page 302 into the internal network. This helper
+ * closes both gaps, mirroring the C-3 defense in providers.ts:
+ *   - the literal hostname is checked against `isBlockedHost` before the first
+ *     request and again on every redirect hop;
+ *   - redirects are followed manually (`redirect: 'manual'`) so each hop's
+ *     target is re-validated before it is fetched.
+ * Returns null (never throws) when the URL or any hop is blocked, so the
+ * caller simply treats the page as un-enrichable.
+ */
+async function ssrfSafeFetchPage(
+  url: string,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch,
+): Promise<Response | null> {
+  let current = url;
+  const init: RequestInit = {
+    method: 'GET',
+    redirect: 'manual',
+    signal,
+    headers: {
+      // Identify honestly; many default UA strings are blocked outright.
+      'user-agent': 'TagNest-Organizer/1.0 (+https://tagnest.pages.dev)',
+      accept: 'text/html,application/xhtml+xml',
+    },
+  };
+
+  for (let hop = 0; hop <= MAX_ENRICH_REDIRECTS; hop += 1) {
+    // Validate the literal host of this hop before fetching it.
+    let parsed: URL;
+    try {
+      parsed = new URL(current);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (isBlockedHost(parsed.hostname)) return null;
+
+    const res = await fetchImpl(current, init);
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('Location');
+      // Drain the redirect body so the connection can be reused.
+      await res.arrayBuffer().catch(() => null);
+      if (!loc) return null;
+      let next: URL;
+      try {
+        next = new URL(loc, current);
+      } catch {
+        return null;
+      }
+      current = next.toString();
+      continue;
+    }
+    return res;
+  }
+  return null; // too many redirects
+}
+
 /**
  * Fetches one page and extracts its excerpt.
  *
  * Returns null on any failure — network error, timeout, non-2xx, non-HTML
- * content, empty body. The caller treats null as "no enrichment available".
+ * content, empty body, or a blocked (private/internal) host. The caller treats
+ * null as "no enrichment available".
  */
 export async function fetchPageExcerpt(
   url: string,
   fetchImpl: typeof fetch = fetch,
+  partitionSignal?: AbortSignal,
 ): Promise<PageExcerpt | null> {
   if (!isFetchable(url)) return null;
 
+  // A-2（第二轮审计）: 把分区 signal 并入在途抓取。此前单页抓取只挂
+  // `AbortSignal.timeout(FETCH_TIMEOUT_MS)`，worker 仅在发起新抓取前检查
+  // `signal.aborted`，在途请求不响应分区信号——抓取预算到期时，6 个在途请求最晚
+  // 还要再跑满各自的 6s 超时才结束，把「模型时间底线」挤掉。现用 AbortSignal.any
+  // 合并分区信号与单页超时，分区预算一到期在途抓取立即中止。`AbortSignal.any`
+  // 不可用时（极旧运行时）退回单页超时，行为与旧版一致。
+  const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const signal =
+    partitionSignal && typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([partitionSignal, timeoutSignal])
+      : timeoutSignal;
+
   try {
-    const response = await fetchImpl(url, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: {
-        // Identify honestly; many default UA strings are blocked outright.
-        'user-agent': 'TagNest-Organizer/1.0 (+https://tagnest.pages.dev)',
-        accept: 'text/html,application/xhtml+xml',
-      },
-    });
+    // C-4（第二轮审计）: 走 SSRF 安全抓取——字面主机名经 isBlockedHost 过滤，
+    // 重定向逐跳复检，堵住「合法页面 302 跳内网」与「直接保存内网地址书签」两条路。
+    const response = await ssrfSafeFetchPage(url, signal, fetchImpl);
+    if (!response) return null;
 
     if (!response.ok) return null;
 
     const contentType = response.headers.get('content-type') ?? '';
     if (contentType && !/text\/html|application\/xhtml/i.test(contentType)) return null;
 
-    // Read only the head of the document — the excerpt never needs the whole page.
-    const buffer = await response.arrayBuffer();
-    const html = new TextDecoder().decode(buffer.slice(0, MAX_BODY_BYTES));
+    // A-1（第二轮审计）: 流式读取正文，下载阶段即受 MAX_BODY_BYTES 硬上限约束。
+    // 旧实现 `await response.arrayBuffer()` 先把**整个**响应缓冲进内存、再切片——
+    // 300KB 上限只在切片时起作用。一个声明 text/html 的超大响应（数百 MB）可在
+    // 6s 超时内打满 Workers isolate 内存（128MB）或显著拖慢抓取波次，挤占分区预算，
+    // 连累同分片其余书签（单页 DoS 面）。现改用 getReader() 累计到上限即 cancel()，
+    // 下载量与内存占用都有硬上界；摘要只需文档头部，截断不影响提取质量。
+    let html: string;
+    if (response.body && typeof response.body.getReader === 'function') {
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value || value.byteLength === 0) continue;
+          chunks.push(value);
+          received += value.byteLength;
+          if (received >= MAX_BODY_BYTES) {
+            // Enough for the excerpt — stop downloading the rest of the page.
+            await reader.cancel();
+            break;
+          }
+        }
+      } catch {
+        return null;
+      }
+      // Coalesce, truncating the (possibly over-shot) tail to the cap.
+      const total = Math.min(received, MAX_BODY_BYTES);
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        const take = Math.min(chunk.byteLength, total - offset);
+        merged.set(chunk.subarray(0, take), offset);
+        offset += take;
+        if (offset >= total) break;
+      }
+      html = new TextDecoder().decode(merged);
+    } else {
+      // Environments without a streaming body (defensive; Workers always have one).
+      const buffer = await response.arrayBuffer();
+      html = new TextDecoder().decode(buffer.slice(0, MAX_BODY_BYTES));
+    }
     return extractExcerptFromHtml(html);
   } catch {
     return null;
@@ -264,7 +378,9 @@ export async function enrichInputsWithContent<T extends EnrichInput>(
     while (timeLeft() && cursor < inputs.length) {
       const index = cursor;
       cursor += 1;
-      results[index] = await fetchPageExcerpt(inputs[index].url, fetchImpl);
+      // A-2（第二轮审计）: 把分区 signal 传入在途抓取，预算到期即中止在途请求，
+      // 不再让 6 个在途抓取各自跑满 6s 超时挤占模型时间底线。
+      results[index] = await fetchPageExcerpt(inputs[index].url, fetchImpl, signal);
     }
   }
 

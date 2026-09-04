@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { suggestForBookmarks } from '../functions/_lib/ai/engine';
 import { buildVocabulary } from '../functions/_lib/ai/taxonomy';
-import { cacheKeyFor, normalizeUrlForCache, type TagCache, type TagCacheEntry } from '../functions/_lib/ai/url-cache';
+import { cacheKeyFor, normalizeUrlForCache, tagCacheVariant, type TagCache, type TagCacheEntry } from '../functions/_lib/ai/url-cache';
 import { callProvider } from '../functions/_lib/ai/providers';
 import type { AiConfig, LocalConfig, Vocabulary } from '../functions/_lib/ai/types';
 
@@ -74,12 +74,56 @@ describe('normalizeUrlForCache / cacheKeyFor (P1-2)', () => {
     const k2 = await cacheKeyFor('https://x.com/b', 'm');
     expect(k1).not.toBe(k2);
   });
+
+  it('A-3: defaults to the legacy key shape when no variant is passed', async () => {
+    const withDefault = await cacheKeyFor('https://x.com/a', 'm');
+    const withEmpty = await cacheKeyFor('https://x.com/a', 'm', '');
+    expect(withDefault).toBe(withEmpty);
+    // No extra `:` segment between model and hash.
+    expect(withDefault).toMatch(/^ai:tag:[^:]+:m:[0-9a-f]{64}$/);
+  });
+
+  it('A-3: folds the variant into the key so config switches invalidate entries', async () => {
+    const base = await cacheKeyFor('https://x.com/a', 'm', 's0.f0.t0');
+    const summarized = await cacheKeyFor('https://x.com/a', 'm', 's1.f0.t0');
+    expect(base).not.toBe(summarized);
+    expect(summarized).toContain(':s1.f0.t0:');
+  });
+});
+
+describe('A-3: tagCacheVariant — output-shape switches', () => {
+  it('encodes each switch as a flag bit', () => {
+    expect(
+      tagCacheVariant({ autoSummarize: false, fetchContent: false, twoPass: false }),
+    ).toBe('s0.f0.t0');
+    expect(
+      tagCacheVariant({ autoSummarize: true, fetchContent: true, twoPass: true }),
+    ).toBe('s1.f1.t1');
+  });
+
+  it('appends maxTags only when positive', () => {
+    expect(
+      tagCacheVariant({ autoSummarize: false, fetchContent: false, twoPass: false, maxTags: 4 }),
+    ).toBe('s0.f0.t0.m4');
+    expect(
+      tagCacheVariant({ autoSummarize: false, fetchContent: false, twoPass: false, maxTags: 0 }),
+    ).toBe('s0.f0.t0');
+    expect(
+      tagCacheVariant({ autoSummarize: false, fetchContent: false, twoPass: false }),
+    ).toBe('s0.f0.t0');
+  });
+
+  it('changes when any output-shape switch flips', () => {
+    const off = tagCacheVariant({ autoSummarize: false, fetchContent: true, twoPass: false, maxTags: 4 });
+    const on = tagCacheVariant({ autoSummarize: true, fetchContent: true, twoPass: false, maxTags: 4 });
+    expect(off).not.toBe(on);
+  });
 });
 
 describe('suggestForBookmarks — P1-2 URL result cache', () => {
   it('serves a cache hit without calling the model', async () => {
     const cache = memoryCache();
-    const key = await cacheKeyFor('https://react.dev', modelConfig.model);
+    const key = await cacheKeyFor('https://react.dev', modelConfig.model, tagCacheVariant(modelConfig));
     cache.store.set(key, {
       tags: [{ name: '前端', confidence: 0.9, reason: '缓存', isNew: false }],
       summary: null,
@@ -114,8 +158,8 @@ describe('suggestForBookmarks — P1-2 URL result cache', () => {
 
     expect(mockedCall).toHaveBeenCalledTimes(1);
     expect(out.results[0].tags.map((t) => t.name)).toContain('前端');
-    // Write-back happened under the URL's key.
-    const key = await cacheKeyFor('https://react.dev', modelConfig.model);
+    // Write-back happened under the URL's key (variant-aware).
+    const key = await cacheKeyFor('https://react.dev', modelConfig.model, tagCacheVariant(modelConfig));
     const stored = cache.store.get(key);
     expect(stored).toBeDefined();
     expect(stored?.tags[0].name).toBe('前端');
@@ -130,13 +174,13 @@ describe('suggestForBookmarks — P1-2 URL result cache', () => {
       { vocab: emptyVocab, config: modelConfig, local, tagCache: cache },
     );
 
-    const key = await cacheKeyFor('https://github.com/foo', modelConfig.model);
+    const key = await cacheKeyFor('https://github.com/foo', modelConfig.model, tagCacheVariant(modelConfig));
     expect(cache.store.has(key)).toBe(false);
   });
 
   it('mixes hits and misses in one batch, calling the model only for misses', async () => {
     const cache = memoryCache();
-    const hitKey = await cacheKeyFor('https://react.dev', modelConfig.model);
+    const hitKey = await cacheKeyFor('https://react.dev', modelConfig.model, tagCacheVariant(modelConfig));
     cache.store.set(hitKey, {
       tags: [{ name: '前端', confidence: 0.9, reason: '缓存', isNew: false }],
       summary: null,

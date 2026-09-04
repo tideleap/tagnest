@@ -53,8 +53,19 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
   //
   // C-5: target / kind / bookmarkIds 的校验与 GET /api/ai/jobs/estimate 共用
   // 同一实现（_lib/ai/job-params.ts）。创建任务时非法 kind 必须报错，故 strictKind。
-  const { target, kind, ids: explicitIds } = parseJobScopeParams(
-    { target: body.target, kind: body.kind, ids: body.bookmarkIds },
+  // B-15: includeBrowserFolder 也在此统一解析，保证预估与创建同口径。
+  const {
+    target,
+    kind,
+    ids: explicitIds,
+    includeBrowserFolder,
+  } = parseJobScopeParams(
+    {
+      target: body.target,
+      kind: body.kind,
+      ids: body.bookmarkIds,
+      includeBrowserFolder: body.includeBrowserFolder,
+    },
     { strictKind: true },
   );
 
@@ -74,7 +85,6 @@ export const onRequestPost: PagesFunction<Env, string, RequestData> = async (ctx
     // Categorize scope differs deliberately (PRD §10-6): bookmarks holding a
     // browser_folder placement are skipped unless the caller opts in, and
     // `untagged` means "no primary category yet".
-    const includeBrowserFolder = body.includeBrowserFolder === true;
     ids = await resolveCategorizeScope(ctx.env, userId, target, explicitIds, includeBrowserFolder);
   } else if (kind === 'rename') {
     // Rename scope: every live bookmark is fair game — a title can need
