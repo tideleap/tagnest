@@ -1502,7 +1502,7 @@
       "evidence": [
         {
           "type": "grep",
-          "path": "functions/api/ai/jobs/[id]/run.ts",
+          "path": "functions/api/ai/jobs/[id]/finalize.ts",
           "pattern": "kind === 'categorize'[\\s\\S]{0,4000}shouldWarnRebalance"
         }
       ]
