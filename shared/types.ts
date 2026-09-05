@@ -604,6 +604,12 @@ export interface AutoGroupResult {
   relocated: number;
   /** Number of tags left untouched (unclassified or already deep enough). */
   untouched: number;
+  /**
+   * Orphan governance (2026-09-05): number of low-frequency top-level orphans
+   * consolidated into a similar group or the default group 「其他」. Zero when
+   * the consolidation pass was disabled (`options: null`).
+   */
+  consolidated: number;
   /** Human-readable "一级 > 二级" summary lines. */
   summary: string[];
   /** Full tag tree after the hierarchy was applied. */

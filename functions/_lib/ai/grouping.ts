@@ -22,7 +22,24 @@
  *    rather than pushed deeper.
  *  - **Deterministic.** Same input → same output, so re-running is idempotent
  *    and safe.
+ *
+ * Orphan governance (2026-09-05): the pure keyword pass above treats a
+ * once-used tag exactly like a hundred-use tag, and every tag no rule matches
+ * is left scattered at the top level — over time the tree accumulates dozens
+ * of count=1 "孤立标签". When a `GroupingOptions` object is passed, an extra
+ * pass consolidates low-frequency top-level orphans:
+ *  - tags with `count < minTagCount` MUST be consolidated;
+ *  - if orphan candidates still exceed `maxOrphans`, the lowest-count ones are
+ *    consolidated until the cap holds;
+ *  - consolidation target = the most specific similar group (normalised
+ *    substring match against this run's categories / subcategories and
+ *    structural top-level tags), else the default group (`其他`).
+ * Structural nodes (tags that have children), category-name twins and tags
+ * already at depth are never touched, and a re-run consolidates nothing twice
+ * (consolidated tags are no longer top-level on the next pass).
  */
+
+import { normalizeKey } from './taxonomy';
 
 /** Input: a tag exactly as the client sees it (no parent -> top-level). */
 export interface FlatTag {
@@ -254,16 +271,112 @@ export interface GroupResult {
   summary: string[];
   /** Tags left untouched (unclassified or already deep enough). */
   untouchedCount: number;
+  /**
+   * Orphan-governance pass (only > 0 when `GroupingOptions` were supplied):
+   * number of low-frequency top-level orphans consolidated into a similar or
+   * the default group.
+   */
+  consolidated: number;
 }
 
+/**
+ * Orphan-governance knobs for the consolidation pass. All optional; omitting
+ * the whole object keeps the legacy conservative behaviour (no consolidation).
+ */
+export interface GroupingOptions {
+  /**
+   * A top-level orphan whose `count` is below this MUST be consolidated.
+   * Default 2 — i.e. tags used on fewer than 2 live bookmarks.
+   */
+  minTagCount?: number;
+  /**
+   * Maximum top-level orphans allowed after consolidation. When the candidate
+   * pool exceeds this, the lowest-count orphans are consolidated until the cap
+   * holds. Default 20.
+   */
+  maxOrphans?: number;
+  /**
+   * Default group for orphans with no similar group. Default 「其他」.
+   */
+  defaultGroup?: string;
+}
+
+export const DEFAULT_GROUPING_OPTIONS: Required<GroupingOptions> = {
+  minTagCount: 2,
+  maxOrphans: 20,
+  defaultGroup: '其他',
+};
+
 const MAX_DEPTH = 2; // 0 = top, 1 = subcategory, 2 = leaf; never nest deeper.
+
+/** A consolidation target discovered for an orphan, most-specific first. */
+type OrphanTarget =
+  | { kind: 'sub'; category: string; sub: string; keyLen: number }
+  | { kind: 'cat'; category: string; keyLen: number }
+  | { kind: 'tag'; name: string; keyLen: number };
+
+/**
+ * Finds the most specific existing group an orphan plausibly belongs to, by
+ * normalised bidirectional substring match against (1) this run's
+ * subcategories, (2) this run's categories, then (3) structural top-level
+ * folders. Returns null when nothing is close enough — the caller then falls
+ * back to the default group.
+ *
+ * The shorter of the two keys must be ≥ 2 chars so a one-letter tag cannot
+ * latch onto an unrelated bucket. Within a level the longest match wins (most
+ * specific); levels are checked most-specific-first so a subcategory beat a
+ * bare category even when both match.
+ */
+function findOrphanTarget(
+  orphanKey: string,
+  subs: Array<{ category: string; sub: string }>,
+  cats: string[],
+  structuralNames: string[],
+): OrphanTarget | null {
+  const related = (a: string, b: string): boolean =>
+    a.length >= 2 && b.length >= 2 && (a.includes(b) || b.includes(a));
+
+  let best: OrphanTarget | null = null;
+  for (const { category, sub } of subs) {
+    const k = normalizeKey(sub);
+    if (k && related(orphanKey, k) && (!best || k.length > best.keyLen)) {
+      best = { kind: 'sub', category, sub, keyLen: k.length };
+    }
+  }
+  if (best) return best;
+
+  for (const category of cats) {
+    const k = normalizeKey(category);
+    if (k && related(orphanKey, k) && (!best || k.length > best.keyLen)) {
+      best = { kind: 'cat', category, keyLen: k.length };
+    }
+  }
+  if (best) return best;
+
+  for (const name of structuralNames) {
+    const k = normalizeKey(name);
+    if (k && related(orphanKey, k) && (!best || k.length > best.keyLen)) {
+      best = { kind: 'tag', name, keyLen: k.length };
+    }
+  }
+  return best;
+}
 
 /**
  * Assigns every tag a 1-or-2-level path to form a 3-level tree. Category /
  * sub-category names are returned (not ids) so the API layer decides
  * create-or-reuse; this function stays pure and DB-free.
+ *
+ * Pass 1 (keyword classification) is the legacy behaviour and always runs.
+ * Pass 2 (orphan governance) runs only when `options` is supplied: top-level
+ * leaf tags that no rule matched are consolidated when they are too rare
+ * (`count < minTagCount`) or too numerous (the pool is trimmed to
+ * `maxOrphans`, lowest-count first). Each consolidated orphan goes to the most
+ * specific similar group, else the default group. Omitting `options` keeps the
+ * exact pre-governance output (`consolidated` = 0), so existing callers and
+ * tests are unaffected.
  */
-export function computeTagHierarchy(tags: FlatTag[]): GroupResult {
+export function computeTagHierarchy(tags: FlatTag[], options?: GroupingOptions): GroupResult {
   const byId = new Map(tags.map((t) => [t.id, t]));
   const assignments: Array<{ tagId: string; category: string; subcategory: string | null }> = [];
   const categories = new Set<string>();
@@ -305,6 +418,96 @@ export function computeTagHierarchy(tags: FlatTag[]): GroupResult {
     }
   }
 
+  // ---- Pass 2: orphan governance (opt-in) --------------------------------
+  let consolidated = 0;
+  if (options) {
+    const opts = { ...DEFAULT_GROUPING_OPTIONS, ...options };
+
+    // Children per tag, to tell leaves from structural folders.
+    const childCount = new Map<string, number>();
+    for (const t of tags) {
+      if (t.parentId) childCount.set(t.parentId, (childCount.get(t.parentId) ?? 0) + 1);
+    }
+
+    const assignedIds = new Set(assignments.map((a) => a.tagId));
+    const reservedNames = new Set([...categories].map(normalizeKey));
+    reservedNames.add(normalizeKey(opts.defaultGroup));
+    // Subcategory names are reserved too: an orphan twin of a sub would be
+    // consolidated into itself (ensureTag reuses the same-name node as the
+    // parent → self-parent). The cycle guard would skip it, but the
+    // `consolidated` counter would still inflate — exclude them up front.
+    for (const key of subcategories) {
+      const sub = key.split('\u0000')[1];
+      if (sub) reservedNames.add(normalizeKey(sub));
+    }
+
+    // Orphan candidates: top-level leaves no rule matched, that are not a
+    // category/default-group name twin (never consolidate a node into itself).
+    const orphans = tags.filter(
+      (t) =>
+        t.parentId === null &&
+        !assignedIds.has(t.id) &&
+        (childCount.get(t.id) ?? 0) === 0 &&
+        !reservedNames.has(normalizeKey(t.name)),
+    );
+
+    // Must-go: rarer than the minimum member count.
+    const mustGo = orphans.filter((o) => o.count < opts.minTagCount);
+    const keepers = orphans.filter((o) => o.count >= opts.minTagCount);
+
+    // Cap: still too many after the must-go pass → trim lowest-count extras.
+    let extras: FlatTag[] = [];
+    if (keepers.length > opts.maxOrphans) {
+      const sorted = [...keepers].sort(
+        (a, b) => a.count - b.count || a.name.localeCompare(b.name),
+      );
+      extras = sorted.slice(0, keepers.length - opts.maxOrphans);
+    }
+
+    const toConsolidate = [...mustGo, ...extras];
+    const subList = [...subcategories]
+      .map((k) => k.split('\u0000'))
+      .map(([category, sub]) => ({ category, sub }));
+    const catList = [...categories];
+    // Structural folders = top-level tags that already have children.
+    const structuralNames = tags
+      .filter((t) => t.parentId === null && (childCount.get(t.id) ?? 0) > 0)
+      .map((t) => t.name);
+
+    for (const orphan of toConsolidate) {
+      const oKey = normalizeKey(orphan.name);
+      const target = oKey ? findOrphanTarget(oKey, subList, catList, structuralNames) : null;
+
+      let category: string;
+      let subcategory: string | null;
+      if (target?.kind === 'sub') {
+        category = target.category;
+        subcategory = target.sub;
+        subcategories.add(`${category}\u0000${subcategory}`);
+        summary.add(`${category} > ${subcategory}`);
+      } else if (target?.kind === 'cat') {
+        category = target.category;
+        subcategory = null;
+        summary.add(category);
+      } else if (target?.kind === 'tag') {
+        // Reuse the existing folder by name (ensureTag dedupes on apply).
+        category = target.name;
+        subcategory = null;
+        summary.add(category);
+      } else {
+        category = opts.defaultGroup;
+        subcategory = null;
+        summary.add(category);
+      }
+      categories.add(category);
+      assignments.push({ tagId: orphan.id, category, subcategory });
+      consolidated += 1;
+      // The orphan is no longer a top-level leaf once consolidated; keep the
+      // untouched bookkeeping honest for callers that read both fields.
+      untouchedCount = Math.max(0, untouchedCount - 1);
+    }
+  }
+
   return {
     assignments,
     categories: [...categories].sort(),
@@ -314,5 +517,6 @@ export function computeTagHierarchy(tags: FlatTag[]): GroupResult {
       .sort((a, b) => a.category.localeCompare(b.category) || a.sub.localeCompare(b.sub)),
     summary: [...summary].sort(),
     untouchedCount,
+    consolidated,
   };
 }

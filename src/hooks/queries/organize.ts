@@ -755,7 +755,8 @@ export function useAutoGroupTags() {
       void qc.invalidateQueries({ queryKey: keys.tags });
       void qc.invalidateQueries({ queryKey: keys.aiTaxonomy });
       toast.success(
-        `已建组：新建 ${result.createdCategories} 个分类，调整 ${result.relocated} 个标签`,
+        `已建组：新建 ${result.createdCategories} 个分类，调整 ${result.relocated} 个标签` +
+          (result.consolidated > 0 ? `，归并 ${result.consolidated} 个孤立标签` : ''),
       );
     },
     onError: (e: Error) => toast.error('自动建组失败', e.message),

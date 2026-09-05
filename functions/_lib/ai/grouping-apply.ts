@@ -2,7 +2,7 @@ import type { AutoGroupResult, Tag } from '../../../shared/types';
 import { colorForName, mapTag } from '../db';
 import { newId, nowIso } from '../ids';
 import { normalizeKey } from './taxonomy';
-import { computeTagHierarchy } from './grouping';
+import { computeTagHierarchy, DEFAULT_GROUPING_OPTIONS, type GroupingOptions } from './grouping';
 
 /**
  * Applies the automatic three-level hierarchy to the user's tags.
@@ -13,8 +13,18 @@ import { computeTagHierarchy } from './grouping';
  *
  * Conservative: unclassified or already-deep tags are left untouched; parent
  * id rewrites are reversible via the tag PATCH endpoint.
+ *
+ * Orphan governance (2026-09-05): by default the consolidation pass is ON —
+ * low-frequency top-level orphans (count < minTagCount, default 2) and any
+ * orphans beyond maxOrphans (default 20) are merged into the most specific
+ * similar group or the default group 「其他」. Pass `options: null` to restore
+ * the legacy no-consolidation behaviour.
  */
-export async function applyTagHierarchy(db: D1Database, userId: string): Promise<AutoGroupResult> {
+export async function applyTagHierarchy(
+  db: D1Database,
+  userId: string,
+  options?: GroupingOptions | null,
+): Promise<AutoGroupResult> {
   const rows = await db
     .prepare(
       `SELECT t.id, t.name, t.color_index, t.parent_id, t.sort_order, t.created_at,
@@ -30,8 +40,12 @@ export async function applyTagHierarchy(db: D1Database, userId: string): Promise
 
   const currentTags = rows.results.map(mapTag);
   const idByName = buildNameIndex(currentTags);
+  // `options === null` → legacy conservative pass (no consolidation).
+  // `undefined` → default governance; an object → caller-tuned governance.
+  const effectiveOptions = options === null ? undefined : (options ?? DEFAULT_GROUPING_OPTIONS);
   const result = computeTagHierarchy(
     currentTags.map((t) => ({ id: t.id, name: t.name, count: t.count, parentId: t.parentId })),
+    effectiveOptions,
   );
 
   const toInsert: Array<{ name: string; parentId: string | null }> = [];
@@ -123,6 +137,7 @@ export async function applyTagHierarchy(db: D1Database, userId: string): Promise
     createdCategories: toInsert.length,
     relocated: updates.length,
     untouched: result.untouchedCount,
+    consolidated: result.consolidated,
     summary: result.summary,
     tags: finalRows.results.map(mapTag),
   };

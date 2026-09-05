@@ -346,6 +346,10 @@ function HierarchySummary({ result }: { result: AutoGroupResult }) {
       <p className="text-2xs text-ink-faint">
         新建 {result.createdCategories} 个分类 · 调整 {result.relocated} 个标签 ·{' '}
         {result.untouched} 个保持原位
+        {/* Orphan governance (2026-09-05): low-frequency top-level orphans were
+            merged into a similar group or 「其他」 — surface the count so the
+            user sees the tree converged instead of accumulating strays. */}
+        {result.consolidated > 0 && <> · 归并 {result.consolidated} 个低频孤立标签</>}
       </p>
       {result.summary.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
