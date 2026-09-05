@@ -1,4 +1,5 @@
 import type { Tag } from '@shared/types';
+import { cycleNodeIds } from '@shared/tagCycle';
 
 /**
  * A tag with its resolved subtree attached.
@@ -20,15 +21,24 @@ export type TagSortKey = 'count' | 'name' | 'recent';
  * `TreeNode` wherever they expect a `Tag`), children are attached by `parentId`,
  * and each level is sorted by `sortKey`. Used by both the sidebar nav tree and
  * the full Tags page so the grouping logic lives in exactly one place.
+ *
+ * Cycle tolerance (2026-09-05): historical parent_id loops (self-loops written
+ * before the cycle guards existed) leave every node on the loop with a parent,
+ * so none would ever land in `tops` and the whole subtree silently disappeared
+ * from the sidebar / Tags page. Nodes lying ON a cycle are promoted to
+ * top-level — exactly the edge that closes each loop is dropped — while lasso
+ * tails keep their parent. Migration 0029 repairs the stored data; this keeps
+ * the UI correct regardless.
  */
 export function buildTagTree(tags: Tag[], sortKey: TagSortKey = 'count'): TreeNode[] {
   const nodes = new Map<string, TreeNode>();
   for (const t of tags) nodes.set(t.id, { ...t, children: [] });
 
+  const cyclic = cycleNodeIds(tags);
   const tops: TreeNode[] = [];
   for (const t of tags) {
     const node = nodes.get(t.id)!;
-    if (t.parentId && nodes.has(t.parentId)) nodes.get(t.parentId)!.children.push(node);
+    if (t.parentId && !cyclic.has(t.id) && nodes.has(t.parentId)) nodes.get(t.parentId)!.children.push(node);
     else tops.push(node);
   }
 

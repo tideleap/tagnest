@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { subtreeIds, candidateParents } from './buildTagTree';
+import { buildTagTree, subtreeIds, candidateParents } from './buildTagTree';
 import type { Tag } from '@shared/types';
 
 function tag(id: string, name: string, parentId: string | null): Tag {
@@ -60,5 +60,49 @@ describe('candidateParents', () => {
     const labels = candidateParents(FLAT).map((o) => o.label);
     const hooks = labels.find((l) => l.includes('Hooks'));
     expect(hooks).toMatch(/↳\s*Hooks/);
+  });
+});
+
+/**
+ * Cycle tolerance (2026-09-05): historical parent_id loops must not make a
+ * whole subtree vanish from the sidebar / Tags page. Nodes ON a cycle are
+ * promoted to top level; lasso tails keep their parent.
+ */
+describe('buildTagTree — cycle tolerance', () => {
+  it('builds a normal forest unchanged', () => {
+    const tops = buildTagTree(FLAT);
+    expect(tops.map((t) => t.id).sort()).toEqual(['design', 'root']);
+    const root = tops.find((t) => t.id === 'root')!;
+    expect(root.children.map((c) => c.id).sort()).toEqual(['react', 'vue']);
+  });
+
+  it('promotes a self-looping tag to top level instead of dropping it', () => {
+    const tags = [tag('self', '后端开发', 'self'), tag('child', 'New API', 'self')];
+    const tops = buildTagTree(tags);
+    expect(tops.map((t) => t.id)).toEqual(['self']);
+    expect(tops[0].children.map((c) => c.id)).toEqual(['child']);
+  });
+
+  it('promotes every node of a two-node cycle and keeps lasso tails attached', () => {
+    const tags = [
+      tag('a', '环A', 'b'),
+      tag('b', '环B', 'a'),
+      tag('tail', '套索尾', 'a'),
+      tag('ok', '正常根', null),
+    ];
+    const tops = buildTagTree(tags);
+    // a and b are on the cycle → both become roots; tail hangs off a.
+    expect(tops.map((t) => t.id).sort()).toEqual(['a', 'b', 'ok']);
+    const a = tops.find((t) => t.id === 'a')!;
+    expect(a.children.map((c) => c.id)).toEqual(['tail']);
+    const b = tops.find((t) => t.id === 'b')!;
+    expect(b.children).toHaveLength(0);
+  });
+
+  it('keeps a lasso tail under its (promoted) cyclic parent, not at top', () => {
+    const tags = [tag('a', '环A', 'a'), tag('tail', '套索尾', 'a')];
+    const tops = buildTagTree(tags);
+    expect(tops.map((t) => t.id)).toEqual(['a']);
+    expect(tops[0].children.map((c) => c.id)).toEqual(['tail']);
   });
 });

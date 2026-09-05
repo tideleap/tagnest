@@ -1,5 +1,6 @@
 import type { Env } from '../env';
 import type { CategoryTreeNode, CategoryWritebackPage } from '../../../shared/types';
+import { cycleNodeIds } from '../../../shared/tagCycle';
 import { colorForName, D1_IN_CHUNK, D1_MAX_PARAMS, ensureTags, PRIVATE_BOOKMARK_CLAUSE, promotePendingTags, queryInChunks, withD1Retry } from '../db';
 import { hostOf } from '../urlkey';
 import { newId, nowIso } from '../ids';
@@ -1419,6 +1420,10 @@ async function loadTagNodes(
  * and returns the category path, root → leaf. Returns null when no node exists
  * or the node has no upward chain.
  *
+ * Cycle-safe (2026-09-05): a `visited` set stops the walk the moment it re-
+ * enters a node, so historical parent_id loops yield a truncated path instead
+ * of the same name repeated until the depth cap.
+ *
  * Single source of truth for the in-memory parent walk that
  * `deriveCategoryPaths` and `loadCategoryWritebackPage` previously duplicated
  * verbatim.
@@ -1428,8 +1433,11 @@ function deriveCategoryPathFromNodes(
   tagId: string,
 ): string[] | null {
   const path: string[] = [];
+  const visited = new Set<string>();
   let cursorId: string | null = tagId;
   for (let depth = 0; cursorId !== null && depth < 8; depth += 1) {
+    if (visited.has(cursorId)) break; // cycle: stop instead of repeating names
+    visited.add(cursorId);
     const node = nodeById.get(cursorId);
     if (!node) break;
     path.unshift(node.name);
@@ -1470,8 +1478,15 @@ export async function loadCategoryTree(
   }
 
   const roots: CategoryTreeNode[] = [];
+  // Cycle tolerance (2026-09-05): historical parent_id loops leave every node
+  // on the loop with a parent, so none would ever reach `roots` and the whole
+  // subtree vanished from the category view. Promote exactly the on-cycle
+  // nodes to top level (removing the edge that closes each loop); lasso tails
+  // keep their parent. Migration 0029 repairs the data; this keeps the view
+  // correct even before/without it.
+  const cyclic = cycleNodeIds(nodeById.values());
   for (const node of nodes.values()) {
-    const parent = node.parentId ? nodes.get(node.parentId) : undefined;
+    const parent = node.parentId && !cyclic.has(node.tagId) ? nodes.get(node.parentId) : undefined;
     if (parent) parent.children.push(node);
     else roots.push(node);
   }
@@ -1508,9 +1523,14 @@ export async function deriveCategoryPath(
   if (!placement) return null;
 
   const path: string[] = [];
+  const visited = new Set<string>();
   let cursor: string | null = placement.tag_id;
-  // Depth-bounded walk guards against a corrupt tree looping forever.
+  // Depth-bounded walk guards against a corrupt tree looping forever; the
+  // visited set additionally stops a parent_id cycle from repeating the same
+  // name until the cap (2026-09-05).
   for (let depth = 0; cursor !== null && depth < 8; depth += 1) {
+    if (visited.has(cursor)) break; // cycle: stop instead of repeating names
+    visited.add(cursor);
     const row: { name: string; parent_id: string | null } | null = await env.DB.prepare(
       `SELECT name, parent_id FROM tags WHERE id = ? AND user_id = ? LIMIT 1`,
     )

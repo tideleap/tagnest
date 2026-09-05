@@ -438,6 +438,62 @@ describe('deriveCategoryPath — walk parent_id upward', () => {
     const path = await deriveCategoryPath(env, 'u1', 'b1');
     expect(path).toBeNull();
   });
+
+  it('truncates at a self-loop instead of repeating the name (2026-09-05)', async () => {
+    // Historical dirty data: the tag's parent_id points at itself. The walk
+    // must stop at the loop, not emit the same name until the depth cap.
+    const { env } = makeEnv({
+      tags: [tag('t1', '后端开发', 't1'), tag('t2', 'New API', 't1')],
+      bookmarks: [bookmark('b1')],
+      bookmark_primary_category: [placement('b1', 't2')],
+    });
+    const path = await deriveCategoryPath(env, 'u1', 'b1');
+    expect(path).toEqual(['后端开发', 'New API']);
+  });
+
+  it('truncates at a two-node cycle', async () => {
+    const { env } = makeEnv({
+      tags: [tag('a', '环A', 'b'), tag('b', '环B', 'a'), tag('leaf', '叶子', 'a')],
+      bookmarks: [bookmark('b1')],
+      bookmark_primary_category: [placement('b1', 'leaf')],
+    });
+    const path = await deriveCategoryPath(env, 'u1', 'b1');
+    // Walk: leaf → a → b → (a again: stop). unshift yields root-first order.
+    expect(path).toEqual(['环B', '环A', '叶子']);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * loadCategoryTree — cycle tolerance (2026-09-05)
+ * ------------------------------------------------------------------ */
+
+describe('loadCategoryTree — cycle tolerance', () => {
+  it('promotes self-looping tags to roots so their subtree stays visible', async () => {
+    const { env } = makeEnv({
+      tags: [tag('t1', '后端开发', 't1'), tag('t2', 'New API', 't1')],
+      bookmarks: [bookmark('b1'), bookmark('b2')],
+      bookmark_primary_category: [placement('b1', 't1'), placement('b2', 't2')],
+    });
+    const roots = await loadCategoryTree(env, 'u1');
+    expect(roots).toHaveLength(1);
+    expect(roots[0].name).toBe('后端开发');
+    // Counts roll up through the promoted node.
+    expect(roots[0].count).toBe(2);
+    expect(roots[0].children.map((c) => c.name)).toEqual(['New API']);
+  });
+
+  it('promotes every node of a two-node cycle and keeps lasso tails attached', async () => {
+    const { env } = makeEnv({
+      tags: [tag('a', '环A', 'b'), tag('b', '环B', 'a'), tag('tail', '套索尾', 'a')],
+      bookmarks: [bookmark('b1')],
+      bookmark_primary_category: [placement('b1', 'tail')],
+    });
+    const roots = await loadCategoryTree(env, 'u1');
+    expect(roots.map((r) => r.name).sort()).toEqual(['环A', '环B']);
+    const a = roots.find((r) => r.name === '环A')!;
+    expect(a.children.map((c) => c.name)).toEqual(['套索尾']);
+    expect(a.count).toBe(1);
+  });
 });
 
 /* ------------------------------------------------------------------ *
