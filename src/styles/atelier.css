@@ -369,8 +369,8 @@
     gap: 0.625rem;
     height: 2.5rem;
     border-radius: 0.625rem;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 0.9375rem;
+    font-weight: 600;
     color: var(--color-ink-soft);
     transition:
       color 0.18s ease,
@@ -410,10 +410,11 @@
 /* Sidebar section label. */
 .nav-section {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
+  font-weight: 700;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--color-ink-faint);
+  color: var(--color-ink-soft);
 }
 
 /* Topbar search — editorial capsule. */

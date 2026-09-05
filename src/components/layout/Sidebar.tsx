@@ -148,7 +148,7 @@ function NavRow({
         {item.label}
       </span>
       {count !== undefined && count > 0 && (
-        <span className={cx('shrink-0 items-center text-2xs tabular-nums text-ink-faint', LABEL_VISIBILITY[mode])}>
+        <span className={cx('shrink-0 items-center text-xs tabular-nums text-ink-soft', LABEL_VISIBILITY[mode])}>
           {count > 999 ? '999+' : count}
         </span>
       )}
@@ -199,7 +199,7 @@ function CollapsibleGroup({
         />
         <span className="nav-section min-w-0 flex-1 truncate">{title}</span>
         {collapsed && count !== undefined && count > 0 && (
-          <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{count}</span>
+          <span className="shrink-0 text-xs tabular-nums text-ink-soft">{count}</span>
         )}
       </button>
       {!collapsed && (
