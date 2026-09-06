@@ -7,7 +7,7 @@ import type { Env } from './env';
  * distinguishable. Because it is committed ON TOP of the change under test, a
  * live marker proves that change (and everything before it) is live.
  */
-export const BUILD_VERSION = '2026-09-06-category-page-redesign';
+export const BUILD_VERSION = '2026-09-06-category-visual-polish';
 
 export interface HealthReport {
   status: 'ok' | 'degraded';

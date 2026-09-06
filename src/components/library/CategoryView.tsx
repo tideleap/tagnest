@@ -28,6 +28,7 @@ import { useCategoryWriteback } from '@/hooks/queries/category';
 import { useRecordVisit } from '@/hooks/queries';
 import { displayHost } from '@/lib/url';
 import { NavigationTile } from './NavigationTile';
+import './CategoryView.css';
 
 /**
  * Website-navigation style browse view for the Library — arranged like a
@@ -49,6 +50,10 @@ import { NavigationTile } from './NavigationTile';
  * On the "全部" tab the directory is enriched with a greeting Hero, a
  * frequently-visited quick-access strip, and a recently-added strip. Inside a
  * single category an instant in-category search filters the tiles.
+ *
+ * Visuals live in `./CategoryView.css`: a vivid gradient Hero with a drifting
+ * glow, colour-accented category blocks, glass stat cards and staggered
+ * entrance / hover micro-motion (all gated by prefers-reduced-motion).
  */
 
 const ALL_TAB = '__all__';
@@ -270,7 +275,7 @@ export function CategoryView({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {/* Category tab bar (sticky) */}
       <div className="sticky top-0 z-10 -mx-1 flex gap-1.5 overflow-x-auto border-b border-line bg-glass-canvas/85 px-1 py-2 backdrop-blur">
         <TabPill active={activeTab === ALL_TAB} onClick={() => selectTab(ALL_TAB)}>
@@ -288,86 +293,86 @@ export function CategoryView({
         ))}
       </div>
 
-      {activeGroup ? (
-        <>
-          {/* Instant in-category search (single category tab only) */}
-          <CategoryInternalSearch value={categorySearch} onChange={setCategorySearch} />
+      {/* Content — keyed by tab so the entrance stagger replays on switch. */}
+      <div key={activeTab} className="cat-enter flex flex-col gap-3">
+        {activeGroup ? (
+          <>
+            {/* Instant in-category search (single category tab only) */}
+            <CategoryInternalSearch value={categorySearch} onChange={setCategorySearch} />
 
-          {/* Body: hot rail + site grid */}
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-            <aside className="lg:w-60 lg:shrink-0">
-              <HotRanking items={hotBookmarks} />
-            </aside>
-            <div className="min-w-0 flex-1">
-              <CategoryDetail
-                group={activeGroup}
-                childFilter={childFilter}
-                searchQuery={categorySearch}
-                onClearFilter={() => setChildFilter(null)}
-                onOrganize={() => navigate('/organize?mode=category')}
-              />
+            {/* Body: hot rail + site grid */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+              <aside className="lg:w-60 lg:shrink-0">
+                <HotRanking items={hotBookmarks} />
+              </aside>
+              <div className="min-w-0 flex-1">
+                <CategoryDetail
+                  group={activeGroup}
+                  childFilter={childFilter}
+                  searchQuery={categorySearch}
+                  onClearFilter={() => setChildFilter(null)}
+                  onOrganize={() => navigate('/organize?mode=category')}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* 全部 tab — Hero + quick access + recent + directory */}
+            <Hero total={stats.total} addedToday={stats.addedToday} weekVisits={stats.weekVisits} />
+            <QuickAccess bookmarks={bookmarks} />
+            <RecentAdditions bookmarks={bookmarks} />
+
+            {/* Body: hot rail + site grid */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+              <aside className="lg:w-60 lg:shrink-0">
+                <HotRanking items={hotBookmarks} />
+              </aside>
+              <div className="min-w-0 flex-1">
+                <AllCategories
+                  groups={groups}
+                  onOpenTab={selectTab}
+                  onOrganize={() => navigate('/organize?mode=category')}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Bottom hot tags / categories rail */}
+        {hotTags.length > 0 && (
+          <div className="cat-section p-3">
+            <div className="mb-2 flex items-center gap-1.5 px-1">
+              <Hash size={13} className="text-brand-accent" aria-hidden />
+              <span className="text-xs font-semibold text-ink-soft">
+                {activeGroup ? '热门标签' : '全部分类'}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {hotTags.map((t) => {
+                const isChildActive = activeGroup ? childFilter === t.id : false;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => (activeGroup ? setChildFilter(isChildActive ? null : t.id) : selectTab(t.id))}
+                    className={cx('cat-chip', isChildActive ? 'cat-chip-active' : 'cat-chip-inactive')}
+                  >
+                    {activeGroup && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ ...tagColorVars(t.colorIndex), background: 'var(--tag-dot)' }}
+                        aria-hidden
+                      />
+                    )}
+                    {t.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </>
-      ) : (
-        <>
-          {/* 全部 tab — Hero + quick access + recent + directory */}
-          <Hero total={stats.total} addedToday={stats.addedToday} weekVisits={stats.weekVisits} />
-          <QuickAccess bookmarks={bookmarks} />
-          <RecentAdditions bookmarks={bookmarks} />
-
-          {/* Body: hot rail + site grid */}
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-            <aside className="lg:w-60 lg:shrink-0">
-              <HotRanking items={hotBookmarks} />
-            </aside>
-            <div className="min-w-0 flex-1">
-              <AllCategories
-                groups={groups}
-                onOpenTab={selectTab}
-                onOrganize={() => navigate('/organize?mode=category')}
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Bottom hot tags / categories rail */}
-      {hotTags.length > 0 && (
-        <div className="border-t border-line pt-4">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
-            <Hash size={13} className="text-brand-accent" aria-hidden />
-            {activeGroup ? '热门标签' : '全部分类'}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {hotTags.map((t) => {
-              const isChildActive = activeGroup ? childFilter === t.id : false;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => (activeGroup ? setChildFilter(isChildActive ? null : t.id) : selectTab(t.id))}
-                  className={cx(
-                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                    isChildActive
-                      ? 'border-brand bg-brand-soft text-brand-ink'
-                      : 'border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink',
-                  )}
-                >
-                  {activeGroup && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ ...tagColorVars(t.colorIndex), background: 'var(--tag-dot)' }}
-                      aria-hidden
-                    />
-                  )}
-                  {t.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -379,16 +384,17 @@ export function CategoryView({
 function Hero({ total, addedToday, weekVisits }: { total: number; addedToday: number; weekVisits: number }) {
   const greeting = greetingFor(new Date().getHours());
   return (
-    <section className="rounded-xl border border-line bg-gradient-to-br from-brand-soft/70 to-surface/60 p-5 shadow-xs">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <section className="cat-hero px-5 py-4">
+      <div className="cat-hero-glow" aria-hidden />
+      <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <h1 className="atelier-display atelier-display--3 text-ink">{greeting}</h1>
           <p className="mt-1 text-sm text-ink-soft">今天也整理好你的导航</p>
         </div>
-        <div className="flex gap-2.5">
-          <StatCard label="总书签" value={total} icon={<Layers size={16} aria-hidden />} />
-          <StatCard label="今日新增" value={addedToday} icon={<PlusCircle size={16} aria-hidden />} />
-          <StatCard label="本周访问" value={weekVisits} icon={<Activity size={16} aria-hidden />} />
+        <div className="flex gap-2">
+          <StatCard label="总书签" value={total} icon={<Layers size={15} aria-hidden />} />
+          <StatCard label="今日新增" value={addedToday} icon={<PlusCircle size={15} aria-hidden />} />
+          <StatCard label="本周访问" value={weekVisits} icon={<Activity size={15} aria-hidden />} />
         </div>
       </div>
     </section>
@@ -397,11 +403,11 @@ function Hero({ total, addedToday, weekVisits }: { total: number; addedToday: nu
 
 function StatCard({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
   return (
-    <div className="flex w-24 shrink-0 flex-col items-center gap-1 rounded-xl border border-line bg-surface px-3 py-2.5 shadow-xs">
-      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-soft text-brand-accent" aria-hidden>
+    <div className="cat-stat-card">
+      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-accent" aria-hidden>
         {icon}
       </span>
-      <span className="text-lg font-semibold tabular-nums text-ink">{value}</span>
+      <span className="text-base font-semibold tabular-nums text-ink">{value}</span>
       <span className="text-2xs text-ink-faint">{label}</span>
     </div>
   );
@@ -429,10 +435,12 @@ function QuickAccess({ bookmarks }: { bookmarks: Bookmark[] }) {
   const clearPins = () => setPinned([]);
 
   return (
-    <section className="rounded-xl border border-line bg-surface/70 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section className="cat-section p-3">
+      <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-1.5">
-          <Zap size={15} className="text-brand-accent" aria-hidden />
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-accent">
+            <Zap size={13} aria-hidden />
+          </span>
           <h2 className="text-sm font-semibold text-ink">常用 / 最近访问</h2>
         </div>
         {pinnedIds.length > 0 && (
@@ -447,11 +455,11 @@ function QuickAccess({ bookmarks }: { bookmarks: Bookmark[] }) {
         )}
       </div>
       {items.length === 0 ? (
-        <p className="text-xs leading-relaxed text-ink-faint">
+        <p className="px-1 text-xs leading-relaxed text-ink-faint">
           还没有书签，添加一些网站后再来这里。
         </p>
       ) : (
-        <div className="flex snap-x gap-3 overflow-x-auto pb-1 [scrollbar-width:thin]">
+        <div className="flex snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
           {items.map((b) => (
             <QuickAccessCard
               key={b.id}
@@ -487,7 +495,7 @@ function QuickAccessCard({
   const faviconSrc = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
 
   return (
-    <div className="group relative flex w-40 shrink-0 snap-start flex-col gap-2 rounded-xl border border-line bg-surface p-3 transition-all duration-150 hover:-translate-y-0.5 hover:border-brand hover:shadow-raised">
+    <div className="cat-tile cat-qa-card group relative snap-start">
       <button
         type="button"
         onClick={() => onTogglePin(b.id)}
@@ -507,12 +515,9 @@ function QuickAccessCard({
           onOpen(b.url);
         }}
         title={title}
-        className="flex min-w-0 flex-1 flex-col items-center gap-2 text-center"
+        className="flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center"
       >
-        <span
-          className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-sunken"
-          aria-hidden
-        >
+        <span className="cat-tile-favicon" aria-hidden>
           {faviconFailed ? (
             <span className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-brand-ink">
               {host.charAt(0)}
@@ -521,9 +526,9 @@ function QuickAccessCard({
             <img
               src={faviconSrc}
               alt=""
-              width={28}
-              height={28}
-              className="h-7 w-7 object-contain"
+              width={24}
+              height={24}
+              className="h-6 w-6 object-contain"
               loading="lazy"
               onError={() => setFaviconFailed(true)}
             />
@@ -541,6 +546,7 @@ function QuickAccessCard({
  * ------------------------------------------------------------------ */
 
 function RecentAdditions({ bookmarks }: { bookmarks: Bookmark[] }) {
+  const recordVisit = useRecordVisit();
   const items = useMemo(
     () =>
       [...bookmarks]
@@ -550,17 +556,82 @@ function RecentAdditions({ bookmarks }: { bookmarks: Bookmark[] }) {
   );
 
   return (
-    <section className="rounded-xl border border-line bg-surface/70 p-4">
-      <div className="mb-3 flex items-center gap-1.5">
-        <Clock size={15} className="text-brand-accent" aria-hidden />
+    <section className="cat-section p-3">
+      <div className="mb-2.5 flex items-center gap-1.5 px-1">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-accent">
+          <Clock size={13} aria-hidden />
+        </span>
         <h2 className="text-sm font-semibold text-ink">最近添加</h2>
       </div>
       {items.length === 0 ? (
-        <p className="text-xs leading-relaxed text-ink-faint">还没有添加书签。</p>
+        <p className="px-1 text-xs leading-relaxed text-ink-faint">还没有添加书签。</p>
       ) : (
-        <SiteGrid items={items} />
+        <div className="cat-recent-grid">
+          {items.map((b) => (
+            <RecentRow
+              key={b.id}
+              bookmark={b}
+              onOpen={() => {
+                recordVisit.mutate(b.id);
+                window.open(b.url, '_blank', 'noopener,noreferrer');
+              }}
+            />
+          ))}
+        </div>
       )}
     </section>
+  );
+}
+
+/** Dense single-row cell for the recently-added grid (fills the width). */
+function RecentRow({ bookmark: b, onOpen }: { bookmark: Bookmark; onOpen: () => void }) {
+  const [faviconFailed, setFaviconFailed] = useState(false);
+  const title = b.title || displayHost(b.url);
+  const host = displayHost(b.url);
+  const faviconSrc = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+
+  return (
+    <a
+      href={b.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        onOpen();
+      }}
+      title={title}
+      className="cat-recent-row group"
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-sunken" aria-hidden>
+        {faviconFailed ? (
+          <span className="flex h-full w-full items-center justify-center text-xs font-bold uppercase text-brand-ink">
+            {host.charAt(0)}
+          </span>
+        ) : (
+          <img
+            src={faviconSrc}
+            alt=""
+            width={18}
+            height={18}
+            className="h-4.5 w-4.5 object-contain"
+            loading="lazy"
+            onError={() => setFaviconFailed(true)}
+          />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-ink group-hover:text-brand-ink">
+          {title}
+        </span>
+        <span className="block truncate text-2xs text-ink-faint">{host}</span>
+      </span>
+      <ChevronRight
+        size={13}
+        className="shrink-0 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100"
+        aria-hidden
+      />
+    </a>
   );
 }
 
@@ -576,7 +647,7 @@ function CategoryInternalSearch({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="relative">
+    <div className="cat-search">
       <Search
         size={15}
         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
@@ -591,7 +662,6 @@ function CategoryInternalSearch({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="在当前分类内搜索"
-        className="w-full rounded-full border border-line bg-surface px-9 py-2 text-sm text-ink placeholder:text-ink-faint transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
       />
     </div>
   );
@@ -616,10 +686,7 @@ function TabPill({
     <button
       type="button"
       onClick={onClick}
-      className={cx(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors',
-        active ? 'bg-brand text-on-brand shadow-xs' : 'bg-surface text-ink-soft hover:bg-sunken hover:text-ink',
-      )}
+      className={cx('cat-tab', active ? 'cat-tab-active' : 'cat-tab-inactive')}
     >
       {colorIndex !== undefined && (
         <span
@@ -641,13 +708,15 @@ function HotRanking({ items }: { items: Bookmark[] }) {
   const recordVisit = useRecordVisit();
 
   return (
-    <div className="rounded-xl border border-line bg-surface/70 p-4">
-      <div className="mb-3 flex items-center gap-1.5">
-        <Flame size={15} className="text-brand-accent" aria-hidden />
+    <div className="cat-section p-3">
+      <div className="mb-2 flex items-center gap-1.5 px-1">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-caution-soft text-caution">
+          <Flame size={13} aria-hidden />
+        </span>
         <h3 className="text-sm font-semibold text-ink">全网热搜榜</h3>
       </div>
       {items.length === 0 ? (
-        <p className="text-xs leading-relaxed text-ink-faint">
+        <p className="px-1 text-xs leading-relaxed text-ink-faint">
           还没有访问记录。打开书签后，这里会按访问频次排出热门站点。
         </p>
       ) : (
@@ -664,13 +733,17 @@ function HotRanking({ items }: { items: Bookmark[] }) {
                   recordVisit.mutate(b.id);
                   window.open(b.url, '_blank', 'noopener,noreferrer');
                 }}
-                className="group flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors hover:bg-sunken"
+                className="cat-rank-item group"
                 title={b.title || displayHost(b.url)}
               >
                 <span
                   className={cx(
-                    'w-4 shrink-0 text-center text-xs tabular-nums',
-                    i < 3 ? 'font-semibold text-brand' : 'text-ink-faint',
+                    'cat-rank-medal',
+                    i === 0
+                      ? 'bg-critical text-white'
+                      : i < 3
+                        ? 'bg-brand-soft text-brand-ink'
+                        : 'bg-sunken text-ink-faint',
                   )}
                 >
                   {i + 1}
@@ -679,7 +752,7 @@ function HotRanking({ items }: { items: Bookmark[] }) {
                   {b.title || displayHost(b.url)}
                 </span>
                 {i === 0 && (
-                  <span className="shrink-0 rounded bg-critical-soft px-1 text-[10px] font-medium text-critical-ink">
+                  <span className="shrink-0 rounded bg-critical-soft px-1 text-2xs font-medium text-critical-ink">
                     热
                   </span>
                 )}
@@ -706,7 +779,7 @@ function AllCategories({
   onOrganize: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {groups.map((g) =>
         g.id === UNTAGGED_GROUP_ID ? (
           <UntaggedBlock key={g.id} group={g} onOrganize={onOrganize} />
@@ -725,25 +798,29 @@ function CategoryBlock({ group, onOpen }: { group: CategoryGroup; onOpen: () => 
   );
 
   return (
-    <section className="rounded-xl border border-line bg-surface/70 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-raised">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-center gap-2.5 border-b border-line px-4 py-3 text-left transition-colors hover:bg-sunken/60"
-      >
+    <section className="cat-block" style={tagColorVars(group.colorIndex)}>
+      <button type="button" onClick={onOpen} className="cat-block-header group w-full text-left">
+        <span className="cat-block-accent" aria-hidden />
         <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-soft text-sm"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface text-sm shadow-xs"
           aria-hidden
         >
           {categoryEmoji(group.name)}
         </span>
         <h2 className="text-sm font-semibold text-ink">{group.name}</h2>
-        <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-2xs font-medium tabular-nums text-brand-ink">
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums"
+          style={{ background: 'var(--tag-bg)', color: 'var(--tag-fg)' }}
+        >
           {items.length} 个书签
         </span>
-        <ChevronRight size={14} className="ml-auto shrink-0 text-ink-faint" aria-hidden />
+        <ChevronRight
+          size={14}
+          className="ml-auto shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5"
+          aria-hidden
+        />
       </button>
-      <div className="px-4 py-4">
+      <div className="p-3">
         <SiteGrid items={items} />
       </div>
     </section>
@@ -780,7 +857,7 @@ function CategoryDetail({
     matchedChildren.some((c) => c.items.length > 0) || matchedDirect.length > 0;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {childFilter && (
         <button
           type="button"
@@ -832,7 +909,7 @@ function SubSection({
   if (items.length === 0) return null;
   return (
     <div>
-      <div className="mb-2.5 flex items-center gap-2">
+      <div className="mb-2 flex items-center gap-2">
         {!untagged && colorIndex !== undefined && (
           <span
             className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
@@ -861,7 +938,7 @@ function SiteGrid({ items }: { items: Bookmark[] }) {
 
   return (
     <div>
-      <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {visible.map((b) => (
           <li key={b.id}>
             <NavigationTile bookmark={b} />
@@ -870,7 +947,7 @@ function SiteGrid({ items }: { items: Bookmark[] }) {
       </ul>
 
       {hasMore && (
-        <div className="mt-3 flex justify-center">
+        <div className="mt-2.5 flex justify-center">
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -887,17 +964,19 @@ function SiteGrid({ items }: { items: Bookmark[] }) {
 function UntaggedBlock({ group, onOrganize }: { group: CategoryGroup; onOrganize: () => void }) {
   const items = group.directItems;
   return (
-    <section className="rounded-xl border border-line bg-surface/70">
-      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
-        <Sparkles size={14} className="shrink-0 text-ink-faint" aria-hidden />
+    <section className="cat-block">
+      <div className="cat-block-header">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface text-brand-accent shadow-xs">
+          <Sparkles size={14} aria-hidden />
+        </span>
         <h2 className="text-sm font-semibold text-ink">{group.name}</h2>
         <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-2xs font-medium tabular-nums text-brand-ink">
           {items.length} 个书签
         </span>
       </div>
-      <div className="px-4 py-4">
+      <div className="p-3">
         <SiteGrid items={items} />
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
+        <div className="mt-2.5 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
             这些书签还没有主分类。运行一次「精确分类」，AI 会为每条书签指定唯一归属。
           </p>
