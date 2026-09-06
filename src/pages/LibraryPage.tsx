@@ -151,11 +151,29 @@ export function LibraryPage() {
 
   // Resolve the selected tag ids into live Tag objects (fall back to id-only
   // stubs if tags haven't loaded) for the header chips.
+  //
+  // When a parent tag is active, the sidebar also activates its whole subtree
+  // (so "include subtags" filtering works). That would otherwise render one
+  // chip per tag — confusing, since the user only clicked the parent. So we
+  // drop any active tag whose ancestor is also active, keeping only the
+  // topmost selected tags in the chips/title. The raw `tagIds` (full subtree)
+  // is still used for the query and saved collections, so filtering stays
+  // accurate.
   const activeTags: Tag[] = useMemo(() => {
     const map = new Map((tags ?? []).map((t) => [t.id, t]));
-    return tagIds
+    const resolved = tagIds
       .map((id) => map.get(id))
       .filter((t): t is Tag => Boolean(t));
+    const activeSet = new Set(resolved.map((t) => t.id));
+    const covered = (t: Tag): boolean => {
+      let cur = t.parentId ?? null;
+      while (cur) {
+        if (activeSet.has(cur)) return true;
+        cur = map.get(cur)?.parentId ?? null;
+      }
+      return false;
+    };
+    return resolved.filter((t) => !covered(t));
   }, [tags, tagIds]);
 
   /** Rewrites `?tagIds=` to the given ids, preserving q and everything else. */
