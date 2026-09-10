@@ -15,7 +15,7 @@ describe('AppearanceSection (theme picker)', () => {
 
   it('renders every theme option as a button', () => {
     render(<AppearanceSection />);
-    for (const label of ['暖白经典', '星空白昼', '暖白樱粉', '深空午夜', '极夜青蓝', '跟随系统']) {
+    for (const label of ['冷白经典', '星空白昼', '暖白樱粉', '深空午夜', '极夜青蓝', '跟随系统']) {
       expect(screen.getByRole('button', { name: `主题：${label}` })).toBeInTheDocument();
     }
   });

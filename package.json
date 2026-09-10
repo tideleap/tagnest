@@ -18,6 +18,8 @@
     "backlog:check": "node scripts/backlog-check.mjs",
     "backlog:write": "node scripts/backlog-check.mjs --write",
     "themes:check": "node scripts/check-theme-consistency.mjs",
+    "contrast:check": "node scripts/check-contrast.mjs",
+    "verify": "npm run typecheck && npm run themes:check && npm run contrast:check && npm run test:ui && npm run build",
     "test:watch": "vitest --config vitest.backend.config.ts",
     "test:coverage": "vitest run --config vitest.backend.config.ts --coverage",
     "test:ui:coverage": "vitest run --config vitest.ui.config.ts --coverage",

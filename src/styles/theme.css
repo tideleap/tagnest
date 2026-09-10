@@ -56,23 +56,6 @@
   --text-5xl: 3.75rem;       /* 60 — landing presence (rare)        */
   --text-5xl--line-height: 1.05;
 
-  /* ---- Semantic type scale (UI Design System v2) -------------------
-   * Single-source-of-truth aliases for the six intended tiers. Pages
-   * adopt these instead of ad-hoc text-* sizes so headings stay on one
-   * consistent ladder: display > h1 > h2 > h3 > body > caption.
-   */
-  --text-display: 1.75rem;        /* 28 — empty-state / hero (rare)   */
-  --text-display--line-height: 2rem;
-  --text-h1: 1.375rem;           /* 22 — page title (one per page)   */
-  --text-h1--line-height: 1.8rem;
-  --text-h2: 1.0625rem;          /* 17 — section title               */
-  --text-h2--line-height: 1.5rem;
-  --text-h3: 0.9375rem;          /* 15 — card title                  */
-  --text-h3--line-height: 1.3125rem;
-  --text-body: 0.9375rem;        /* 15 — default body copy           */
-  --text-body--line-height: 1.4rem;
-  --text-caption: 0.75rem;       /* 12 — caption / count / tag       */
-  --text-caption--line-height: 1.05rem;
 
   /* ---- Radius: four steps ------------------------------------------
    * `sm` stays tight: it sits on tiny controls (16px checkboxes, chips,
@@ -100,14 +83,13 @@
     0 8px 14px -6px rgb(16 14 10 / 0.08), 0 32px 64px -16px rgb(16 14 10 / 0.22);
   --shadow-glow: 0 8px 26px -8px color-mix(in oklab, var(--p-brand) 38%, transparent);
 
-  /* ---- Elevation (UI Design System v2): three-tier ladder ----------
-   * Additive aliases over the existing four-step set above. `xs` is the
-   * resting card edge, `sm` the hover lift, `lg` reserved for modal /
-   * drawer / popover. Prefer these over `shadow-float` (heavy two-layer).
+  /* ---- Elevation（密集数据视图专用）------------------------------
+   * xs / sm 是 CategoryView.css 的私有发丝级阶梯，用于图书馆密集网格。
+   * ⚠️ .tsx 文件禁止使用 shadow-xs / shadow-sm —— 组件与页面层一律用
+   * 上面的 raised / float / overlay / modal / glow 五档语义阶梯。
    */
   --shadow-xs: 0 1px 2px 0 rgb(16 14 10 / 0.06);
   --shadow-sm: 0 2px 8px -2px rgb(16 14 10 / 0.10);
-  --shadow-lg: 0 12px 32px -12px rgb(16 14 10 / 0.20);
 
   /* ---- Motion ------------------------------------------------------ */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
@@ -158,6 +140,54 @@
 
   --color-focus: var(--p-focus);
 
+  /* ================================================================
+   * UI Design System v3 — 增补 token
+   *
+   * 原则：每一个新增 token 都对应审计中一类"手写变体"，目的是把
+   * N 种透明度/色值收敛为 1 个可被主题切换、可被门禁校验的名字。
+   * 命名沿用既有 --color-* 语义层，值一律从 --p-* 原始层派生，
+   * 因此 5 套主题（light/dark/aurora/blossom/starlight）自动生效。
+   * ================================================================ */
+
+  /* ---- 焦点环（A-01）-------------------------------------------- */
+  --color-ring: var(--p-focus);
+  --color-ring-offset: var(--p-surface);
+
+  /* ---- 文本对比度地板（A-03）------------------------------------ */
+  --color-ink-muted: var(--p-ink-muted);
+
+  /* ---- 玻璃阶梯（C-05）------------------------------------------ */
+  --color-glass-raised: color-mix(in oklab, var(--p-surface) 85%, transparent);
+  --color-glass-solid: color-mix(in oklab, var(--p-surface) 95%, transparent);
+
+  /* ---- 凹陷容器（C-05）------------------------------------------ */
+  --color-sunken-wash: color-mix(in oklab, var(--p-sunken) 50%, transparent);
+
+  /* ---- 轻分隔线（B-01）------------------------------------------ */
+  --color-line-soft: color-mix(in oklab, var(--p-line) 60%, transparent);
+
+  /* ---- 品牌淡染（C-05）------------------------------------------ */
+  --color-brand-wash: color-mix(in oklab, var(--p-brand-soft) 45%, transparent);
+  --color-brand-tint: color-mix(in oklab, var(--p-brand) 10%, transparent);
+
+  /* ---- 遮罩（C-04）---------------------------------------------- */
+  --color-scrim: rgb(3 7 18 / 0.45);
+  --color-scrim-soft: rgb(3 7 18 / 0.35);
+  --color-scrim-strong: rgb(3 7 18 / 0.55);
+
+  /* ---- 深底面板上的前景（C-04，AuthPage 专用）------------------- */
+  --color-on-dark: #ffffff;
+  --color-on-dark-soft: rgb(255 255 255 / 0.78);
+  --color-on-dark-faint: rgb(255 255 255 / 0.56);
+  --color-on-dark-line: rgb(255 255 255 / 0.18);
+  --color-on-dark-wash: rgb(255 255 255 / 0.10);
+
+  /* ---- 圆角：补 xs 档，收编 40 处裸 `rounded`（R-01）------------ */
+  --radius-xs: 0.25rem;
+
+  /* ---- 间距基数：显式声明（G-06 / S-01）------------------------- */
+  --spacing: 0.25rem;
+
   /* ---- Breakpoints: four real tiers -------------------------------- */
   --breakpoint-sm: 30rem; /* 480 — large phone            */
   --breakpoint-md: 48rem; /* 768 — tablet portrait        */
@@ -188,6 +218,8 @@
   --p-ink-soft: oklch(0.446 0.037 257.3);
   --p-ink-faint: #94A3B8;
   --p-ink-faint: oklch(0.711 0.035 256.8);
+  --p-ink-muted: #586579;
+  --p-ink-muted: oklch(0.504 0.036 257.3);
   --p-ink-inverse: #F8FAFC;
   --p-ink-inverse: oklch(0.984 0.003 247.9);
 
@@ -264,6 +296,8 @@
   --p-ink-soft: oklch(0.869 0.020 252.9);
   --p-ink-faint: #64748B;
   --p-ink-faint: oklch(0.554 0.041 257.4);
+  --p-ink-muted: #78869B;
+  --p-ink-muted: oklch(0.617 0.035 256.8);
   --p-ink-inverse: #0B1120;
   --p-ink-inverse: oklch(0.180 0.032 266.6);
 
@@ -344,6 +378,8 @@
   --p-ink-soft: oklch(0.72 0.03 230);
   --p-ink-faint: #607985;
   --p-ink-faint: oklch(0.56 0.035 230);
+  --p-ink-muted: #79868E;
+  --p-ink-muted: oklch(0.612 0.02 235);
   --p-ink-inverse: #011925;
   --p-ink-inverse: oklch(0.2 0.04 235);
 
@@ -416,6 +452,8 @@
   --p-ink-soft: oklch(0.5 0.03 350);
   --p-ink-faint: #98828c;
   --p-ink-faint: oklch(0.63 0.03 350);
+  --p-ink-muted: #77626C;
+  --p-ink-muted: oklch(0.521 0.03 350);
   --p-ink-inverse: #fef4f8;
   --p-ink-inverse: oklch(0.976 0.012 350);
 
@@ -488,6 +526,8 @@
   --p-ink-soft: oklch(0.5 0.02 245);
   --p-ink-faint: #828e98;
   --p-ink-faint: oklch(0.64 0.02 245);
+  --p-ink-muted: #616A75;
+  --p-ink-muted: oklch(0.521 0.02 250);
   --p-ink-inverse: #f2f5f9;
   --p-ink-inverse: oklch(0.97 0.006 250);
 

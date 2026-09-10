@@ -27,38 +27,39 @@ export interface ThemeOption {
 export const THEMES: ThemeOption[] = [
   {
     value: 'light',
-    label: '暖白经典',
-    hint: '柔和暖白，护眼常读',
+    label: '冷白经典',
+    hint: '冷板岩底 · 靛蓝主色',
     family: 'light',
-    swatch: { canvas: '#fbf8f2', surface: '#ffffff', accent: '#d98324', ink: '#3d3a35' },
+    // swatch hex 取自 theme.css :root 第一声明（权威源，G-05）
+    swatch: { canvas: '#F8FAFC', surface: '#FFFFFF', accent: '#4F46E5', ink: '#0F172A' },
   },
   {
     value: 'starlight',
     label: '星空白昼',
-    hint: '亮白清爽 · 暖星黄点缀',
+    hint: '亮白清爽 · 暖星金点缀',
     family: 'light',
-    swatch: { canvas: '#f7fafc', surface: '#ffffff', accent: '#e8b34b', ink: '#2b3a4a' },
+    swatch: { canvas: '#f5f9fc', surface: '#ffffff', accent: '#d09945', ink: '#1d252d' },
   },
   {
     value: 'blossom',
     label: '暖白樱粉',
     hint: '温柔水粉 · 樱花粉强调',
     family: 'light',
-    swatch: { canvas: '#fdf6f7', surface: '#ffffff', accent: '#e88aa4', ink: '#4a3740' },
+    swatch: { canvas: '#fef4f8', surface: '#ffffff', accent: '#d36a96', ink: '#31252a' },
   },
   {
     value: 'dark',
     label: '深空午夜',
-    hint: '暗色 · 琥珀金辨识',
+    hint: '暗色 · 靛蓝辨识',
     family: 'dark',
-    swatch: { canvas: '#22262e', surface: '#2c313b', accent: '#d8a34c', ink: '#e6e9ee' },
+    swatch: { canvas: '#0B1120', surface: '#111827', accent: '#818CF8', ink: '#F9FAFB' },
   },
   {
     value: 'aurora',
     label: '极夜青蓝',
     hint: '深邃极夜 · 青蓝辉光',
     family: 'dark',
-    swatch: { canvas: '#101a26', surface: '#182633', accent: '#4fd0c7', ink: '#d6e4f0' },
+    swatch: { canvas: '#000f1a', surface: '#011925', accent: '#4eccd3', ink: '#e2edf3' },
   },
   {
     value: 'system',

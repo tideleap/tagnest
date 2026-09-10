@@ -278,12 +278,6 @@
   font-feature-settings: 'ss01';
 }
 
-/* A refined focus ring tuned for the editorial language. */
-.atelier-focus:focus-visible {
-  outline: 2px solid var(--color-brand-accent);
-  outline-offset: 3px;
-  border-radius: var(--radius-sm);
-}
 
 /* Rich glass used by the immersive auth split + overlays. */
 .atelier-glass {
@@ -377,6 +371,10 @@
       background-color 0.18s ease,
       transform 0.18s var(--ease-spring);
   }
+  .nav-row:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
   .nav-row:hover {
     color: var(--color-ink);
     background: color-mix(in oklab, var(--color-surface-hover) 80%, transparent);
@@ -431,7 +429,7 @@
 }
 .atelier-search:focus-within {
   border-color: var(--color-brand);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-brand) 16%, transparent);
+  box-shadow: 0 0 0 2px var(--color-focus);
   background: var(--color-surface);
 }
 .atelier-search input {
@@ -446,16 +444,20 @@
 
 /* Icon button shell in the chrome — round, glassy, hover lift. */
 .chrome-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 9999px;
-  color: var(--color-ink-soft);
-  border: 1px solid transparent;
-  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease-spring);
-}
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 9999px;
+    color: var(--color-ink-soft);
+    border: 1px solid transparent;
+    transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease-spring);
+  }
+.chrome-btn:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
 .chrome-btn:hover {
   color: var(--color-ink);
   background: color-mix(in oklab, var(--color-surface-hover) 80%, transparent);
