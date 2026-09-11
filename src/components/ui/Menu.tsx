@@ -139,7 +139,7 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
             ref={menuRef}
             role="menu"
             style={{ top: pos.top, left: pos.left, width }}
-            className="anim-rise fixed z-50 overflow-hidden rounded-xl border border-line bg-surface/95 py-1.5 shadow-overlay backdrop-blur-xl"
+            className="anim-rise fixed z-50 overflow-hidden rounded-xl border border-line glass-solid py-1.5 shadow-overlay"
           >
             {items.map((item, i) => (
               <div key={item.id}>
@@ -154,19 +154,19 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
                     item.onSelect();
                   }}
                   className={cx(
-                    'relative flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors',
-                    'disabled:cursor-not-allowed disabled:opacity-45',
+                    'relative flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors focus-ring',
+                    'disabled:cursor-not-allowed disabled:opacity-60',
                     item.tone === 'danger' ? 'text-critical-ink' : 'text-ink',
                     activeIndex === i &&
                       !item.disabled &&
-                      (item.tone === 'danger' ? 'bg-critical-soft' : 'bg-brand-soft/70'),
+                      (item.tone === 'danger' ? 'bg-critical-soft' : 'bg-brand-wash'),
                   )}
                 >
                   {activeIndex === i && !item.disabled && (
                     <span
                       aria-hidden
                       className={cx(
-                        'absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full',
+                        'absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full',
                         item.tone === 'danger' ? 'bg-critical' : 'bg-brand-accent',
                       )}
                     />
@@ -179,7 +179,7 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
                           ? item.tone === 'danger'
                             ? 'text-critical'
                             : 'text-brand-ink'
-                          : 'text-ink-faint',
+                          : 'text-ink-muted',
                       )}
                       aria-hidden
                     >
@@ -188,7 +188,7 @@ export function Menu({ trigger, items, align = 'end', width = 200 }: MenuProps) 
                   )}
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {item.trailing && (
-                    <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{item.trailing}</span>
+                    <span className="shrink-0 text-2xs tabular-nums text-ink-muted">{item.trailing}</span>
                   )}
                 </button>
               </div>

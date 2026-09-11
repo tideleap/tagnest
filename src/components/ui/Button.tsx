@@ -21,8 +21,8 @@ const VARIANT: Record<ButtonVariant, string> = {
     'bg-surface text-ink border border-line hover:bg-surface-hover hover:border-line-strong active:bg-sunken shadow-raised hover:shadow-float',
   ghost: 'bg-transparent text-ink-soft hover:bg-surface-hover hover:text-ink active:bg-sunken',
   danger:
-    'btn-ripple bg-critical text-white hover:bg-critical-hover active:bg-critical-hover shadow-raised',
-  link: 'bg-transparent text-brand-ink underline-offset-4 hover:underline p-0 h-auto',
+    'btn-ripple bg-critical text-on-brand hover:bg-critical-hover active:bg-critical-hover active:brightness-[0.97] shadow-raised',
+  link: 'bg-transparent text-brand-ink underline-offset-4 hover:underline p-0 h-auto active:opacity-80',
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -69,7 +69,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={loading || undefined}
       className={cx(
         'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-medium',
-        'transition-all duration-150 ease-out',
+        'transition-all duration-150 ease-out-soft',
+        'focus-ring',
         'disabled:pointer-events-none disabled:opacity-60',
         variant !== 'link' && SIZE[size],
         VARIANT[variant],

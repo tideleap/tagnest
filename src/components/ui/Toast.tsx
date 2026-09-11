@@ -87,7 +87,7 @@ function ToastRow({ item }: { item: Toast }) {
               item.action?.onClick();
               dismiss(item.id);
             }}
-            className="mt-1.5 text-xs font-medium text-brand-ink underline-offset-2 hover:underline"
+            className="mt-1.5 rounded-sm text-xs font-medium text-brand-ink underline-offset-2 hover:underline focus-ring"
           >
             {item.action.label}
           </button>
@@ -97,7 +97,7 @@ function ToastRow({ item }: { item: Toast }) {
         type="button"
         onClick={() => dismiss(item.id)}
         aria-label="关闭提示"
-        className="-mr-1 -mt-0.5 shrink-0 rounded-sm p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+        className="-mr-1 -mt-0.5 shrink-0 rounded-sm p-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-ring"
       >
         <X size={13} />
       </button>
@@ -119,7 +119,7 @@ export function Toaster() {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="pad-safe-b pointer-events-none fixed inset-x-0 bottom-[76px] z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:right-0 sm:items-end sm:p-4 md:bottom-0"
+      className="pad-safe-b pointer-events-none fixed inset-x-0 bottom-[76px] z-60 flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:right-0 sm:items-end sm:p-4 md:bottom-0"
     >
       <div className="flex w-full max-w-sm flex-col gap-2">
         {toasts.map((t) => (

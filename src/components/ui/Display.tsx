@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { RotateCw, X } from 'lucide-react';
 import { cx } from '@/lib/cx';
 import { TAG_COLOR_COUNT } from '@shared/types';
 import { Button } from './Button';
@@ -110,7 +110,7 @@ export function ColorPicker({
             aria-pressed={value === i}
             style={tagColorVars(i)}
             className={cx(
-              'h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform',
+              'h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform focus-ring-round hit-area-lg',
               value === i ? 'scale-110 border-ink' : 'border-transparent hover:scale-105',
             )}
           />
@@ -176,48 +176,62 @@ export function TagChip({
   className,
 }: TagChipProps) {
   const interactive = Boolean(onClick);
-  const Wrapper = interactive ? 'button' : 'span';
 
   return (
-    <Wrapper
-      {...(interactive ? { type: 'button' as const, onClick } : {})}
+    <span
       style={tagColorVars(colorIndex)}
-      aria-pressed={interactive ? active : undefined}
       className={cx(
-        'inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full font-medium transition-colors',
+        'inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full border-2 border-transparent font-medium transition-colors',
         size === 'sm' ? 'h-5.5 px-2 text-2xs' : 'h-6.5 px-2.5 text-xs',
         'bg-[var(--tag-bg)] text-[var(--tag-fg)]',
         'dark:bg-[color-mix(in_oklab,var(--tag-dot)_22%,transparent)] dark:text-[color-mix(in_oklab,var(--tag-dot)_88%,white)]',
         interactive && 'cursor-pointer hover:brightness-97 dark:hover:brightness-125',
-        active && 'ring-2 ring-[var(--tag-dot)] ring-offset-1 ring-offset-canvas',
+        // Selected state uses a border + bg, not a ring (B-03: ring is reserved
+        // for focus). A transparent base border keeps the box stable so toggling
+        // selection does not shift layout.
+        active && 'border-[var(--tag-dot)]',
         className,
       )}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--tag-dot)]" aria-hidden />
-      <span className="min-w-0 truncate">{name}</span>
-      {count !== undefined && <span className="shrink-0 opacity-65 tabular-nums">{count}</span>}
+      {interactive ? (
+        <button
+          type="button"
+          onClick={onClick}
+          aria-pressed={active}
+          className="inline-flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-full bg-transparent focus-ring-round"
+        >
+          <span className="min-w-0 truncate">{name}</span>
+          {count !== undefined && (
+            <span className="shrink-0 opacity-65 tabular-nums" aria-label={`${count} 个书签`}>
+              {count}
+            </span>
+          )}
+        </button>
+      ) : (
+        <>
+          <span className="min-w-0 truncate">{name}</span>
+          {count !== undefined && (
+            <span className="shrink-0 opacity-65 tabular-nums" aria-label={`${count} 个书签`}>
+              {count}
+            </span>
+          )}
+        </>
+      )}
       {onRemove && (
-        <span
-          role="button"
-          tabIndex={0}
-          aria-label={`移除标签 ${name}`}
+        <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              e.stopPropagation();
-              onRemove();
-            }
-          }}
-          className="-mr-1 flex shrink-0 cursor-pointer rounded-full p-0.5 opacity-60 hover:opacity-100"
+          aria-label={`移除标签 ${name}`}
+          className="hit-area-lg -mr-1 flex shrink-0 cursor-pointer items-center rounded-full p-0.5 opacity-60 hover:opacity-100 focus-ring-round"
         >
           <X size={11} />
-        </span>
+        </button>
       )}
-    </Wrapper>
+    </span>
   );
 }
 
@@ -256,7 +270,7 @@ export function Avatar({
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-line bg-sunken px-1.5 font-sans text-2xs font-medium text-ink-faint">
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-line bg-sunken px-1.5 font-sans text-2xs font-medium text-ink-muted">
       {children}
     </kbd>
   );
@@ -282,8 +296,20 @@ export function Spinner({ size = 16, label }: { size?: number; label?: string })
   );
 }
 
-export function Skeleton({ className }: { className?: string }) {
-  return <div className={cx('anim-pulse rounded-sm bg-sunken', className)} aria-hidden />;
+export function Skeleton({ className, label }: { className?: string; label?: string }) {
+  return (
+    <div
+      className={cx('anim-pulse rounded-sm bg-sunken', className)}
+      aria-busy={label ? true : undefined}
+      aria-hidden={label ? undefined : true}
+    >
+      {label && (
+        <span className="sr-only" role="status">
+          {label}
+        </span>
+      )}
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -357,24 +383,14 @@ export function QueryErrorState({
           </svg>
         </span>
       </span>
-      <h3 className="text-lg font-semibold text-ink">加载失败</h3>
+      <h3 className="atelier-display atelier-display--3 text-ink">加载失败</h3>
       <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
         {message || '网络或服务器异常，内容没有加载出来。'}
       </p>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-1 inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-raised transition-all hover:border-line-strong hover:bg-surface-hover"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-            <path d="M8 16H3v5" />
-          </svg>
+        <Button variant="secondary" size="md" iconLeft={<RotateCw size={15} />} onClick={onRetry}>
           重试
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -409,7 +425,7 @@ export function SegmentedControl<T extends string>({
       aria-label={label}
       className={cx(
         'inline-flex shrink-0 items-center gap-0.5 rounded-md bg-sunken p-0.5',
-        size === 'sm' ? 'h-7.5' : 'h-9',
+        size === 'sm' ? 'h-8' : 'h-9',
       )}
     >
       {segments.map((seg) => {
@@ -425,7 +441,7 @@ export function SegmentedControl<T extends string>({
             className={cx(
               'inline-flex h-full items-center gap-1.5 rounded-sm font-medium',
               'transition-all duration-200 ease-out-soft',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+              'focus-ring',
               'active:scale-95',
               size === 'sm' ? 'px-2 text-2xs' : 'px-3 text-xs',
               selected

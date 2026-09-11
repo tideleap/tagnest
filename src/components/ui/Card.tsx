@@ -12,6 +12,12 @@ import { cx } from '@/lib/cx';
  *   - rounded-lg + border-line + bg-surface → matches homepage hero/stat cards
  *   - `interactive` adds the homepage-style hover lift (translateY + shadow)
  *     reserved for genuinely clickable cards — never for static panels.
+ *
+ * ⚠️ `interactive` 仅用于「整卡即一个链接/按钮」且卡内无其他交互元素的场景。
+ *    若卡内有按钮/链接/输入框，不要传 interactive —— 改为在卡内放一个
+ *    absolute inset-0 的 <button> 承载主点击，其余内容 relative z-10。
+ *    原因：role="button" 的容器内嵌套交互元素对屏幕阅读器是未定义行为（A-04）。
+ *    本组件对 interactive 卡补 `focus-ring`，使整卡可键盘聚焦时获得 2px 焦点环。
  */
 export function Card({
   children,
@@ -25,9 +31,9 @@ export function Card({
   return (
     <div
       className={cx(
-        'rounded-xl border border-line bg-surface',
+        'rounded-xl border border-line bg-surface shadow-raised',
         interactive &&
-          'card-interactive cursor-pointer',
+          'card-interactive cursor-pointer focus-ring',
         className,
       )}
       {...rest}
@@ -61,8 +67,10 @@ export function CardHeader({
       )}
     >
       <div className="min-w-0">
-        {title && <h3 className="text-sm font-semibold text-ink">{title}</h3>}
-        {hint && <p className="mt-0.5 text-xs text-ink-faint">{hint}</p>}
+        {title && (
+          <h3 className="font-display text-panel font-semibold tracking-tight text-ink">{title}</h3>
+        )}
+        {hint && <p className="mt-0.5 text-xs text-ink-muted">{hint}</p>}
       </div>
       {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
     </header>

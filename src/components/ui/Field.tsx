@@ -5,6 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { cx } from '@/lib/cx';
 
 /* ------------------------------------------------------------------ *
@@ -45,7 +46,7 @@ function FieldShell({ id, label, hint, error, required, children, className }: F
         </p>
       ) : (
         hint && (
-          <p id={`${id}-hint`} className="text-xs text-ink-faint">
+          <p id={`${id}-hint`} className="text-xs text-ink-muted">
             {hint}
           </p>
         )
@@ -55,13 +56,13 @@ function FieldShell({ id, label, hint, error, required, children, className }: F
 }
 
 const CONTROL_BASE =
-  'w-full bg-surface text-ink placeholder:text-ink-faint border border-line rounded-md ' +
-  'transition-colors duration-150 ' +
+  'w-full bg-surface text-ink placeholder:text-ink-muted border border-line rounded-md ' +
+  'transition-colors duration-150 ease-out-soft ' +
   'hover:border-line-strong ' +
-  'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 ' +
-  'disabled:bg-sunken disabled:text-ink-faint disabled:cursor-not-allowed';
+  'focus:border-brand focus-ring-inset ' +
+  'disabled:bg-sunken disabled:text-ink-muted disabled:cursor-not-allowed disabled:opacity-60';
 
-const CONTROL_INVALID = 'border-critical focus:border-critical focus:ring-critical/25';
+const CONTROL_INVALID = 'border-critical focus:border-critical';
 
 /* ------------------------------------------------------------------ *
  * Input
@@ -220,30 +221,35 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       required={required}
       className={containerClassName}
     >
-      <select
-        ref={ref}
-        id={fieldId}
-        required={required}
-        aria-invalid={error ? true : undefined}
-        className={cx(
-          CONTROL_BASE,
-          'cursor-pointer appearance-none bg-[length:14px] bg-[right_0.6rem_center] bg-no-repeat pl-3 pr-8',
-          size === 'sm' ? 'h-8 text-xs' : 'h-9 text-sm',
-          error && CONTROL_INVALID,
-          className,
-        )}
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
-        }}
-        {...rest}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <div className="relative flex items-center">
+        <select
+          ref={ref}
+          id={fieldId}
+          required={required}
+          aria-invalid={error ? true : undefined}
+          className={cx(
+            CONTROL_BASE,
+            'cursor-pointer appearance-none bg-no-repeat pl-3 pr-8',
+            size === 'sm' ? 'h-8 text-xs' : 'h-9 text-sm',
+            error && CONTROL_INVALID,
+            className,
+          )}
+          {...rest}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {/* Real DOM chevron so the arrow colour follows the theme (text-ink-muted)
+         * instead of a hardcoded hex baked into a background-image (audit N-02). */}
+        <ChevronDown
+          size={14}
+          aria-hidden
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted"
+        />
+      </div>
     </FieldShell>
   );
 });
@@ -255,10 +261,12 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
 export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label: ReactNode;
   hint?: ReactNode;
+  /** Hide the visible text label but keep it for screen readers (T03 / R-01). */
+  labelHidden?: boolean;
 }
 
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
-  { label, hint, className, id, ...rest },
+  { label, hint, labelHidden, className, id, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -272,11 +280,11 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
           id={fieldId}
           type="checkbox"
           className={cx(
-            'peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[5px]',
+            'peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-xs',
             'border border-line-strong bg-surface transition-colors duration-150',
-            'hover:border-brand/60',
+            'hover:border-brand',
             'checked:border-brand checked:bg-brand',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30',
+            'focus-ring',
             'disabled:cursor-not-allowed disabled:opacity-50',
           )}
           {...rest}
@@ -298,9 +306,18 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
           <path d="M4 12.5l5 5L20 6.5" />
         </svg>
       </span>
-      <label htmlFor={fieldId} className="cursor-pointer select-none text-sm leading-5 text-ink">
+      <label
+        htmlFor={fieldId}
+        className={cx(
+          labelHidden ? 'sr-only' : 'cursor-pointer select-none text-sm leading-5 text-ink',
+        )}
+      >
         {label}
-        {hint && <span className="mt-0.5 block text-xs text-ink-faint">{hint}</span>}
+        {hint && (
+          <span className={cx('block text-xs text-ink-muted', labelHidden ? '' : 'mt-0.5')}>
+            {hint}
+          </span>
+        )}
       </label>
     </div>
   );
@@ -324,7 +341,7 @@ export function Switch({ checked, onChange, label, hint, disabled, labelHidden }
       {!labelHidden && (
         <label htmlFor={id} className="cursor-pointer select-none text-sm text-ink">
           {label}
-          {hint && <span className="mt-0.5 block text-xs text-ink-faint">{hint}</span>}
+          {hint && <span className="mt-0.5 block text-xs text-ink-muted">{hint}</span>}
         </label>
       )}
       <button
@@ -339,11 +356,11 @@ export function Switch({ checked, onChange, label, hint, disabled, labelHidden }
           // 24×44 touch target. ON = brand track; OFF = recessed sunken track
           // with a strong border so both states read instantly in dark themes.
           'group relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+          'focus-ring-round',
           'disabled:cursor-not-allowed disabled:opacity-50',
           checked
             ? 'border-brand bg-brand hover:bg-brand-hover'
-            : 'border-line-strong bg-sunken hover:border-brand/50',
+            : 'border-line-strong bg-sunken hover:border-brand',
         )}
       >
         <span
@@ -351,7 +368,7 @@ export function Switch({ checked, onChange, label, hint, disabled, labelHidden }
             // Thumb: springs across the track; pressing squishes it wider
             // (group-active:w-5.5) like a physical toggle.
             'absolute top-0.5 flex h-5 w-5 items-center justify-center rounded-full',
-            'bg-surface shadow-raised transition-all duration-250 ease-spring',
+            'bg-surface shadow-raised transition-all duration-200 ease-spring',
             'group-active:w-5.5',
             checked
               ? 'translate-x-5.5 border-transparent group-active:translate-x-5'
@@ -363,7 +380,7 @@ export function Switch({ checked, onChange, label, hint, disabled, labelHidden }
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={4}
+            strokeWidth={3.5}
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
@@ -381,7 +398,8 @@ export function Switch({ checked, onChange, label, hint, disabled, labelHidden }
               'absolute h-1 w-1 rounded-full bg-ink-faint transition-all duration-200',
               checked ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
             )}
-          />
+          >
+          </span>
         </span>
       </button>
     </div>

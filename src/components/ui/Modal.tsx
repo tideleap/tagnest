@@ -137,7 +137,7 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6">
       <div
-        className="anim-fade absolute inset-0 bg-black/45 backdrop-blur-[6px]"
+        className="anim-fade absolute inset-0 bg-scrim backdrop-blur-sm"
         onClick={dismissOnBackdrop ? onClose : undefined}
         aria-hidden
       />
@@ -151,7 +151,7 @@ export function Modal({
         tabIndex={-1}
         className={cx(
           'anim-slide-up md:anim-rise atelier-edge relative flex max-h-[92dvh] w-full flex-col',
-          'rounded-t-2xl border border-line bg-surface/95 shadow-modal outline-none backdrop-blur-xl md:rounded-2xl',
+          'rounded-t-2xl border border-line glass-solid shadow-modal outline-none md:rounded-2xl',
           SIZE[size],
         )}
       >
@@ -164,7 +164,9 @@ export function Modal({
           <header className="flex items-start gap-3 px-5 pb-3 pt-4 md:pt-5">
             <div className="min-w-0 flex-1">
               {title && (
-                <h2 id={titleId} className="atelier-display truncate text-xl text-ink">
+                // `font-display` marks this as a panel/section title per the
+                // type-scale contract (§3.1 allows Modal to pair it with text-xl).
+                <h2 id={titleId} className="atelier-display truncate text-xl text-ink font-display">
                   {title}
                 </h2>
               )}

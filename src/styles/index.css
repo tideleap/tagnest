@@ -142,8 +142,16 @@
     @apply hover:-translate-y-0.5 hover:border-line-strong;
     transition-property: transform, box-shadow, border-color, background-color;
   }
-  .card-interactive:hover {
+  .card-interactive:hover,
+  .card-interactive:focus-visible {
     box-shadow: var(--shadow-float);
+  }
+  .card-interactive:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  .card-interactive:active {
+    transform: translateY(0);
   }
 
   /* L1 float — the resting elevation for cards that sit slightly above the
@@ -226,6 +234,13 @@
   .focus-ring-inset:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: -2px;
+  }
+
+  /* Enlarged touch target (≈31px / 2rem) for small interactive controls such
+   * as the TagChip remove button and the ColorPicker swatch (S-04). */
+  .hit-area-lg {
+    min-width: 2rem;
+    min-height: 2rem;
   }
 
   /* ================================================================
