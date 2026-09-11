@@ -48,17 +48,18 @@ export function TopBar() {
   const toggleTheme = () => setThemeMode(isDark ? 'light' : 'dark');
 
   return (
-    <header className="glass sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-line/40 px-3 sm:px-4 xl:px-6">
+    <header className="glass sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-line-soft px-3 sm:px-4 xl:px-6">
       <IconButton
         label="打开导航"
         icon={<MenuIcon size={19} />}
         onClick={() => setMobileNavOpen(true)}
-        className="chrome-btn md:hidden"
+        className="chrome-btn md:hidden focus-ring-round"
       />
 
       <div className="min-w-0 flex-1 sm:max-w-md">
         <div className="atelier-search">
           <Search size={16} className="shrink-0 text-ink-faint" aria-hidden />
+          {/* eslint-disable-next-line tagnest/require-focus-ring -- focus ring supplied by .atelier-search (T02) */}
           <input
             ref={inputRef}
             id="global-search"
@@ -75,17 +76,16 @@ export function TopBar() {
             aria-label="搜索书签"
           />
           {draft ? (
-            <button
-              type="button"
+            <IconButton
+              size="sm"
+              variant="ghost"
+              label="清除搜索"
+              icon={<X size={14} />}
               onClick={() => {
                 setDraft('');
                 inputRef.current?.focus();
               }}
-              aria-label="清除搜索"
-              className="shrink-0 rounded-full p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
-            >
-              <X size={14} />
-            </button>
+            />
           ) : (
             <span className="hidden shrink-0 pr-1 sm:flex">
               <Kbd>/</Kbd>
@@ -98,7 +98,7 @@ export function TopBar() {
         <Magnetic strength={0.4} className="hidden sm:inline-flex">
           <Button
             variant="primary"
-            iconLeft={<Plus size={16} aria-hidden />}
+            iconLeft={<Plus size={15} aria-hidden />}
             onClick={() => setQuickAddOpen(true)}
           >
             添加
@@ -109,16 +109,16 @@ export function TopBar() {
           type="button"
           onClick={toggleTheme}
           aria-label={isDark ? '切换到浅色' : '切换到深色'}
-          className="chrome-btn"
+          className="chrome-btn focus-ring-round"
         >
-          {isDark ? <Sun size={17} /> : <Moon size={17} />}
+          {isDark ? <Sun size={16} /> : <Moon size={16} />}
         </button>
 
         <Menu
           align="end"
           width={210}
           trigger={(props) => (
-            <button {...props} className="chrome-btn" aria-label="账户菜单">
+            <button {...props} className="chrome-btn focus-ring-round" aria-label="账户菜单">
               <Avatar name={user?.displayName ?? user?.email ?? '?'} src={user?.avatarUrl} />
             </button>
           )}

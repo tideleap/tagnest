@@ -188,7 +188,7 @@ function CollapsibleGroup({
         aria-expanded={!collapsed}
         aria-controls={bodyId}
         className={cx(
-          'flex w-full items-center gap-1.5 rounded-md px-2.5 text-left transition-colors hover:bg-surface-hover',
+          'focus-ring flex w-full items-center gap-1.5 rounded-md px-2.5 text-left transition-colors hover:bg-surface-hover',
           tall ? 'h-9' : 'h-7',
         )}
       >
@@ -374,7 +374,7 @@ function SidebarContent({
         {renderNavGroup(libraryGroup)}
         <div className="mt-4">{tagsGroup}</div>
         {restGroups.map((group, i) => (
-          <div key={group.id} className={cx('mt-4', i === 0 && 'border-t border-line/70 pt-3')}>
+          <div key={group.id} className={cx('mt-4', i === 0 && 'border-t border-line-soft pt-3')}>
             {renderNavGroup(group)}
           </div>
         ))}
@@ -392,7 +392,7 @@ function SidebarContent({
       <div className="mt-4">{tagsGroup}</div>
       {restGroups.map((group, i) => (
         <Fragment key={group.id}>
-          <div className={cx('mt-4', i === 0 && 'border-t border-line/70 pt-3')}>
+          <div className={cx('mt-4', i === 0 && 'border-t border-line-soft pt-3')}>
             {renderNavGroup(group)}
           </div>
         </Fragment>
@@ -486,7 +486,7 @@ function TreeNodeRow({
             type="button"
             onClick={() => onToggleExpand(node.id)}
             className={cx(
-              'shrink-0 rounded text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink',
+              'focus-ring shrink-0 rounded-xs text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink',
               tall ? 'p-1.5' : 'p-0.5',
             )}
             aria-label={isOpen ? '收起' : '展开'}
@@ -499,14 +499,14 @@ function TreeNodeRow({
         <button
           type="button"
           onClick={() => onToggleTag(node.id)}
-          className={cx('min-w-0 flex-1 truncate text-left', active ? 'text-brand-ink' : 'text-ink-soft group-hover:text-ink')}
+          className={cx('focus-ring min-w-0 flex-1 truncate text-left', active ? 'text-brand-ink' : 'text-ink-soft group-hover:text-ink')}
         >
           {node.name}
         </button>
         <button
           type="button"
           onClick={() => onToggleTag(node.id)}
-          className={cx('shrink-0 tabular-nums', active ? 'text-brand-ink' : 'text-ink-faint group-hover:text-ink-soft')}
+          className={cx('focus-ring shrink-0 tabular-nums', active ? 'text-brand-ink' : 'text-ink-faint group-hover:text-ink-soft')}
         >
           {node.count}
         </button>
@@ -595,7 +595,7 @@ export function Sidebar() {
             type="button"
             onClick={toggle}
             aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
-            className="chrome-btn w-full"
+            className="chrome-btn focus-ring-round w-full"
           >
             {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
           </button>
@@ -606,9 +606,9 @@ export function Sidebar() {
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="导航菜单">
           <div className="anim-fade absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
           <aside className="anim-drawer-in absolute inset-y-0 left-0 flex w-[18rem] max-w-[85vw] flex-col bg-surface shadow-modal">
-            <div className="flex h-16 shrink-0 items-center justify-between border-b border-line/60 px-3">
+            <div className="flex h-16 shrink-0 items-center justify-between border-b border-line-soft px-3">
               <BrandMark mode="always" />
-              <IconButton label="关闭导航" icon={<X size={17} />} onClick={() => setMobileOpen(false)} />
+              <IconButton label="关闭导航" icon={<X size={16} />} onClick={() => setMobileOpen(false)} />
             </div>
             {/* The drawer body is ONE scroll container — see SidebarContent
                 `variant="drawer"`. min-h-0 lets the nav shrink below its

@@ -22,7 +22,7 @@ function Bomb({ message }: { message: string }): ReactElement {
 function BackProbe() {
   const navigate = useNavigate();
   return (
-    <button type="button" onClick={() => navigate('/safe')}>
+    <button type="button" onClick={() => navigate('/safe')} className="focus-ring">
       返回安全页
     </button>
   );

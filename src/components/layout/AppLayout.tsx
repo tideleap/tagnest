@@ -59,10 +59,10 @@ export function AppLayout() {
           }}
         />
         {/* warm corner washes */}
-        <div className="absolute -left-24 -top-32 h-96 w-96 rounded-full bg-brand-soft/50 blur-[90px]" />
-        <div className="absolute right-[-8rem] top-16 h-80 w-80 rounded-full bg-brand-accent/20 blur-[100px]" />
+        <div className="absolute -left-24 -top-32 h-96 w-96 rounded-full bg-brand-wash blur-[90px]" />
+        <div className="absolute right-[-8rem] top-16 h-80 w-80 rounded-full bg-brand-tint blur-[100px]" />
         {/* a low, centred geometric accent to ground the page */}
-        <div className="absolute bottom-[-10rem] right-1/4 h-80 w-80 rounded-full border border-brand-soft/40 blur-[2px]" />
+        <div className="absolute bottom-[-10rem] right-1/4 h-80 w-80 rounded-full border border-line-soft blur-[2px]" />
       </div>
 
       {/* Cursor-following ambient light — desktop + smooth pointer only. */}
@@ -79,9 +79,14 @@ export function AppLayout() {
       <Sidebar />
 
       <div
+        /* eslint-disable-next-line tagnest/no-magic-tokens -- sidebar-width contract (matches w-16 / w-64) */
         className={cx(
           'anim-page-enter relative flex min-w-0 flex-1 flex-col transition-[padding] duration-200',
           // Reserve room for the floating rail (width + 12px gutter) from md up.
+          // `collapsed` only flips the lg breakpoint: at md the rail is always the
+          // 64px icon rail, so md padding is identical in both states. The values
+          // track the sidebar's physical width (w-16 / w-64) — a layout contract,
+          // not a spacing token, so they are exempt from no-magic-tokens.
           collapsed ? 'md:pl-[4.25rem]' : 'md:pl-[4.25rem] lg:pl-[15.75rem]',
         )}
       >

@@ -35,8 +35,7 @@ export function MobileTabBar() {
   return (
     <nav
       aria-label="快捷导航"
-      // eslint-disable-next-line tagnest/no-magic-tokens -- floating bar, not a card; intentional near-solid surface
-      className="pad-safe-b fixed inset-x-3 bottom-3 z-30 flex min-h-14 items-stretch rounded-2xl bg-surface/95 shadow-float transform-gpu md:hidden"
+      className="pad-safe-b fixed inset-x-3 bottom-3 z-30 flex min-h-14 items-stretch rounded-2xl bg-surface shadow-overlay transform-gpu md:hidden"
     >
       {TABS.slice(0, 2).map((tab) => (
         <TabLink key={tab.to} {...tab} />
@@ -47,9 +46,9 @@ export function MobileTabBar() {
           type="button"
           onClick={() => setQuickAddOpen(true)}
           aria-label="添加书签"
-          className="brand-grad flex h-11 w-11 items-center justify-center rounded-full text-on-brand shadow-glow transition-transform active:scale-95"
+          className="brand-grad focus-ring-round flex h-11 w-11 items-center justify-center rounded-full text-on-brand shadow-glow transition-transform duration-150 ease-out-soft active:scale-95"
         >
-          <Plus size={21} />
+          <Plus size={20} />
         </button>
       </div>
 

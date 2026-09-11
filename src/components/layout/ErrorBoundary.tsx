@@ -64,11 +64,11 @@ class BoundaryInner extends Component<Props & { pathname: string }, State> {
 
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-critical-soft text-critical">
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-critical-soft text-critical-ink sm:h-12 sm:w-12">
           <TriangleAlert size={22} />
         </span>
         <div>
-          <h1 className="text-lg font-semibold text-ink">页面出错了</h1>
+          <h1 className="atelier-display atelier-display--3 text-ink">页面出错了</h1>
           <p className="mt-1 max-w-md text-sm text-ink-soft">
             这不是你的操作导致的。可以先重试，若反复出现请刷新页面。切换到其他页面也会自动恢复。
           </p>
