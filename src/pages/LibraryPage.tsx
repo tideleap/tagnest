@@ -372,7 +372,7 @@ export function LibraryPage() {
         title={title}
       >
         {!isLoading && (
-          <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-xs tabular-nums text-ink-faint">
+          <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-xs tabular-nums text-ink-muted">
             {total}
           </span>
         )}
@@ -408,7 +408,7 @@ export function LibraryPage() {
           </Button>
         )}
         {dragEnabled && viewMode !== 'category' && (
-          <span className="hidden text-2xs text-ink-faint lg:inline">拖动书签左侧手柄可调整顺序</span>
+          <span className="hidden text-2xs text-ink-muted lg:inline">拖动书签左侧手柄可调整顺序</span>
         )}
       </PageHeader>
 
@@ -429,7 +429,7 @@ export function LibraryPage() {
             <button
               type="button"
               onClick={() => setTagFilter([])}
-              className="inline-flex h-5.5 items-center gap-1 rounded-full border border-line px-2 text-2xs font-medium text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+              className="inline-flex h-6 items-center gap-1 rounded-full border border-line px-2 text-2xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-ring"
             >
               <X size={11} aria-hidden />
               清除全部
@@ -604,10 +604,10 @@ export function LibraryPage() {
           )}
 
           {isFetchingNextPage && (
-            <p className="py-4 text-center text-xs text-ink-faint">正在加载更多…</p>
+            <p className="py-4 text-center text-xs text-ink-muted" role="status">正在加载更多…</p>
           )}
           {!hasNextPage && items.length > 20 && (
-            <p className={cx('py-4 text-center text-xs text-ink-faint')}>已经到底了</p>
+            <p className={cx('py-4 text-center text-xs text-ink-muted')}>已经到底了</p>
           )}
         </div>
       )}
@@ -791,7 +791,7 @@ function SaveSmartCollectionDialog({
           }}
           placeholder="例如：设计参考"
         />
-        <p className="text-2xs text-ink-faint">
+        <p className="text-2xs text-ink-muted">
           智能集合的成员由该搜索条件实时计算，新增或调整书签后会自动更新，无需手动维护。
         </p>
       </div>

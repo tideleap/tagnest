@@ -19,7 +19,9 @@ import { CartoonMascot } from '@/components/decor/CartoonMascot';
 import { KineticText, Magnetic, Reveal, Stagger, TiltCard } from '@/components/atelier';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
 
-const TILE = ['#6366f1', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#f59e0b', '#f97316', '#ef4444'];
+// T07: Dashboard data-viz palette. oklch with L<=0.55 so white icon text keeps >=3:1 contrast.
+// Exempt from semantic-token rule (data-visualization-only per audit S6 D1).
+const TILE = ['oklch(0.550 0.204 277.1)', 'oklch(0.550 0.219 292.7)', 'oklch(0.550 0.212 354.3)', 'oklch(0.550 0.126 215.2)', 'oklch(0.550 0.123 182.5)', 'oklch(0.550 0.165 70.1)', 'oklch(0.550 0.187 47.6)', 'oklch(0.550 0.208 25.3)'];
 
 function Hero({
   total,
@@ -35,10 +37,10 @@ function Hero({
   const navigate = useNavigate();
 
   return (
-    <section className="atelier-edge relative overflow-hidden rounded-2xl border border-line bg-surface/70 p-6 shadow-float backdrop-blur-sm sm:p-9">
+    <section className="atelier-edge relative overflow-hidden rounded-2xl border border-line glass p-6 shadow-float sm:p-9">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-soft/60 blur-[80px]" />
-        <div className="absolute -bottom-24 left-1/4 h-60 w-60 rounded-full bg-brand-accent/10 blur-[70px]" />
+        <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-wash blur-[80px]" />
+        <div className="absolute -bottom-24 left-1/4 h-60 w-60 rounded-full bg-brand-tint blur-[70px]" />
       </div>
 
       <Reveal className="relative flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
@@ -127,10 +129,10 @@ function AttentionCard({
       <TiltCard className="h-full">
         <Link
           to={to}
-          className="spotlight group flex h-full items-center gap-4 rounded-2xl border border-line bg-surface p-4 shadow-float transition-colors hover:border-brand-accent"
+          className="spotlight group flex h-full items-center gap-4 rounded-2xl border border-line bg-surface p-4 shadow-raised hover:shadow-float transition-colors hover:border-brand-accent"
         >
           <span
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-raised"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-on-brand shadow-raised"
             style={{ backgroundColor: color }}
           >
             {icon}
@@ -181,13 +183,13 @@ function StatCard({
       <TiltCard className="h-full" max={7}>
         <Link
           to={to}
-          className="spotlight block h-full rounded-2xl border border-line bg-surface p-5 shadow-float transition-colors hover:border-brand-accent"
+          className="spotlight block h-full rounded-2xl border border-line bg-surface p-5 shadow-raised hover:shadow-float transition-colors hover:border-brand-accent"
         >
           <span
-            className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl text-white"
+            className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl text-on-brand"
             style={{ backgroundColor: color }}
           >
-            <span className="block h-2 w-2 rounded-full bg-white/90" aria-hidden />
+            <span className="block h-2 w-2 rounded-full bg-on-dark" aria-hidden />
           </span>
           <p className="text-3xl font-extrabold tabular-nums leading-none text-ink">
             {loading ? <Skeleton className="h-8 w-14" /> : failed ? '—' : (value ?? 0).toLocaleString()}
@@ -203,7 +205,7 @@ function SectionHead({ index, title, note }: { index: string; title: string; not
   return (
     <Reveal>
       <div className="mb-4 flex items-end justify-between gap-3">
-        <h2 className="flex items-baseline gap-3 text-base font-extrabold text-ink">
+        <h2 className="flex items-baseline gap-3 font-display text-panel font-semibold tracking-tight">
           <span className="atelier-index">{index}</span>
           <span className="relative">
             {title}
@@ -233,7 +235,7 @@ function RecentBookmarks() {
   }
   if (isError || items.length === 0) {
     return (
-      <p className="rounded-xl border border-line bg-surface px-4 py-6 text-center text-sm text-ink-faint">
+      <p className="rounded-xl border border-line bg-surface px-4 py-6 text-center text-sm text-ink-muted">
         还没有书签，添加第一条开始搭建秩序。
       </p>
     );
@@ -245,13 +247,13 @@ function RecentBookmarks() {
         <li key={b.id}>
           <Link
             to={`/library/all?focus=${b.id}`}
-            className="spotlight group flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition-colors hover:border-brand-accent"
+            className="spotlight group flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition-colors hover:border-line-strong"
           >
             <span className="favicon-badge h-9 w-9 shrink-0 p-1.5">
               <RemoteImage
                 src={faviconFor(b.url)}
                 alt=""
-                className="h-full w-full rounded"
+                className="h-full w-full rounded-xs"
               />
             </span>
             <span className="min-w-0 flex-1">
@@ -322,21 +324,21 @@ function HealthCard() {
   const score = data?.score ?? 0;
   const tone =
     score >= 90
-      ? { color: '#14b8a6', label: '很健康' }
+      ? { color: 'var(--color-positive)', label: '很健康' }
       : score >= 70
-        ? { color: '#f59e0b', label: '有小问题' }
-        : { color: '#ef4444', label: '需要清理' };
+        ? { color: 'var(--color-caution)', label: '有小问题' }
+        : { color: 'var(--color-critical)', label: '需要清理' };
 
   return (
     <Reveal>
       <TiltCard className="h-full" max={6}>
         <section
           aria-label="书签体检"
-          className="flex h-full flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-float sm:flex-row sm:items-center sm:justify-between"
+          className="flex h-full flex-col gap-4 rounded-2xl border border-line bg-surface p-5 shadow-raised hover:shadow-float sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex min-w-0 items-center gap-4">
             <span
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-raised"
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-on-brand shadow-raised"
               style={{ backgroundColor: tone.color }}
             >
               <Stethoscope size={22} aria-hidden />
@@ -411,11 +413,11 @@ export function DashboardPage() {
   ];
 
   return (
-    <div className="relative mx-auto flex max-w-7xl flex-col gap-6 pb-14 pt-2">
+    <div className="flex flex-col gap-6">
       <Hero total={s?.bookmarks} added={s?.addedLast7Days} loading={loading} failed={failed} />
 
       {!loading && !failed && s?.bookmarks === 0 && (
-        <div className="rounded-2xl border border-brand-soft bg-brand-soft/30 p-5 text-sm text-ink-soft">
+        <div className="rounded-2xl border border-line-soft bg-brand-wash p-5 text-sm text-ink-soft">
           收藏夹还是空的——添加第一条书签，开始搭建你的秩序。
         </div>
       )}
@@ -487,7 +489,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-line/60 bg-surface py-4">
+      <div className="overflow-hidden rounded-2xl border border-line-soft bg-surface py-4">
         <KineticText duration={30} separator={<Sparkles size={14} className="text-brand-accent" aria-hidden />}>
           {['书签', '标签', 'AI 整理', '网页快照', '时间线', '集合', '检索', '归档'].map((w) => (
             <span key={w} className="flex items-center gap-2.5 text-sm font-medium tracking-wide text-ink-soft">

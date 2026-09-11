@@ -147,7 +147,7 @@ export function SharePage() {
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
               <Lock size={20} aria-hidden />
             </span>
-            <h1 className="text-lg font-semibold tracking-tight text-ink">
+            <h1 className="atelier-display atelier-display--2 text-ink">
               {gateTitle || '这个分享页需要访问密码'}
             </h1>
             <p className="text-sm text-ink-soft">输入作者设置的访问密码即可查看。</p>
@@ -230,7 +230,7 @@ export function SharePage() {
           much wider container than the reading-oriented list themes. */}
       <div
         className={cx(
-          'mx-auto px-4 py-8 sm:px-6',
+          'mx-auto px-6 py-8 sm:px-6',
           data.theme === 'directory' ? 'max-w-6xl' : 'max-w-3xl',
         )}
       >
@@ -354,12 +354,12 @@ function PublicRow({
         href={b.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex flex-1 items-start gap-3 rounded-md border border-line bg-surface px-3.5 py-3 transition-colors hover:border-line-strong"
+        className="group flex flex-1 items-start gap-3 rounded-md border border-line bg-surface px-3.5 py-3 transition-colors hover:border-line-strong focus-ring"
       >
         <Favicon url={b.url} size={compact ? 16 : 20} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h3 className="min-w-0 truncate text-sm font-medium text-ink group-hover:text-brand-ink">
+            <h3 className="min-w-0 truncate text-sm font-semibold text-ink group-hover:text-ink">
               {b.title || displayHost(b.url)}
             </h3>
             <ExternalLink size={13} className="shrink-0 text-ink-faint opacity-0 group-hover:opacity-100" aria-hidden />
@@ -413,13 +413,13 @@ function PublicCard({
         href={b.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-3.5 transition-colors hover:border-line-strong"
+        className="group flex h-full flex-col gap-2 rounded-md border border-line bg-surface p-3.5 transition-colors hover:border-line-strong focus-ring"
       >
         <div className="flex items-center gap-2">
           <Favicon url={b.url} size={18} />
           <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
         </div>
-        <h3 className="line-clamp-2 text-sm font-medium text-ink group-hover:text-brand-ink">
+        <h3 className="line-clamp-2 text-sm font-semibold text-ink group-hover:text-ink">
           {b.title || displayHost(b.url)}
         </h3>
         {b.note || b.description ? (

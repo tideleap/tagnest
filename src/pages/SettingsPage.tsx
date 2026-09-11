@@ -55,7 +55,7 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 lg:flex-row lg:gap-10">
-      <nav aria-label="设置分区" className="shrink-0 lg:w-48">
+      <nav aria-label="设置分区" className="flex flex-col gap-2 shrink-0 lg:w-48">
         <p className="atelier-eyebrow mb-2">偏好与账户</p>
         <h1 className="atelier-display atelier-display--3 mb-4 text-ink">设置</h1>
         <ul className="flex gap-1 overflow-x-auto scrollbar-slim lg:flex-col">
@@ -63,6 +63,7 @@ export function SettingsPage() {
             <li key={id} className="shrink-0">
               <NavLink
                 to={`/settings/${id}`}
+                aria-current={active === id ? 'page' : undefined}
                 className={cx(
                   'nav-row h-9 px-3',
                   active === id && 'is-active',

@@ -95,35 +95,35 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
   return (
     <div className="relative grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       {/* Left — editorial statement panel (atmosphere canvas shows through). */}
-      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-line/50 p-10 text-ink-inverse lg:flex xl:p-14">
+      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-line-soft p-10 text-ink-inverse lg:flex xl:p-14">
         <div
           aria-hidden
           className="absolute inset-0 -z-10"
           style={{
             background:
-              'radial-gradient(120% 90% at 15% 10%, color-mix(in oklab, var(--color-brand) 30%, transparent), transparent 55%), radial-gradient(120% 90% at 90% 90%, color-mix(in oklab, var(--color-brand-accent) 26%, transparent), transparent 55%), color-mix(in oklab, var(--color-canvas) 55%, #0b0f1a)',
+              'radial-gradient(120% 90% at 15% 10%, color-mix(in oklab, var(--color-brand) 30%, transparent), transparent 55%), radial-gradient(120% 90% at 90% 90%, color-mix(in oklab, var(--color-brand-accent) 26%, transparent), transparent 55%), color-mix(in oklab, var(--color-canvas) 55%, var(--p-auth-gradient-end))',
           }}
         />
         <div className="flex items-center gap-3">
           <span className="logo-breathe">
             <Logo size={42} />
           </span>
-          <span className="atelier-wordmark text-2xl text-white">TagNest</span>
+          <span className="atelier-wordmark text-2xl text-on-dark">TagNest</span>
         </div>
 
         <div className="max-w-xl">
-          <p className="atelier-eyebrow mb-6 text-white/70">为书签，建一座巢</p>
-          <h1 className="atelier-display atelier-display--1 text-white">
+          <p className="atelier-eyebrow mb-6 text-on-dark-soft">为书签，建一座巢</p>
+          <h1 className="atelier-display atelier-display--1 text-on-dark">
             <ScrambleText text="收藏即秩序。" duration={1100} />
           </h1>
-          <p className="mt-6 max-w-md text-lg leading-relaxed text-white/70">
+          <p className="mt-6 max-w-md text-lg leading-relaxed text-on-dark-soft">
             一个键盘优先、AI 驱动的书签巢。把零散的链接，整理成可被检索、可被回看、可被收藏的秩序。
           </p>
 
           <ul className="mt-10 grid grid-cols-2 gap-x-6 gap-y-4">
             {FEATURES.map((f) => (
-              <li key={f.label} className="flex items-center gap-3 text-sm text-white/80">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+              <li key={f.label} className="flex items-center gap-3 text-sm text-on-dark-soft">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-on-dark-wash ring-1 ring-on-dark-line">
                   <f.icon size={17} aria-hidden />
                 </span>
                 {f.label}
@@ -132,12 +132,12 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
           </ul>
         </div>
 
-        <div className="mt-10 border-t border-white/15 pt-6">
-          <KineticText duration={28} separator={<Sparkles size={16} className="text-white/50" aria-hidden />}>
+        <div className="mt-10 border-t border-on-dark-line pt-6">
+          <KineticText duration={28} separator={<Sparkles size={16} className="text-on-dark-faint" aria-hidden />}>
             {MARQUEE_WORDS.map((w) => (
-              <span key={w} className="flex items-center gap-2.5 text-sm font-medium tracking-wide text-white/70">
+              <span key={w} className="flex items-center gap-2.5 text-sm font-medium tracking-wide text-on-dark-soft">
                 {w}
-                <span className="text-white/30">/</span>
+                <span className="text-on-dark-faint">/</span>
               </span>
             ))}
           </KineticText>
@@ -145,7 +145,7 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
       </aside>
 
       {/* Right — glass form. */}
-      <main className="relative flex min-h-dvh items-center justify-center px-5 py-12">
+      <main className="relative flex min-h-dvh items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <Logo size={40} />

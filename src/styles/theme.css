@@ -270,6 +270,12 @@
   --p-focus: #4F46E5;
   --p-focus: oklch(0.511 0.230 277.0);
 
+  /* Auth gradient end — opaque raw value for AuthPage's dark editorial panel
+     backdrop. Registered exempt from semantic-token rules; it is a global
+     constant and does not shift with the active theme (paired conceptually
+     with the --color-scrim-* overlay family above). */
+  --p-auth-gradient-end: #0b0f1a;
+
   color-scheme: light;
 }
 

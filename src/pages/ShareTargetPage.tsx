@@ -74,7 +74,7 @@ export function ShareTargetPage() {
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <Logo size={48} />
           <div>
-            <h1 className="flex items-center justify-center gap-2 text-xl font-semibold tracking-tight text-ink">
+            <h1 className="flex items-center justify-center gap-2 atelier-display atelier-display--2 text-ink">
               <Share2 size={18} className="text-brand-ink" aria-hidden />
               保存到 TagNest
             </h1>
@@ -86,7 +86,7 @@ export function ShareTargetPage() {
 
         <form
           onSubmit={submit}
-          className="flex flex-col gap-3.5 rounded-lg border border-line bg-surface p-5 shadow-raised"
+          className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5 shadow-raised"
         >
           {formError && (
             <p
