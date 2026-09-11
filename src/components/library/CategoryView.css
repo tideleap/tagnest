@@ -1,6 +1,16 @@
 /* CategoryView — rich portal directory visuals & micro-motion.
  * These styles are additive to the design-token system and respect
  * prefers-reduced-motion.
+ *
+ * Token discipline (T04 / C-06): all colour references use the semantic
+ * `--color-*` layer (which resolves from `--p-*`), not the raw `--p-*` palette,
+ * so theme switching stays centralised and the contrast gate can audit one
+ * namespace.
+ *
+ * Documented exceptions (decision D2): `--shadow-xs` / `--shadow-sm` are a
+ * private hairline elevation step for the dense library grid. They are
+ * intentionally NOT promoted to a semantic token and remain `--shadow-*`;
+ * `.tsx` files must not reference them (see theme.css note at :86-92).
  */
 
 /* Hero: vibrant gradient with subtle animated mesh */
@@ -9,10 +19,10 @@
   overflow: hidden;
   border-radius: var(--radius-xl);
   background:
-    radial-gradient(120% 120% at 20% 0%, color-mix(in oklab, var(--p-brand) 34%, transparent) 0%, transparent 45%),
-    radial-gradient(120% 120% at 80% 100%, color-mix(in oklab, var(--p-brand-accent) 28%, transparent) 0%, transparent 45%),
-    linear-gradient(135deg, var(--p-surface) 0%, var(--p-canvas) 100%);
-  border: 1px solid color-mix(in oklab, var(--p-line) 70%, transparent);
+    radial-gradient(120% 120% at 20% 0%, color-mix(in oklab, var(--color-brand) 34%, transparent) 0%, transparent 45%),
+    radial-gradient(120% 120% at 80% 100%, color-mix(in oklab, var(--color-brand-accent) 28%, transparent) 0%, transparent 45%),
+    linear-gradient(135deg, var(--color-surface) 0%, var(--color-canvas) 100%);
+  border: 1px solid color-mix(in oklab, var(--color-line) 70%, transparent);
   box-shadow: var(--shadow-sm);
 }
 
@@ -21,8 +31,8 @@
   position: absolute;
   inset: -50%;
   background:
-    radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--p-brand) 22%, transparent) 0%, transparent 28%),
-    radial-gradient(circle at 70% 70%, color-mix(in oklab, var(--p-brand-accent) 18%, transparent) 0%, transparent 28%);
+    radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--color-brand) 22%, transparent) 0%, transparent 28%),
+    radial-gradient(circle at 70% 70%, color-mix(in oklab, var(--color-brand-accent) 18%, transparent) 0%, transparent 28%);
   animation: cat-hero-drift 18s ease-in-out infinite;
   pointer-events: none;
 }
@@ -37,7 +47,7 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(115deg, transparent 55%, color-mix(in oklab, var(--p-brand) 10%, transparent) 100%);
+  background: linear-gradient(115deg, transparent 55%, color-mix(in oklab, var(--color-brand) 10%, transparent) 100%);
 }
 
 /* Stat cards — glass, compact */
@@ -50,8 +60,8 @@
   min-width: 4.5rem;
   padding: 0.625rem 0.75rem;
   border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--p-surface) 76%, transparent);
-  border: 1px solid color-mix(in oklab, var(--p-line) 60%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 76%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-line) 60%, transparent);
   backdrop-filter: blur(12px);
   box-shadow: var(--shadow-xs);
   transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
@@ -66,8 +76,8 @@
 .cat-section {
   position: relative;
   border-radius: var(--radius-lg);
-  background: var(--p-surface);
-  border: 1px solid var(--p-line);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
   box-shadow: var(--shadow-xs);
   transition: transform 0.18s var(--ease-spring), box-shadow 0.18s ease, border-color 0.18s ease;
 }
@@ -75,7 +85,7 @@
 .cat-section:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm);
-  border-color: var(--p-line-strong);
+  border-color: var(--color-line-strong);
 }
 
 /* Category blocks — color-accented top bar */
@@ -84,8 +94,8 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: var(--p-surface);
-  border: 1px solid var(--p-line);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
   box-shadow: var(--shadow-xs);
   overflow: hidden;
   transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
@@ -102,13 +112,13 @@
   align-items: center;
   gap: 0.625rem;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--p-line);
-  background: linear-gradient(90deg, color-mix(in oklab, var(--tag-bg) 70%, var(--p-surface)) 0%, var(--p-surface) 100%);
+  border-bottom: 1px solid var(--color-line);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--tag-bg) 70%, var(--color-surface)) 0%, var(--color-surface) 100%);
   transition: background 0.2s ease;
 }
 
 .cat-block:hover .cat-block-header {
-  background: linear-gradient(90deg, color-mix(in oklab, var(--tag-bg) 85%, var(--p-surface)) 0%, var(--p-surface) 100%);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--tag-bg) 85%, var(--color-surface)) 0%, var(--color-surface) 100%);
 }
 
 .cat-block-accent {
@@ -129,15 +139,15 @@
   gap: 0.5rem;
   padding: 0.875rem 0.625rem;
   border-radius: var(--radius-md);
-  background: var(--p-surface);
-  border: 1px solid var(--p-line);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
   transition: transform 0.18s var(--ease-spring), box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .cat-tile:hover {
   transform: translateY(-3px) scale(1.02);
   box-shadow: var(--shadow-float);
-  border-color: var(--p-line-strong);
+  border-color: var(--color-line-strong);
 }
 
 .cat-tile-favicon {
@@ -147,14 +157,14 @@
   width: 2.75rem;
   height: 2.75rem;
   border-radius: var(--radius-md);
-  background: var(--p-sunken);
-  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--p-ink) 6%, transparent);
+  background: var(--color-sunken);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--color-ink) 6%, transparent);
   transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
 }
 
 .cat-tile:hover .cat-tile-favicon {
   transform: scale(1.08);
-  box-shadow: 0 4px 12px -4px color-mix(in oklab, var(--p-brand) 30%, transparent);
+  box-shadow: 0 4px 12px -4px color-mix(in oklab, var(--color-brand) 30%, transparent);
 }
 
 /* Tab pills */
@@ -176,21 +186,21 @@
 }
 
 .cat-tab-active {
-  background: var(--p-brand);
-  color: var(--p-on-brand);
-  box-shadow: 0 3px 10px -3px color-mix(in oklab, var(--p-brand) 45%, transparent);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  box-shadow: 0 3px 10px -3px color-mix(in oklab, var(--color-brand) 45%, transparent);
 }
 
 .cat-tab-inactive {
-  background: var(--p-surface);
-  color: var(--p-ink-soft);
-  border: 1px solid var(--p-line);
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+  border: 1px solid var(--color-line);
 }
 
 .cat-tab-inactive:hover {
-  background: var(--p-surface-hover);
-  color: var(--p-ink);
-  border-color: var(--p-line-strong);
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
 }
 
 /* Hot-ranking list */
@@ -204,7 +214,7 @@
 }
 
 .cat-rank-item:hover {
-  background: var(--p-surface-hover);
+  background: var(--color-surface-hover);
   transform: translateX(2px);
 }
 
@@ -229,22 +239,22 @@
   width: 100%;
   padding: 0.625rem 1rem 0.625rem 2.5rem;
   border-radius: var(--radius-full);
-  border: 1px solid var(--p-line);
-  background: var(--p-surface);
-  color: var(--p-ink);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font-size: var(--text-sm);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .cat-search input:hover {
-  background: var(--p-surface-hover);
+  background: var(--color-surface-hover);
 }
 
 .cat-search input:focus {
   outline: none;
-  border-color: var(--p-brand);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--p-brand) 20%, transparent);
-  background: var(--p-surface);
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand) 20%, transparent);
+  background: var(--color-surface);
 }
 
 /* Bottom tag rail chips */
@@ -263,22 +273,27 @@
   transform: translateY(-1px);
 }
 
+.cat-chip:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 .cat-chip-active {
-  background: var(--p-brand-soft);
-  color: var(--p-brand-ink);
-  border: 1px solid color-mix(in oklab, var(--p-brand) 30%, transparent);
+  background: var(--color-brand-soft);
+  color: var(--color-brand-ink);
+  border: 1px solid color-mix(in oklab, var(--color-brand) 30%, transparent);
 }
 
 .cat-chip-inactive {
-  background: var(--p-surface);
-  color: var(--p-ink-soft);
-  border: 1px solid var(--p-line);
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+  border: 1px solid var(--color-line);
 }
 
 .cat-chip-inactive:hover {
-  background: var(--p-surface-hover);
-  color: var(--p-ink);
-  border-color: var(--p-line-strong);
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
 }
 
 /* Entrance stagger animation */
@@ -323,8 +338,8 @@
   gap: 0.5rem;
   padding: 0.4375rem 0.5rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--p-line);
-  background: var(--p-surface);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease,
@@ -334,9 +349,9 @@
 
 .cat-recent-row:hover {
   transform: translateX(3px);
-  border-color: var(--p-line-strong);
+  border-color: var(--color-line-strong);
   box-shadow: var(--shadow-xs);
-  background: var(--p-surface-hover);
+  background: var(--color-surface-hover);
 }
 
 /* Reduced motion */

@@ -258,15 +258,23 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
  * Checkbox & Switch
  * ------------------------------------------------------------------ */
 
-export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
+export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'size'> {
   label: ReactNode;
   hint?: ReactNode;
   /** Hide the visible text label but keep it for screen readers (T03 / R-01). */
   labelHidden?: boolean;
+  /** Box size: sm=16px, md=18px (default), lg=24px (T04 / R-01). */
+  size?: 'sm' | 'md' | 'lg';
 }
 
+const CHECKBOX_BOX: Record<NonNullable<CheckboxProps['size']>, string> = {
+  sm: 'h-4 w-4',
+  md: 'h-4.5 w-4.5',
+  lg: 'h-6 w-6',
+};
+
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
-  { label, hint, labelHidden, className, id, ...rest },
+  { label, hint, labelHidden, size = 'md', className, id, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -274,7 +282,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
 
   return (
     <div className={cx('flex items-start gap-2.5', className)}>
-      <span className="relative mt-0.5 inline-flex h-4.5 w-4.5 shrink-0">
+      <span className={cx('relative inline-flex shrink-0', size === 'lg' ? 'mt-0' : 'mt-0.5', CHECKBOX_BOX[size])}>
         <input
           ref={ref}
           id={fieldId}

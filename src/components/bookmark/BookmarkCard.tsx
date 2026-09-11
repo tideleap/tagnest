@@ -20,7 +20,7 @@ import type { Bookmark, SnapshotState } from '@shared/types';
 import { snapshotServePath } from '@shared/snapshotUrl';
 import { cx } from '@/lib/cx';
 import { displayHost, faviconFor, relativeTime } from '@/lib/url';
-import { Button, IconButton, Menu, Modal, TagChip, RemoteImage, tagColorVars } from '@/components/ui';
+import { Button, Checkbox, IconButton, Menu, Modal, TagChip, RemoteImage, tagColorVars } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import {
   useBookmarkSnapshots,
@@ -392,46 +392,19 @@ function BookmarkCardBase({
 
   /** Checkbox — appears over the top-left on hover, permanent once selecting. */
   const checkbox = (
-    <label
+    <Checkbox
+      label={`选择《${b.title}》`}
+      labelHidden
+      size="lg"
+      checked={selected}
+      onChange={(e) => onToggleSelect(b.id, (e.nativeEvent as MouseEvent).shiftKey)}
       className={cx(
         'absolute left-2 top-2 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity',
         selectionActive || selected
           ? 'opacity-100'
           : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100',
       )}
-    >
-      <span className="sr-only">选择《{b.title}》</span>
-      <span className="relative inline-flex h-4.5 w-4.5 shrink-0">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(e) => onToggleSelect(b.id, (e.nativeEvent as MouseEvent).shiftKey)}
-          className={cx(
-            'peer absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[5px]',
-            'border border-line-strong bg-surface shadow-raised transition-colors duration-150',
-            'hover:border-brand/60',
-            'checked:border-brand checked:bg-brand',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30',
-          )}
-        />
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={3.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className={cx(
-            'pointer-events-none absolute inset-0 m-auto h-3 w-3 text-on-brand',
-            'scale-50 opacity-0 transition-all duration-150 ease-spring',
-            'peer-checked:scale-100 peer-checked:opacity-100',
-          )}
-        >
-          <path d="M4 12.5l5 5L20 6.5" />
-        </svg>
-      </span>
-    </label>
+    />
   );
 
   const star = !inTrash ? (

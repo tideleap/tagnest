@@ -28,7 +28,7 @@ export interface PageHeaderProps {
  * editorial system instead of re-inventing its own header markup.
  *
  * Pattern:
- *   <PageHeader icon={<Sparkles size={14} />} eyebrow="AI 整理" index="04 / 09"
+ *   <PageHeader icon={<Sparkles size={16} />} eyebrow="AI 整理" index="04 / 09"
  *               title="标签整理工作台" description="一句话说明">
  *     <Button>…trailing actions…</Button>
  *   </PageHeader>
@@ -52,7 +52,7 @@ export function PageHeader({
           {index}
         </span>
       )}
-      <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
           {eyebrow && (
             <p className="atelier-eyebrow mb-3">
