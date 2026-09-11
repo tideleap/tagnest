@@ -20,6 +20,12 @@ import { cx } from '@/lib/cx';
  * compositor thread and does not jank. Motion honours prefers-reduced-motion at
  * the CSS layer (see index.css).
  */
+
+// NOTE: the hard-coded hex values below (PASTEL array, `accent` default, and the
+// SVG fill/stroke colours at :127/:129) are ORIGINAL ILLUSTRATION colours for the
+// "Nesty" bookmark mascot. They are a decorative character, NOT theme UI, and are
+// intentionally exempt from the semantic-token rule (audit C-01). Do not "tokenize".
+
 const QUIPS = [
   '呱，这是你的书签喔！',
   '收藏夹又大了一点点～',

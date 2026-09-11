@@ -1,5 +1,6 @@
 import { useRef, type ElementType, type ReactNode } from 'react';
 import { cx } from '@/lib/cx';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 /**
  * Magnetic — wraps any element and nudges it toward the pointer while hovered,
@@ -19,8 +20,10 @@ export function Magnetic({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const reduced = usePrefersReducedMotion();
 
   const onMove = (e: React.PointerEvent) => {
+    if (reduced) return;
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();

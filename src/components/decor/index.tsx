@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { cx } from '@/lib/cx';
 import { useInView } from '@/hooks/useInView';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 /**
  * Reveal — a thin scroll-into-view wrapper used to sprinkle entrance reveals
@@ -23,11 +24,17 @@ export function Reveal({
   className?: string;
   style?: CSSProperties;
 }) {
+  const reduced = usePrefersReducedMotion();
   const { ref, inView } = useInView();
+  // Under reduced motion we must reveal immediately — `.reveal-card` starts at
+  // opacity:0 and would stay invisible forever otherwise. The `reduced ||` also
+  // keeps content visible when the user toggles reduce OFF at runtime (useInView
+  // may have already fired), so the reveal never gets stuck hidden.
+  const shown = reduced || inView;
   return (
     <div
       ref={ref}
-      className={cx('reveal-card', inView && 'is-inview', className)}
+      className={cx('reveal-card', shown && 'is-inview', className)}
       style={{ transitionDelay: `${delay}ms`, ...style }}
     >
       {children}
@@ -41,7 +48,7 @@ export function Reveal({
  */
 export function DecorBlob({
   className,
-  color = '#ffd43b',
+  color = 'var(--color-caution)',
   style,
 }: {
   className?: string;

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { cx } from '@/lib/cx';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 /**
  * KineticText — an infinite horizontal marquee, used for editorial dividers and
@@ -21,7 +22,11 @@ export function KineticText({
   /** optional Lucide icon rendered between repeats. */
   separator?: ReactNode;
 }) {
-  const trackStyle = { '--marquee-dur': `${duration}s` } as CSSProperties;
+  const reduced = usePrefersReducedMotion();
+  // Honour reduced-motion: pause the marquee so KineticText reads as a static
+  // label instead of scrolling (acceptance A-05). Both track copies share the
+  // style, so they pause together.
+  const trackStyle = { '--marquee-dur': `${duration}s`, animationPlayState: reduced ? 'paused' : undefined } as CSSProperties;
   const track = (
     <div className="marquee__track" style={trackStyle}>
       {children}

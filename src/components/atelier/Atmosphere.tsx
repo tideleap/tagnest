@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 /**
  * Atmosphere — the living "art canvas" that sits behind every page.
@@ -29,6 +30,7 @@ interface Mote {
 
 export function Atmosphere() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const reduced = usePrefersReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,14 +38,14 @@ export function Atmosphere() {
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce = reduced;
 
     // Resolve theme colours live (they change with [data-theme]).
     const readColor = (name: string, fallback: string) => {
       const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       return v || fallback;
     };
-    let brand = readColor('--color-brand', '#6366f1');
+    let brand = readColor('--color-brand', '#4F46E5');
     let accent = readColor('--color-brand-accent', '#8b5cf6');
 
     let width = 0;
@@ -225,7 +227,7 @@ export function Atmosphere() {
       window.removeEventListener('pointerout', onLeave);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [reduced]);
 
   return (
     <>

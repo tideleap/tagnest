@@ -1,5 +1,6 @@
 import { useRef, type ElementType, type ReactNode } from 'react';
 import { cx } from '@/lib/cx';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 /**
  * TiltCard — a 3D tilt that follows the pointer, with a soft glare that tracks
@@ -20,6 +21,7 @@ export function TiltCard({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const reduced = usePrefersReducedMotion();
 
   const onMove = (e: React.PointerEvent) => {
     const el = ref.current;
@@ -42,7 +44,7 @@ export function TiltCard({
   };
 
   return (
-    <Tag ref={ref} className={cx('tilt', className)} onPointerMove={onMove} onPointerLeave={onLeave}>
+    <Tag ref={ref} className={cx('tilt', className)} onPointerMove={reduced ? undefined : onMove} onPointerLeave={onLeave}>
       <div className="tilt__inner h-full">{children}</div>
       {glare && <span className="tilt__glare" aria-hidden />}
     </Tag>

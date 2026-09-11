@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ElementType } from 'react';
 import { cx } from '@/lib/cx';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 const GLYPHS = 'アイウエオカキクケコ0123456789#%&*$/\\<>[]{}—+=§∆◊';
 
@@ -22,11 +23,12 @@ export function ScrambleText({
   duration?: number;
   delay?: number;
 }) {
+  const reduced = usePrefersReducedMotion();
   const [out, setOut] = useState(text);
   const frame = useRef(0);
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (reduced) {
       setOut(text);
       return;
     }
@@ -61,7 +63,7 @@ export function ScrambleText({
       window.clearTimeout(d);
       window.clearInterval(timer);
     };
-  }, [text, duration, delay]);
+  }, [text, duration, delay, reduced]);
 
   return <Tag className={cx('scramble', className)}>{out}</Tag>;
 }

@@ -10,16 +10,18 @@ import {
   type ReactNode,
 } from 'react';
 import { cx } from '@/lib/cx';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 type Variant = 'up' | 'blur' | 'scale' | 'rotate';
 
 function useInViewOnce() {
   const ref = useRef<HTMLElement | null>(null);
   const [visible, setVisible] = useState(false);
+  const reduced = usePrefersReducedMotion();
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (reduced) {
       setVisible(true);
       return;
     }
@@ -37,7 +39,7 @@ function useInViewOnce() {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [reduced]);
   return { ref, visible };
 }
 

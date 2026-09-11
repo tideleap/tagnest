@@ -52,9 +52,9 @@ export function OnboardingCard() {
   return (
     <section
       aria-label="开始使用"
-      className="rounded-2xl border border-brand/30 bg-brand-soft/40 p-5 shadow-float"
+      className="rounded-2xl border border-line-soft bg-brand-wash p-4 sm:p-5 shadow-float"
     >
-      <h2 className="text-base font-extrabold text-ink">欢迎使用 TagNest</h2>
+      <h2 className="font-display text-panel font-semibold tracking-tight text-ink">欢迎使用 TagNest</h2>
       <p className="mt-1 text-xs leading-relaxed text-ink-soft">
         你的书签库还是空的。按下面任意一步开始，三步走完就能拥有一个整理好的私人知识库。
       </p>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { usePrefersReducedMotion } from '@/lib/usePrefersReducedMotion';
 
 /**
  * AmbientGlow — a soft brand-coloured light that drifts toward the cursor.
@@ -15,13 +16,13 @@ import { useEffect, useRef } from 'react';
  */
 export function AmbientGlow() {
   const ref = useRef<HTMLDivElement>(null);
+  const reduced = usePrefersReducedMotion();
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     // Skip on touch-only devices and for users who prefer reduced motion.
     const fine = window.matchMedia('(pointer: fine)').matches;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!fine || reduced) return;
 
     const scale = Math.min(window.innerWidth / 1400, 1.6);
@@ -61,7 +62,9 @@ export function AmbientGlow() {
       document.documentElement.removeEventListener('pointerleave', onLeave);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [reduced]);
+
+  if (reduced) return null;
 
   return (
     <div
