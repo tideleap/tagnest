@@ -77,7 +77,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
       {audit.clusters.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-sm font-semibold tracking-tight text-ink">疑似重复</h3>
+            <h3 className="font-display text-panel font-semibold tracking-tight text-ink">疑似重复</h3>
             <Badge tone="caution">{audit.clusters.length}</Badge>
             {audit.clusters.length > 1 && (
               <Button
@@ -98,7 +98,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
               </Button>
             )}
           </div>
-          <p className="text-2xs text-ink-faint">
+          <p className="text-2xs text-ink-muted">
             合并后，重复标签下的书签会转移到保留标签，重复标签本身被删除。
           </p>
 
@@ -112,23 +112,23 @@ export function TaxonomyPanel({ audit, loading }: Props) {
                   {cluster.duplicates.map((dup) => (
                     <span
                       key={dup.id}
-                      className="inline-flex h-6 items-center gap-1 rounded bg-sunken px-2 text-2xs text-ink-soft"
+                      className="inline-flex h-6 items-center gap-1 rounded-xs bg-sunken px-2 text-2xs text-ink-soft"
                     >
                       {dup.name}
-                      <span className="tabular-nums text-ink-faint">{dup.count}</span>
+                      <span className="tabular-nums text-ink-muted">{dup.count}</span>
                     </span>
                   ))}
                   <ArrowRight size={13} className="shrink-0 text-ink-faint" aria-hidden />
                   {/* The most-used member wins: it is the one already wired
                       into the user's habits and saved filters. */}
-                  <span className="inline-flex h-6 items-center gap-1 rounded bg-brand-soft px-2 text-2xs font-medium text-brand-ink">
+                  <span className="inline-flex h-6 items-center gap-1 rounded-xs bg-brand-soft px-2 text-2xs font-medium text-brand-ink">
                     {cluster.canonicalName}
                     <span className="tabular-nums opacity-70">{cluster.canonicalCount}</span>
                   </span>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="hidden text-2xs text-ink-faint sm:inline">{cluster.reason}</span>
+                  <span className="hidden text-2xs text-ink-muted sm:inline">{cluster.reason}</span>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -153,7 +153,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
       {audit.unused.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-sm font-semibold tracking-tight text-ink">未使用</h3>
+            <h3 className="font-display text-panel font-semibold tracking-tight text-ink">未使用</h3>
             <Badge tone="neutral">{audit.unused.length}</Badge>
             {audit.unused.length > 1 && (
               <Button
@@ -189,10 +189,10 @@ export function TaxonomyPanel({ audit, loading }: Props) {
       {audit.lowUsage.length > 0 && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-sm font-semibold tracking-tight text-ink">低频标签</h3>
+            <h3 className="font-display text-panel font-semibold tracking-tight text-ink">低频标签</h3>
             <Badge tone="neutral">{audit.lowUsage.length}</Badge>
           </div>
-          <p className="text-2xs text-ink-faint">
+          <p className="text-2xs text-ink-muted">
             只关联了 1 个书签的标签——考虑合并到更通用的标签，或保留作为细分。
           </p>
           <ul className="flex flex-wrap gap-1.5">
@@ -200,7 +200,7 @@ export function TaxonomyPanel({ audit, loading }: Props) {
               <li key={tag.id}>
                 <span className="inline-flex h-7 items-center gap-1 rounded-md border border-line px-2 text-2xs text-ink-soft">
                   {tag.name}
-                  <span className="tabular-nums text-ink-faint">1</span>
+                  <span className="tabular-nums text-ink-muted">1</span>
                 </span>
               </li>
             ))}
@@ -264,7 +264,7 @@ function MergeHistory() {
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <History size={13} className="text-ink-faint" aria-hidden />
-        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">合并历史</h3>
+        <h3 className="font-display text-panel font-semibold tracking-tight text-ink">合并历史</h3>
         <Badge tone="neutral">{log.length}</Badge>
       </div>
       <ul className="flex flex-col gap-1">
@@ -273,11 +273,11 @@ function MergeHistory() {
             key={entry.id}
             className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-line bg-surface px-3 py-2 text-2xs text-ink-soft"
           >
-            <span className="text-ink-faint">{formatDate(entry.createdAt)}</span>
+            <span className="text-ink-muted">{formatDate(entry.createdAt)}</span>
             <span className="line-through opacity-70">{entry.sourceTagNames.join('、')}</span>
             <ArrowRight size={11} className="shrink-0 text-ink-faint" aria-hidden />
             <span className="font-medium text-ink">{entry.targetTagName}</span>
-            <span className="tabular-nums text-ink-faint">×{entry.mergedCount}</span>
+            <span className="tabular-nums text-ink-muted">×{entry.mergedCount}</span>
           </li>
         ))}
       </ul>

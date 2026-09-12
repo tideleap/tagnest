@@ -106,14 +106,14 @@ export function CategoryExportPanel() {
         当前{totalRows > 0 ? `已分类 ${totalRows}` : '已分类'}条书签会生成一份标准的浏览器书签文件。导入浏览器后即可在书签栏看到分类文件夹，不需要安装 TagNest 扩展。
       </p>
 
-      <ol className="flex flex-col gap-1.5 text-2xs leading-relaxed text-ink-faint">
+      <ol className="flex flex-col gap-1.5 text-2xs leading-relaxed text-ink-muted">
         <li>
           <span className="mr-1 font-mono text-ink-soft">1.</span>
-          点击上方按钮下载 <code className="rounded bg-sunken px-1 py-px text-2xs">tagnest-categories-*.html</code>
+          点击上方按钮下载 <code className="rounded-xs bg-sunken px-1 py-px text-2xs">tagnest-categories-*.html</code>
         </li>
         <li>
           <span className="mr-1 font-mono text-ink-soft">2.</span>
-          打开 <code className="rounded bg-sunken px-1 py-px text-2xs">chrome://bookmarks/</code>（或 Edge / Firefox 同等入口）→ 右上角 <span className="font-medium text-ink-soft">⋮</span> → <span className="font-medium text-ink-soft">导入书签</span> → 选刚下载的 HTML
+          打开 <code className="rounded-xs bg-sunken px-1 py-px text-2xs">chrome://bookmarks/</code>（或 Edge / Firefox 同等入口）→ 右上角 <span className="font-medium text-ink-soft">⋮</span> → <span className="font-medium text-ink-soft">导入书签</span> → 选刚下载的 HTML
         </li>
         <li>
           <span className="mr-1 font-mono text-ink-soft">3.</span>
@@ -121,7 +121,7 @@ export function CategoryExportPanel() {
         </li>
       </ol>
 
-      <p className="flex items-center gap-1.5 text-2xs text-ink-faint">
+      <p className="flex items-center gap-1.5 text-2xs text-ink-muted">
         <ExternalLink size={11} aria-hidden />
         提示：每次导出都是独立的「✨ AI 整理 …」会话文件夹，重复导入只会增加新会话，不再累积同名文件夹；旧的会话拖到书签栏后手动删掉即可
       </p>

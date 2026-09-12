@@ -308,7 +308,7 @@ export function SuggestionReview({ suggestions, loading, failed, onRetry, kind =
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs text-ink-faint">
+        <p className="text-xs text-ink-muted">
           {grouping === 'topic'
             ? `${topicGroups.length} 个主题 · ${totalTags} 个待确认${unit}`
             : grouping === 'hierarchy'
@@ -470,7 +470,7 @@ function BookmarkGroupList({
       {groups.map((group) => (
         <li
           key={group.bookmarkId}
-          className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent"
+          className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors duration-150 ease-out-soft hover:border-brand-accent"
         >
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -479,7 +479,7 @@ function BookmarkGroupList({
                 href={group.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="mt-0.5 inline-flex items-center gap-1 text-2xs text-ink-faint hover:text-ink-soft"
+                className="focus-ring mt-0.5 inline-flex items-center gap-1 rounded-xs text-2xs text-ink-muted hover:text-ink-soft"
               >
                 {displayHost(group.url)}
                 <ExternalLink size={11} aria-hidden />
@@ -493,7 +493,7 @@ function BookmarkGroupList({
                     </span>
                   )}
                   {group.needsReview && (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-caution/60 px-1.5 py-0.5 text-2xs text-caution">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-caution px-1.5 py-0.5 text-2xs text-caution-ink">
                       <AlertTriangle size={11} aria-hidden />
                       需复核
                     </span>
@@ -564,14 +564,14 @@ function TopicGroupList({  groups,
       {groups.map((tg) => (
         <li
           key={tg.topic}
-          className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent"
+          className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors duration-150 ease-out-soft hover:border-brand-accent"
         >
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-xs font-medium text-ink-soft">
               <Sparkles size={12} aria-hidden />
               {tg.topic}
             </span>
-            <span className="text-2xs text-ink-faint">{tg.items.length} 条建议</span>
+            <span className="text-2xs text-ink-muted">{tg.items.length} 条建议</span>
             <div className="ml-auto flex gap-2">
               <Button
                 size="sm"
@@ -637,14 +637,14 @@ function HierarchyGroupList({
         return (
           <li
             key={hg.category}
-            className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent"
+            className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors duration-150 ease-out-soft hover:border-brand-accent"
           >
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 py-0.5 text-xs font-medium text-brand-ink">
                 <FolderTree size={12} aria-hidden />
                 {hg.category}
               </span>
-              <span className="text-2xs text-ink-faint">{allItems.length} 条建议</span>
+              <span className="text-2xs text-ink-muted">{allItems.length} 条建议</span>
               <div className="ml-auto flex gap-2">
                 <Button
                   size="sm"
@@ -671,7 +671,7 @@ function HierarchyGroupList({
                 <li key={sub.name}>
                   <div className="mb-1 flex items-center gap-2">
                     <span className="text-2xs font-medium text-ink-soft">{sub.name}</span>
-                    <span className="text-2xs text-ink-faint">{sub.items.length}</span>
+                    <span className="text-2xs text-ink-muted">{sub.items.length}</span>
                     <div className="ml-auto flex gap-1">
                       <Button
                         size="sm"
@@ -710,7 +710,7 @@ function HierarchyGroupList({
                 <li>
                   <div className="mb-1 flex items-center gap-2">
                     <span className="text-2xs font-medium text-ink-soft">其他</span>
-                    <span className="text-2xs text-ink-faint">{hg.direct.length}</span>
+                    <span className="text-2xs text-ink-muted">{hg.direct.length}</span>
                     <div className="ml-auto flex gap-1">
                       <Button
                         size="sm"
@@ -787,7 +787,7 @@ function TagProposal({
             'inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs',
             decided === 'accept'
               ? 'bg-positive-soft text-positive-ink'
-              : 'bg-sunken text-ink-faint',
+              : 'bg-sunken text-ink-muted',
           )}
         >
           {decided === 'accept' ? <Check size={12} /> : <X size={12} />}
@@ -801,7 +801,7 @@ function TagProposal({
           'inline-flex h-7 items-center gap-1 rounded-md px-2 text-2xs',
           decided === 'accept'
             ? 'bg-positive-soft text-positive-ink'
-            : 'bg-sunken text-ink-faint',
+            : 'bg-sunken text-ink-muted',
         )}
       >
         {decided === 'accept' ? <Check size={12} /> : <X size={12} />}
@@ -836,13 +836,13 @@ function TagProposal({
                 setEditing(false);
               }
             }}
-            className="w-40 rounded bg-canvas px-1.5 py-0.5 text-2xs text-ink outline-none ring-1 ring-line focus:ring-brand"
+            className="focus-ring w-40 rounded-xs bg-canvas px-1.5 py-0.5 text-2xs text-ink ring-1 ring-line"
             aria-label="编辑新标题"
           />
           <button
             type="button"
             aria-label="确认修改"
-            className="rounded p-1 text-positive-ink transition-colors hover:bg-positive-soft"
+            className="focus-ring rounded-xs p-1 text-positive-ink transition-colors duration-150 ease-out-soft hover:bg-positive-soft"
             onClick={() => {
               const name = draft.trim();
               if (name && name !== proposed) {
@@ -859,7 +859,7 @@ function TagProposal({
           <button
             type="button"
             aria-label="取消修改"
-            className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover"
+            className="focus-ring rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-surface-hover"
             onClick={() => setEditing(false)}
           >
             <X size={12} />
@@ -873,15 +873,15 @@ function TagProposal({
         title={item.reason ?? undefined}
         className={cx(
           'inline-flex flex-col items-start gap-0.5 rounded-md border pl-2 pr-1 text-2xs',
-          low ? 'border-dashed border-caution/60 text-ink-soft' : 'border-line text-ink',
+          low ? 'border-dashed border-caution text-ink-soft' : 'border-line text-ink',
         )}
       >
         <span className="flex flex-wrap items-center gap-1">
           <PenLine size={11} aria-hidden className="shrink-0 text-brand-accent" />
-          <span className="max-w-[12rem] truncate text-ink-faint line-through">{original}</span>
-          <span aria-hidden className="text-ink-faint">→</span>
+          <span className="max-w-[12rem] truncate text-ink-muted line-through">{original}</span>
+          <span aria-hidden className="text-ink-muted">→</span>
           <span className="max-w-[14rem] truncate font-medium">{proposed}</span>
-          <span className="tabular-nums text-ink-faint">{percent}%</span>
+          <span className="tabular-nums text-ink-muted">{percent}%</span>
           <button
             type="button"
             onClick={() => {
@@ -889,7 +889,7 @@ function TagProposal({
               setEditing(true);
             }}
             aria-label="编辑新标题"
-            className="ml-0.5 rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            className="focus-ring ml-0.5 rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-surface-hover hover:text-ink"
           >
             <Pencil size={12} />
           </button>
@@ -900,7 +900,7 @@ function TagProposal({
               onAccept();
             }}
             aria-label="接受新标题"
-            className="rounded p-1 text-ink-faint transition-colors hover:bg-positive-soft hover:text-positive-ink"
+            className="focus-ring rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-positive-soft hover:text-positive-ink"
           >
             <Check size={12} />
           </button>
@@ -911,13 +911,13 @@ function TagProposal({
               onReject();
             }}
             aria-label="保留原标题"
-            className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            className="focus-ring rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-surface-hover hover:text-ink"
           >
             <X size={12} />
           </button>
         </span>
         {item.reason && (
-          <span className="max-w-[18rem] text-2xs leading-tight text-ink-faint">{item.reason}</span>
+          <span className="max-w-[18rem] text-2xs leading-tight text-ink-muted">{item.reason}</span>
         )}
       </span>
     );
@@ -946,13 +946,13 @@ function TagProposal({
               setEditing(false);
             }
           }}
-          className="w-24 rounded bg-canvas px-1.5 py-0.5 text-2xs text-ink outline-none ring-1 ring-line focus:ring-brand"
+          className="focus-ring w-24 rounded-xs bg-canvas px-1.5 py-0.5 text-2xs text-ink ring-1 ring-line"
           aria-label={`编辑标签 ${item.tagName}`}
         />
         <button
           type="button"
           aria-label="确认修改"
-          className="rounded p-1 text-positive-ink transition-colors hover:bg-positive-soft"
+          className="focus-ring rounded-xs p-1 text-positive-ink transition-colors duration-150 ease-out-soft hover:bg-positive-soft"
           onClick={() => {
             const name = draft.trim();
             if (name && name !== item.tagName) {
@@ -969,7 +969,7 @@ function TagProposal({
         <button
           type="button"
           aria-label="取消修改"
-          className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover"
+          className="focus-ring rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-surface-hover"
           onClick={() => setEditing(false)}
         >
           <X size={12} />
@@ -985,20 +985,20 @@ function TagProposal({
       title={item.reason ?? undefined}
       className={cx(
         'inline-flex flex-col items-start gap-0.5 rounded-md border pl-2 pr-1 text-2xs',
-        low ? 'border-dashed border-caution/60 text-ink-soft' : 'border-line text-ink',
+        low ? 'border-dashed border-caution text-ink-soft' : 'border-line text-ink',
       )}
     >
       <span className="flex items-center gap-1">
         {isCategoryRow && <FolderTree size={11} aria-hidden className="text-brand-accent" />}
         <span className="font-medium">{label}</span>
-        <span className="tabular-nums text-ink-faint">{percent}%</span>
+        <span className="tabular-nums text-ink-muted">{percent}%</span>
         <Badge tone="neutral" className="hidden sm:inline-flex">
           {SOURCE_LABEL[item.source] ?? item.source}
         </Badge>
         {item.feedbackBoosted && (
           <span
             title="根据你的历史偏好，这条建议被提升了置信度"
-            className="inline-flex items-center gap-0.5 rounded bg-positive-soft px-1 text-2xs text-positive-ink"
+            className="inline-flex items-center gap-0.5 rounded-xs bg-positive-soft px-1 text-2xs text-positive-ink"
           >
             <Sparkles size={10} aria-hidden />
             已学习
@@ -1010,7 +1010,7 @@ function TagProposal({
             type="button"
             onClick={() => setEditing(true)}
             aria-label={`编辑标签 ${item.tagName}`}
-            className="ml-0.5 rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            className="focus-ring ml-0.5 rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-surface-hover hover:text-ink"
           >
             <Pencil size={12} />
           </button>
@@ -1022,7 +1022,7 @@ function TagProposal({
             onAccept();
           }}
           aria-label={`接受标签 ${item.tagName}`}
-          className="rounded p-1 text-ink-faint transition-colors hover:bg-positive-soft hover:text-positive-ink"
+          className="focus-ring rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-positive-soft hover:text-positive-ink"
         >
           <Check size={12} />
         </button>
@@ -1033,13 +1033,13 @@ function TagProposal({
             onReject();
           }}
           aria-label={`忽略标签 ${item.tagName}`}
-          className="rounded p-1 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+          className="focus-ring rounded-xs p-1 text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-surface-hover hover:text-ink"
         >
           <X size={12} />
         </button>
       </span>
       {item.reason && (
-        <span className="max-w-[14rem] text-2xs leading-tight text-ink-faint">{item.reason}</span>
+        <span className="max-w-[14rem] text-2xs leading-tight text-ink-muted">{item.reason}</span>
       )}
     </span>
   );

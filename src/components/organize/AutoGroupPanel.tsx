@@ -44,7 +44,7 @@ export function AutoGroupPanel() {
           {applied ? '重新建组' : '一键建组'}
         </Button>
       </div>
-      <p className="text-2xs leading-relaxed text-ink-faint">
+      <p className="text-2xs leading-relaxed text-ink-muted">
         将标签整理为「一级分类 → 二级子分类 → 三级标签」的层级结构。未匹配的标签保持原位；已深嵌套的三级标签不再下钻。
       </p>
 
@@ -58,7 +58,7 @@ export function AutoGroupPanel() {
       {isLoading && !tags ? (
         <Skeleton className="h-24 w-full" />
       ) : tree.length === 0 ? (
-        <p className="text-2xs text-ink-faint">还没有可归类的标签。</p>
+        <p className="text-2xs text-ink-muted">还没有可归类的标签。</p>
       ) : (
         <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto scrollbar-slim">
           {tree.map((top) => {
@@ -75,11 +75,11 @@ export function AutoGroupPanel() {
                       return next;
                     })
                   }
-                  className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-2xs font-medium text-ink transition-colors hover:bg-surface-hover"
+                  className="focus-ring flex w-full items-center gap-1.5 rounded-xs px-2 py-1 text-left text-2xs font-medium text-ink transition-colors duration-150 ease-out-soft hover:bg-surface-hover"
                 >
                   {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   <span className="min-w-0 truncate">{top.name}</span>
-                  <span className="ml-auto tabular-nums text-ink-faint">{top.count}</span>
+                  <span className="ml-auto tabular-nums text-ink-muted">{top.count}</span>
                 </button>
                 {open &&
                   top.children.map((child) => (
@@ -91,7 +91,7 @@ export function AutoGroupPanel() {
                           <div className="flex w-full items-center gap-1.5 px-2 py-1 text-2xs text-ink-soft">
                             <ChevronRight size={12} className="text-ink-faint" />
                             <span className="min-w-0 truncate">{child.name}</span>
-                            <span className="ml-auto tabular-nums text-ink-faint">{child.count}</span>
+                            <span className="ml-auto tabular-nums text-ink-muted">{child.count}</span>
                           </div>
                           <ul className="flex flex-col gap-0.5">
                             {child.children.map((leaf) => (
@@ -119,13 +119,13 @@ function TagLeaf({ tag }: { tag: Tag }) {
       type="button"
       title={tag.name}
       className={cx(
-        'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-2xs text-ink-soft',
-        'transition-colors hover:bg-surface-hover',
+        'focus-ring flex w-full items-center gap-1.5 rounded-xs px-2 py-1 text-left text-2xs text-ink-soft',
+        'transition-colors duration-150 ease-out-soft hover:bg-surface-hover',
       )}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--tag-dot)]" style={tagDot(tag)} />
       <span className="min-w-0 truncate">{tag.name}</span>
-      <span className="ml-auto tabular-nums text-ink-faint">{tag.count}</span>
+      <span className="ml-auto tabular-nums text-ink-muted">{tag.count}</span>
     </button>
   );
 }

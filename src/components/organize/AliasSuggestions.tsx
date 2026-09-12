@@ -60,7 +60,7 @@ export function AliasSuggestions() {
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold text-ink">别名建议</h3>
+          <h3 className="font-display text-panel font-semibold tracking-tight text-ink">别名建议</h3>
           <Badge tone="neutral">{suggestions.length}</Badge>
         </div>
         <Button
@@ -73,7 +73,7 @@ export function AliasSuggestions() {
           用 AI 生成更多
         </Button>
       </div>
-      <p className="text-2xs text-ink-faint">
+      <p className="text-2xs text-ink-muted">
         将同义词写入标签，后续 AI 整理会自动合并相近表达，减少重复标签。
       </p>
 
@@ -82,7 +82,7 @@ export function AliasSuggestions() {
           <li key={s.tagId} className="rounded-md border border-line bg-surface p-3">
             <div className="mb-2 flex items-center gap-2">
               <span className="text-2xs font-medium text-ink">{s.tagName}</span>
-              <span className="text-2xs text-ink-faint">{s.reason}</span>
+              <span className="text-2xs text-ink-muted">{s.reason}</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {s.aliases.map((a) => {
@@ -92,7 +92,7 @@ export function AliasSuggestions() {
                     key={a}
                     type="button"
                     onClick={() => toggle(s.tagId, a)}
-                    className={`h-6 rounded px-2 text-2xs transition ${
+                    className={`focus-ring h-6 rounded-xs px-2 text-2xs transition-colors duration-150 ease-out-soft ${
                       active
                         ? 'bg-brand-soft text-brand-ink'
                         : 'bg-sunken text-ink-soft hover:text-ink'
@@ -118,22 +118,22 @@ export function AliasSuggestions() {
           应用到标签体系{selectedItems.length > 0 ? `（${selectedItems.length}）` : ''}
         </Button>
         {data?.modelAvailable === false && (
-          <span className="text-2xs text-ink-faint">当前为离线建议；配置模型后可生成更丰富同义词。</span>
+          <span className="text-2xs text-ink-muted">当前为离线建议；配置模型后可生成更丰富同义词。</span>
         )}
       </div>
 
       {topicClusters.length > 0 && (
         <div className="mt-1">
-          <h4 className="mb-1 text-2xs font-semibold text-ink">本次整理主题分布</h4>
+          <h4 className="mb-1 text-xs font-semibold text-ink">本次整理主题分布</h4>
           <div className="flex flex-wrap gap-1.5">
             {topicClusters.slice(0, 12).map((c) => (
               <span
                 key={c.topic}
-                className="inline-flex h-6 items-center gap-1 rounded bg-sunken px-2 text-2xs text-ink-soft"
+                className="inline-flex h-6 items-center gap-1 rounded-xs bg-sunken px-2 text-2xs text-ink-soft"
                 title={`${c.tagNames.join('、')}`}
               >
                 {c.topic}
-                <span className="tabular-nums text-ink-faint">{c.bookmarkCount}</span>
+                <span className="tabular-nums text-ink-muted">{c.bookmarkCount}</span>
               </span>
             ))}
           </div>
