@@ -92,7 +92,7 @@ export function TagsPage() {
     });
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <PageHeader
         icon={<TagIcon size={14} aria-hidden />}
         eyebrow="整理分类"
@@ -101,7 +101,7 @@ export function TagsPage() {
         description="按分组管理你的标签词汇表——把书签收进一致的层级，合并、重命名或清理从不使用的标签。"
       >
         {tags && (
-          <span className="mr-1 text-xs tabular-nums text-ink-faint">{tags.length} 个</span>
+          <span className="mr-1 text-xs tabular-nums text-ink-muted">{tags.length} 个</span>
         )}
         <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setCreating(true)}>
           新建标签
@@ -131,7 +131,7 @@ export function TagsPage() {
         />
         {unused.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-ink-faint">{unused.length} 个标签暂未使用</span>
+            <span className="text-xs text-ink-muted">{unused.length} 个标签暂未使用</span>
             <Button variant="ghost" size="sm" onClick={() => setCleaning(true)}>
               清理
             </Button>
@@ -140,7 +140,7 @@ export function TagsPage() {
       </Reveal>
 
       {isLoading ? (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-1">
           {Array.from({ length: 6 }).map((_, i) => (
             <li key={i}>
               <Skeleton className="h-12 w-full rounded-md" />
@@ -169,7 +169,7 @@ export function TagsPage() {
         />
       ) : (
         <Reveal delay={120}>
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-1">
           {filtered.map((top) => (
             <GroupRow
               key={top.id}
@@ -272,8 +272,8 @@ function GroupRow({
     <li className="flex flex-col">
       <div
         className={cx(
-          'group flex w-full items-center gap-2 rounded-md border border-line bg-surface px-2 py-2 transition-colors hover:border-line-strong',
-          isOpen && 'bg-surface-hover/40',
+          'group flex w-full items-center gap-2 rounded-md border bg-surface px-2 py-2 list-row-bordered focus-ring',
+          isOpen && 'bg-surface-hover',
         )}
         style={{ paddingLeft: `${8 + indent}px` }}
       >
@@ -281,7 +281,7 @@ function GroupRow({
           <button
             type="button"
             onClick={() => onToggleExpand(node.id)}
-            className="shrink-0 rounded p-0.5 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+            className="shrink-0 rounded-xs p-0.5 text-ink-faint transition-colors duration-150 ease-out-soft hover:bg-surface-hover hover:text-ink focus-ring"
             aria-label={isOpen ? '收起分组' : '展开分组'}
             aria-expanded={isOpen}
           >
@@ -309,12 +309,12 @@ function GroupRow({
         <button
           type="button"
           onClick={() => onNavigate(node.id)}
-          className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink transition-colors hover:text-brand-ink"
+          className="min-w-0 flex-1 truncate text-left text-sm font-medium text-ink transition-colors duration-150 ease-out-soft hover:text-brand-ink focus-ring"
         >
           {node.name}
         </button>
 
-        <span className="shrink-0 text-2xs tabular-nums text-ink-faint">
+        <span className="shrink-0 text-2xs tabular-nums text-ink-muted">
           {node.count} 个书签
         </span>
 
@@ -334,7 +334,7 @@ function GroupRow({
               label={`${node.name} 的操作`}
               size="sm"
               icon={<MoreHorizontal size={16} />}
-              className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+              className="opacity-0 transition-opacity duration-150 ease-out-soft focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
             />
           )}
           items={[
@@ -485,7 +485,7 @@ function TagFormDialog({
         <ColorPicker value={colorIndex} onChange={setColorIndex} />
 
         <div className="rounded-md bg-sunken px-3 py-2.5">
-          <p className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-ink-faint">预览</p>
+          <p className="atelier-eyebrow mb-1.5">预览</p>
           <TagChip name={name.trim() || '标签名'} colorIndex={colorIndex} count={tag?.count} />
         </div>
       </div>

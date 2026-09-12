@@ -20,6 +20,7 @@ import {
   Input,
   Menu,
   Modal,
+  PageHeader,
   QueryErrorState,
   Skeleton,
   tagColorVars,
@@ -54,88 +55,99 @@ export function TabGroupsPage() {
   const activeId = selected?.id ?? effectiveSelected?.id ?? null;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 gap-4 md:grid-cols-[16rem_1fr]">
-      {/* Group list */}
-      <aside className="flex min-h-0 flex-col rounded-xl border border-line bg-surface/85 shadow-raised backdrop-blur-sm">
-        <header className="flex items-center justify-between border-b border-line px-3 py-2.5">
-          <h2 className="nav-section">分组 / Groups</h2>
-          <IconButton
-            label="新建分组"
-            icon={<Plus size={16} />}
-            size="sm"
-            onClick={() => setCreating(true)}
-          />
-        </header>
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      {/* Decision D2: the page's one and only <h1> comes from PageHeader and is
+          the first heading in the DOM. The two section headings below (the
+          group-list `nav-section` and the detail title) are both <h2>. */}
+      <PageHeader title="标签分组" />
 
-        {isLoading ? (
-          <ul className="flex flex-col gap-1 p-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <li key={i}>
-                <Skeleton className="h-9 w-full rounded-md" />
-              </li>
-            ))}
-          </ul>
-        ) : isError ? (
-          <div className="p-2">
-            <QueryErrorState
-              compact
-              message={error instanceof Error ? error.message : undefined}
-              onRetry={() => void refetch()}
+      {/* flex-1 (not h-full) so the grid takes the space LEFT OVER after
+          PageHeader + gap; h-full would resolve to the parent's full height and
+          overflow. min-h-0 is required for the inner overflow-y-auto panes. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 md:grid-cols-[16rem_1fr]">
+        {/* Group list */}
+        <aside className="flex min-h-0 flex-col rounded-xl border border-line bg-surface/85 shadow-raised backdrop-blur-sm">
+          <header className="flex items-center justify-between border-b border-line px-3 py-2.5">
+            <h2 className="nav-section">分组 / Groups</h2>
+            <IconButton
+              label="新建分组"
+              icon={<Plus size={16} />}
+              size="sm"
+              onClick={() => setCreating(true)}
             />
-          </div>
-        ) : (groups ?? []).length === 0 ? (
-          <div className="flex flex-1 items-center justify-center p-4 text-center">
-            <p className="text-xs leading-relaxed text-ink-faint">
-              还没有分组。把常用书签归到一个分组，方便一次性全部打开。
-            </p>
-          </div>
-        ) : (
-          <ul className="min-h-0 flex-1 overflow-y-auto scrollbar-slim p-2">
-            {groups!.map((g) => (
-              <li key={g.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(g.id)}
-                  className={cx(
-                    'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
-                    activeId === g.id
-                      ? 'bg-brand-soft text-brand-ink'
-                      : 'text-ink-soft hover:bg-surface-hover hover:text-ink',
-                  )}
-                >
-                  <span
-                    style={tagColorVars(g.colorIndex)}
-                    className="h-3 w-3 shrink-0 rounded-full bg-[var(--tag-dot)]"
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1 truncate font-medium">{g.name}</span>
-                  <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{g.count}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </aside>
+          </header>
 
-      {/* Group detail */}
-      <section className="min-h-0">
-        {!activeId ? (
-          <div className="flex h-full items-center justify-center">
-            <EmptyState
-              icon={<FolderOpen size={22} />}
-              title="选择一个分组"
-              description="左侧点击一个分组查看其中的书签，或新建一个分组开始整理。"
+          {isLoading ? (
+            <ul className="flex flex-col gap-1 p-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <li key={i}>
+                  <Skeleton className="h-9 w-full rounded-md" />
+                </li>
+              ))}
+            </ul>
+          ) : isError ? (
+            <div className="p-2">
+              <QueryErrorState
+                compact
+                message={error instanceof Error ? error.message : undefined}
+                onRetry={() => void refetch()}
+              />
+            </div>
+          ) : (groups ?? []).length === 0 ? (
+            <div className="flex flex-1 items-center justify-center p-4 text-center">
+              <p className="text-xs leading-relaxed text-ink-muted">
+                还没有分组。把常用书签归到一个分组，方便一次性全部打开。
+              </p>
+            </div>
+          ) : (
+            <ul className="min-h-0 flex-1 overflow-y-auto scrollbar-slim p-2">
+              {groups!.map((g) => (
+                <li key={g.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(g.id)}
+                    aria-current={activeId === g.id ? 'true' : undefined}
+                    className={cx(
+                      'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm list-row focus-ring',
+                      activeId === g.id
+                        ? 'bg-brand-soft text-brand-ink'
+                        : 'text-ink-soft hover:text-ink',
+                    )}
+                  >
+                    <span
+                      style={tagColorVars(g.colorIndex)}
+                      className="h-3 w-3 shrink-0 rounded-full bg-[var(--tag-dot)]"
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium">{g.name}</span>
+                    <span className="shrink-0 text-2xs tabular-nums text-ink-muted">{g.count}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        {/* Group detail */}
+        <section className="min-h-0">
+          {!activeId ? (
+            <div className="flex h-full items-center justify-center">
+              <EmptyState
+                icon={<FolderOpen size={22} />}
+                title="选择一个分组"
+                description="左侧点击一个分组查看其中的书签，或新建一个分组开始整理。"
+              />
+            </div>
+          ) : (
+            <GroupDetail
+              groupId={activeId}
+              onRename={(g) => setEditing(g)}
+              onDelete={(g) => setDeleting(g)}
+              onAdd={() => setAdding(true)}
             />
-          </div>
-        ) : (
-          <GroupDetail
-            groupId={activeId}
-            onRename={(g) => setEditing(g)}
-            onDelete={(g) => setDeleting(g)}
-            onAdd={() => setAdding(true)}
-          />
-        )}
-      </section>
+          )}
+        </section>
+      </div>
 
       <GroupFormDialog
         open={creating || editing !== null}
@@ -224,7 +236,7 @@ function GroupDetail({
           className="h-3.5 w-3.5 shrink-0 rounded-full bg-[var(--tag-dot)]"
           aria-hidden
         />
-        <h1 className="atelier-display atelier-display--3 min-w-0 flex-1 truncate text-ink">{group.name}</h1>
+        <h2 className="atelier-display atelier-display--3 min-w-0 flex-1 truncate text-ink">{group.name}</h2>
         {items.length > 0 && (
           <Button variant="ghost" iconLeft={<ExternalLink size={15} />} onClick={openAll}>
             全部打开
@@ -271,7 +283,7 @@ function GroupDetail({
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => handleDrop(index)}
                 className={cx(
-                  'group flex items-center gap-2.5 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-line hover:bg-surface-hover',
+                  'group flex items-center gap-2.5 rounded-md border border-transparent px-2 py-2 transition-colors duration-150 ease-out-soft hover:border-line hover:bg-surface-hover',
                   dragIndex === index && 'opacity-50',
                 )}
               >
@@ -292,7 +304,7 @@ function GroupDetail({
                   href={item.bookmark.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0 flex-1 truncate text-sm text-ink hover:text-brand-ink hover:underline"
+                  className="min-w-0 flex-1 truncate text-sm text-ink hover:text-brand-ink hover:underline focus-ring"
                   title={item.bookmark.title || item.bookmark.url}
                 >
                   {item.bookmark.title || item.bookmark.url}
@@ -301,7 +313,7 @@ function GroupDetail({
                   label="从分组移除"
                   icon={<X size={14} />}
                   size="sm"
-                  className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+                  className="opacity-0 transition-opacity duration-150 ease-out-soft focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
                   onClick={() => removeItem.mutate({ groupId, itemId: item.id })}
                 />
               </li>
@@ -500,7 +512,7 @@ function AddBookmarkDialog({
               ))}
             </div>
           ) : results.length === 0 ? (
-            <p className="px-1 py-6 text-center text-xs text-ink-faint">
+            <p className="px-1 py-6 text-center text-xs text-ink-muted">
               {query ? '没有匹配的书签' : '输入关键词搜索你的书签'}
             </p>
           ) : (
@@ -514,7 +526,7 @@ function AddBookmarkDialog({
                       disabled={added}
                       onClick={() => pick(b)}
                       className={cx(
-                        'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors',
+                        'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors duration-150 ease-out-soft focus-ring',
                         added
                           ? 'cursor-default text-ink-faint'
                           : 'hover:bg-surface-hover',
@@ -526,7 +538,7 @@ function AddBookmarkDialog({
                         <span className="h-4 w-4 shrink-0 rounded-sm bg-sunken" aria-hidden />
                       )}
                       <span className="min-w-0 flex-1 truncate">{b.title || b.url}</span>
-                      {added && <span className="shrink-0 text-2xs text-ink-faint">已添加</span>}
+                      {added && <span className="shrink-0 text-2xs text-ink-muted">已添加</span>}
                     </button>
                   </li>
                 );

@@ -41,7 +41,7 @@ export function CollectionsPage() {
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <PageHeader
         icon={<FolderIcon size={14} aria-hidden />}
         eyebrow="整理分类"
@@ -50,7 +50,7 @@ export function CollectionsPage() {
         description="把书签收进持久、可分享的收藏夹——比标签更稳定，比标签页组更适合长期保存。一个书签可以属于多个集合。"
       >
         {collections && (
-          <span className="mr-1 text-xs tabular-nums text-ink-faint">{collections.length} 个</span>
+          <span className="mr-1 text-xs tabular-nums text-ink-muted">{collections.length} 个</span>
         )}
         <Button variant="primary" iconLeft={<Plus size={16} />} onClick={() => setCreating(true)}>
           新建集合
@@ -85,11 +85,11 @@ export function CollectionsPage() {
         <Stagger as="ul" className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((c) => (
             <li key={c.id}>
-              <div className="spotlight group flex items-center gap-3 rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-colors hover:border-brand-accent">
+              <div className="spotlight group flex items-center gap-3 rounded-xl border border-line glass-raised p-3.5 shadow-raised transition-colors duration-150 ease-out-soft hover:border-brand-accent">
                 <button
                   type="button"
                   onClick={() => navigate(`/collections/${c.id}`)}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  className="focus-ring flex min-w-0 flex-1 items-center gap-3 text-left"
                 >
                   <span
                     style={tagColorVars(c.colorIndex)}
@@ -101,7 +101,7 @@ export function CollectionsPage() {
                       <span className="truncate text-sm font-medium text-ink">{c.name}</span>
                       {c.kind === 'smart' && <Badge tone="brand">智能</Badge>}
                     </span>
-                    <span className="block text-2xs tabular-nums text-ink-faint">
+                    <span className="block text-2xs tabular-nums text-ink-muted">
                       {c.kind === 'smart' ? `实时匹配 · ${c.count} 个` : `${c.count} 个书签`}
                     </span>
                   </span>
@@ -116,7 +116,7 @@ export function CollectionsPage() {
                       label={`${c.name} 的操作`}
                       size="sm"
                       icon={<Pencil size={14} />}
-                      className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+                      className="opacity-0 transition-opacity duration-150 ease-out-soft focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
                     />
                   )}
                   items={[

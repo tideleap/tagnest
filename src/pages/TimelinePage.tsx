@@ -45,7 +45,7 @@ export function TimelinePage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pb-16 pt-2">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <PageHeader
         icon={<CalendarClock size={20} aria-hidden />}
         eyebrow="浏览"
@@ -87,9 +87,9 @@ export function TimelinePage() {
                 aria-hidden
                 className="absolute -left-[31px] top-1 h-2.5 w-2.5 rounded-full border-2 border-surface bg-brand-accent"
               />
-              <h2 className="font-display text-sm font-bold tracking-tight text-ink">
+              <h2 className="font-display text-panel font-semibold tracking-tight text-ink">
                 {monthLabel(key)}
-                <span className="ml-2 text-2xs font-normal tabular-nums text-ink-faint">
+                <span className="ml-2 text-2xs font-normal tabular-nums text-ink-muted">
                   {list.length} 条
                 </span>
               </h2>
@@ -100,14 +100,14 @@ export function TimelinePage() {
                       href={b.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2 transition-colors hover:border-brand/40 hover:bg-surface-hover"
+                      className="group flex items-center gap-3 rounded-lg border bg-surface px-3 py-2 list-row-bordered focus-ring"
                     >
                       <RemoteImage
                         src={b.faviconUrl ?? faviconFor(b.url)}
                         alt=""
-                        className="h-6 w-6 shrink-0 rounded"
+                        className="h-6 w-6 shrink-0 rounded-xs"
                         fallback={
-                          <span className="flex h-6 w-6 items-center justify-center rounded bg-brand-soft text-2xs font-bold text-brand-ink">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-xs bg-brand-soft text-2xs font-bold text-brand-ink">
                             {displayHost(b.url).slice(0, 1).toUpperCase()}
                           </span>
                         }
@@ -116,7 +116,7 @@ export function TimelinePage() {
                         <span className="block truncate text-sm text-ink group-hover:text-brand-ink">
                           {b.title || displayHost(b.url)}
                         </span>
-                        <span className="block truncate text-2xs text-ink-faint">
+                        <span className="block truncate text-2xs text-ink-muted">
                           {displayHost(b.url)}
                         </span>
                       </span>
@@ -125,7 +125,7 @@ export function TimelinePage() {
                       ))}
                       <ExternalLink
                         size={14}
-                        className="shrink-0 text-ink-faint opacity-0 transition-opacity group-hover:opacity-100"
+                        className="shrink-0 text-ink-faint opacity-0 transition-opacity duration-150 ease-out-soft group-hover:opacity-100"
                         aria-hidden
                       />
                     </a>

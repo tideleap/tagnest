@@ -48,7 +48,7 @@ export function ReportPage() {
   const loading = statsLoading || healthLoading || overviewLoading || tagsLoading || trendLoading;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <PageHeader
         icon={<BarChart3 size={14} aria-hidden />}
         eyebrow="数据洞察"
@@ -172,8 +172,8 @@ function Headline({
   tone?: 'positive' | 'caution' | 'critical';
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-line bg-surface px-3 py-2.5">
-      <span className="text-2xs text-ink-faint">{label}</span>
+    <div className="flex flex-col gap-1 rounded-xl border border-line bg-surface px-3 py-2.5">
+      <span className="text-2xs text-ink-muted">{label}</span>
       <span className="flex items-center gap-1.5">
         <span className="text-lg font-semibold tabular-nums text-ink">{value}</span>
         {tone && <Badge tone={tone}>{tone === 'positive' ? '良好' : tone === 'caution' ? '一般' : '需关注'}</Badge>}
@@ -188,7 +188,7 @@ function TrendChart({ points }: { points: Array<{ date: string; count: number }>
   const total = points.reduce((s, p) => s + p.count, 0);
 
   if (points.length === 0) {
-    return <p className="text-2xs text-ink-faint">最近 180 天没有新增书签。</p>;
+    return <p className="text-2xs text-ink-muted">最近 180 天没有新增书签。</p>;
   }
 
   return (
@@ -203,7 +203,7 @@ function TrendChart({ points }: { points: Array<{ date: string; count: number }>
           />
         ))}
       </div>
-      <p className="text-2xs text-ink-faint">
+      <p className="text-2xs text-ink-muted">
         窗口内共新增 <span className="font-medium tabular-nums text-ink">{total}</span> 个书签，峰值单日{' '}
         <span className="font-medium tabular-nums text-ink">{max}</span> 个。
       </p>
@@ -214,7 +214,7 @@ function TrendChart({ points }: { points: Array<{ date: string; count: number }>
 /** Horizontal bars sized by usage count. */
 function Distribution({ items }: { items: Array<{ name: string; count: number; other?: boolean }> }) {
   if (items.length === 0) {
-    return <p className="text-2xs text-ink-faint">还没有标签。</p>;
+    return <p className="text-2xs text-ink-muted">还没有标签。</p>;
   }
   const max = Math.max(1, ...items.map((i) => i.count));
   return (
@@ -230,7 +230,7 @@ function Distribution({ items }: { items: Array<{ name: string; count: number; o
               style={{ width: `${(item.count / max) * 100}%` }}
             />
           </div>
-          <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-ink-faint">
+          <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-ink-muted">
             {item.count}
           </span>
         </li>
@@ -254,7 +254,7 @@ function AiContribution({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-2xs text-ink-faint">AI 价值加权贡献</span>
+        <span className="text-2xs text-ink-muted">AI 价值加权贡献</span>
         <span className="text-sm font-semibold tabular-nums text-ink">{pct(weightedRate)}</span>
       </div>
       <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-sunken" role="img" aria-label={`AI ${aiLinks}，用户 ${userLinks}`}>
@@ -286,7 +286,7 @@ function HealthSummary({
       <div className="flex items-center gap-3">
         <span className="text-3xl font-semibold tabular-nums text-ink">{score}</span>
         <div className="flex flex-col">
-          <span className="text-2xs text-ink-faint">健康分</span>
+          <span className="text-2xs text-ink-muted">健康分</span>
           <Badge tone={scoreTone(score)}>{score >= 80 ? '良好' : score >= 50 ? '一般' : '需关注'}</Badge>
         </div>
       </div>
@@ -301,8 +301,8 @@ function HealthSummary({
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-md border border-line bg-sunken/40 px-2 py-1.5">
-      <span className="text-2xs text-ink-faint">{label}</span>
+    <div className="flex flex-col gap-0.5 rounded-md border border-line bg-sunken-wash px-2 py-1.5">
+      <span className="text-2xs text-ink-muted">{label}</span>
       <span className="text-sm font-semibold tabular-nums text-ink">{value}</span>
     </div>
   );
@@ -311,7 +311,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 function ScaleCell({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-md border border-line bg-surface px-2.5 py-2">
-      <span className="text-2xs text-ink-faint">{label}</span>
+      <span className="text-2xs text-ink-muted">{label}</span>
       <span className="text-base font-semibold tabular-nums text-ink">{value}</span>
     </div>
   );

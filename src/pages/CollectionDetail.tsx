@@ -80,7 +80,7 @@ export function CollectionDetail() {
 
   if (isLoading && !collection) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <Skeleton className="h-9 w-64 rounded-md" />
         <Skeleton className="h-40 w-full rounded-lg" />
       </div>
@@ -103,10 +103,10 @@ export function CollectionDetail() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <Link
         to="/collections"
-        className="inline-flex w-fit items-center gap-1 text-xs font-medium text-ink-soft transition-colors hover:text-brand-ink"
+        className="focus-ring inline-flex w-fit items-center gap-1 text-xs font-medium text-ink-soft transition-colors duration-150 ease-out-soft hover:text-brand-ink"
       >
         <ArrowLeft size={14} aria-hidden />
         集合
@@ -162,7 +162,7 @@ export function CollectionDetail() {
       </PageHeader>
 
       {isSmart && collection.query && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
           <Badge tone="brand">实时</Badge>
           <span className="text-xs text-ink-soft">{summarizeQuery(collection.query, tags)}</span>
         </div>
@@ -189,7 +189,7 @@ export function CollectionDetail() {
         <ul className="flex flex-col gap-1">
           {bookmarks.map((b) => (
             <li key={b.id}>
-              <div className="group flex items-center gap-2.5 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-line hover:bg-surface-hover">
+              <div className="group flex items-center gap-2.5 rounded-md border border-transparent px-2 py-2 transition-colors duration-150 ease-out-soft hover:border-line hover:bg-surface-hover">
                 {b.faviconUrl ? (
                   <img src={b.faviconUrl} alt="" className="h-4 w-4 shrink-0 rounded-sm" loading="lazy" />
                 ) : (
@@ -199,7 +199,7 @@ export function CollectionDetail() {
                   href={b.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0 flex-1 truncate text-sm text-ink hover:text-brand-ink hover:underline"
+                  className="focus-ring min-w-0 flex-1 truncate text-sm text-ink hover:text-brand-ink hover:underline"
                   title={b.title || b.url}
                 >
                   {b.title || b.url}
@@ -209,7 +209,7 @@ export function CollectionDetail() {
                     label="从集合移除"
                     icon={<X size={14} />}
                     size="sm"
-                    className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+                    className="opacity-0 transition-opacity duration-150 ease-out-soft focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
                     onClick={() => remove.mutate({ collectionId: collection.id, bookmarkId: b.id })}
                   />
                 )}
@@ -346,7 +346,7 @@ function CollectionFormDialog({
                 aria-pressed={colorIndex === i}
                 style={tagColorVars(i)}
                 className={cx(
-                  'h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform',
+                  'focus-ring-round h-7 w-7 rounded-full border-2 bg-[var(--tag-dot)] transition-transform duration-150 ease-out-soft',
                   colorIndex === i ? 'scale-110 border-ink' : 'border-transparent hover:scale-105',
                 )}
               />
@@ -460,7 +460,7 @@ function AddBookmarkDialog({
               ))}
             </div>
           ) : results.length === 0 ? (
-            <p className="px-1 py-6 text-center text-xs text-ink-faint">
+            <p className="px-1 py-6 text-center text-xs text-ink-muted">
               {query ? '没有匹配的书签' : '输入关键词搜索你的书签'}
             </p>
           ) : (
@@ -474,8 +474,8 @@ function AddBookmarkDialog({
                       disabled={added}
                       onClick={() => pick(b)}
                       className={cx(
-                        'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors',
-                        added ? 'cursor-default text-ink-faint' : 'hover:bg-surface-hover',
+                        'focus-ring flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors duration-150 ease-out-soft',
+                        added ? 'cursor-default text-ink-muted' : 'hover:bg-surface-hover',
                       )}
                     >
                       {b.faviconUrl ? (
@@ -484,7 +484,7 @@ function AddBookmarkDialog({
                         <span className="h-4 w-4 shrink-0 rounded-sm bg-sunken" aria-hidden />
                       )}
                       <span className="min-w-0 flex-1 truncate">{b.title || b.url}</span>
-                      {added && <span className="shrink-0 text-2xs text-ink-faint">已添加</span>}
+                      {added && <span className="shrink-0 text-2xs text-ink-muted">已添加</span>}
                     </button>
                   </li>
                 );

@@ -87,7 +87,7 @@ export function ImportPage() {
               handleFile(e.dataTransfer.files[0]);
             }}
             className={cx(
-              'spotlight rounded-2xl border-2 border-dashed p-10 text-center transition-colors',
+              'spotlight rounded-2xl border-2 border-dashed p-10 text-center transition-colors duration-150 ease-out-soft',
               dragging ? 'border-brand bg-brand-soft' : 'border-line bg-surface/85 backdrop-blur-sm',
             )}
           >
@@ -109,7 +109,7 @@ export function ImportPage() {
                   ref={fileRef}
                   type="file"
                   accept={ACCEPTED}
-                  className="sr-only"
+                  className="sr-only focus-ring-inset"
                   onChange={(e) => handleFile(e.target.files?.[0])}
                 />
                 <Button
@@ -119,7 +119,7 @@ export function ImportPage() {
                 >
                   选择文件
                 </Button>
-                <p className="text-2xs text-ink-faint">
+                <p className="text-2xs text-ink-muted">
                   支持 .html / .json / .csv，单个文件最大 20 MB
                 </p>
               </div>
@@ -155,7 +155,7 @@ export function ImportPage() {
         <section className="flex flex-col gap-4">
           <div className="rounded-md border border-line bg-surface p-4">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="flex-1 text-sm font-semibold text-ink">解析结果</h2>
+              <h2 className="flex-1 font-display text-panel font-semibold tracking-tight text-ink">解析结果</h2>
               <Badge tone="neutral">
                 {preview.source === 'html' ? (
                   <FileUp size={11} />
@@ -176,8 +176,8 @@ export function ImportPage() {
             </dl>
           </div>
 
-          <div className="flex flex-col gap-3.5 rounded-md border border-line bg-surface p-4">
-            <h2 className="text-sm font-semibold text-ink">导入选项</h2>
+          <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+            <h2 className="font-display text-panel font-semibold tracking-tight text-ink">导入选项</h2>
 
             <Checkbox
               checked={foldersAsTags}
@@ -207,9 +207,9 @@ export function ImportPage() {
           </div>
 
           <div className="rounded-md border border-line bg-surface p-4">
-            <h2 className="mb-2.5 text-sm font-semibold text-ink">
+            <h2 className="mb-2.5 font-display text-panel font-semibold tracking-tight text-ink">
               预览
-              <span className="ml-1.5 font-normal text-ink-faint">
+              <span className="ml-1.5 font-normal text-ink-muted">
                 前 {preview.sample.length} 条
               </span>
             </h2>
@@ -220,16 +220,16 @@ export function ImportPage() {
                   className="flex items-center gap-2.5 border-b border-line py-2 last:border-0"
                 >
                   {item.duplicate ? (
-                    <AlertTriangle size={14} className="shrink-0 text-caution" aria-label="重复" />
+                    <AlertTriangle size={15} className="shrink-0 text-caution" aria-label="重复" />
                   ) : (
-                    <CheckCircle2 size={14} className="shrink-0 text-positive" aria-label="新增" />
+                    <CheckCircle2 size={15} className="shrink-0 text-positive" aria-label="新增" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-ink">{item.title}</p>
-                    <p className="truncate text-2xs text-ink-faint">{displayHost(item.url)}</p>
+                    <p className="truncate text-2xs text-ink-muted">{displayHost(item.url)}</p>
                   </div>
                   {item.folderPath.length > 0 && (
-                    <span className="shrink-0 text-2xs text-ink-faint">
+                    <span className="shrink-0 text-2xs text-ink-muted">
                       {item.folderPath.join(' / ')}
                     </span>
                   )}
@@ -241,7 +241,7 @@ export function ImportPage() {
           {commitMutation.isPending && commitMutation.progress && (
             <div className="rounded-md border border-line bg-surface p-4">
               <div className="mb-2 flex items-baseline justify-between gap-3">
-                <h2 className="text-sm font-semibold text-ink">正在导入…</h2>
+                <h2 className="font-display text-panel font-semibold tracking-tight text-ink">正在导入…</h2>
                 <span className="text-xs tabular-nums text-ink-soft">
                   {commitMutation.progress.done} / {commitMutation.progress.total || '…'}
                 </span>
@@ -255,7 +255,7 @@ export function ImportPage() {
                 className="h-2 w-full overflow-hidden rounded-full bg-sunken"
               >
                 <div
-                  className="h-full rounded-full bg-brand transition-[width] duration-200 ease-out"
+                  className="h-full rounded-full bg-brand transition-[width] duration-200 ease-out-soft"
                   style={{
                     width: `${
                       commitMutation.progress.total > 0
@@ -265,16 +265,16 @@ export function ImportPage() {
                   }}
                 />
               </div>
-              <div className="mt-2 flex gap-3 text-2xs text-ink-faint">
+              <div className="mt-2 flex gap-3 text-2xs text-ink-muted">
                 {commitMutation.progress.skipped > 0 && <span>跳过 {commitMutation.progress.skipped}</span>}
                 {commitMutation.progress.failed > 0 && (
-                  <span className="text-critical">失败 {commitMutation.progress.failed}</span>
+                  <span className="text-critical-ink">失败 {commitMutation.progress.failed}</span>
                 )}
               </div>
             </div>
           )}
 
-          <div className="pad-safe-b sticky bottom-0 z-[35] flex items-center gap-2 border-t border-line bg-canvas py-3">
+          <div className="pad-safe-b sticky bottom-0 z-30 flex items-center gap-2 border-t border-line bg-canvas py-3">
             <p className="flex-1 text-xs text-ink-soft">
               将导入 <strong className="tabular-nums text-ink">{willImport}</strong> 条书签
             </p>
@@ -307,7 +307,7 @@ function Stat({
 }) {
   return (
     <div className="rounded-md bg-sunken px-3 py-2.5">
-      <dt className="text-2xs text-ink-faint">{label}</dt>
+      <dt className="text-2xs text-ink-muted">{label}</dt>
       <dd
         className={cx(
           'mt-0.5 text-lg font-semibold tabular-nums',
@@ -360,7 +360,7 @@ function ExportSection({ total }: { total: number }) {
 
   return (
     <section className="rounded-md border border-line bg-surface p-4">
-      <h2 className="text-sm font-semibold text-ink">导出</h2>
+      <h2 className="font-display text-panel font-semibold tracking-tight text-ink">导出</h2>
       <p className="mt-1 text-xs text-ink-soft">
         数据是你的。随时可以完整导出 {total} 条书签，不锁定在这里。
       </p>

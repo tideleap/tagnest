@@ -93,7 +93,7 @@ export function FeedsPage() {
         description="订阅喜欢的站点，新文章会自动存为书签并按标签归类。"
       />
 
-      <Reveal as="section" delay={80} className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
+      <Reveal as="section" delay={80} className="flex flex-col gap-3 rounded-xl border border-line glass-raised p-5 shadow-raised">
         <h2 className="font-display text-panel font-semibold tracking-tight text-ink">添加订阅</h2>
         <Input
           label="订阅源地址"
@@ -147,8 +147,9 @@ export function FeedsPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-10 text-ink-faint">
-            <Spinner size={22} />
+          <div className="flex items-center justify-center gap-2 py-10 text-ink-muted">
+            <Spinner size={16} label="正在加载订阅" />
+            <span className="text-xs">正在加载订阅…</span>
           </div>
         ) : !feeds || feeds.length === 0 ? (
           <EmptyState
@@ -171,7 +172,7 @@ export function FeedsPage() {
                       <Badge tone="neutral">{CADENCE_OPTIONS.find((o) => o.value === feed.cadence)?.label}</Badge>
                     </div>
                     <p className="truncate text-xs text-ink-soft">{displayHost(feed.url)}</p>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-ink-faint">
+                    <div className="mt-1 flex items-center gap-2 text-xs text-ink-muted">
                       <Badge tone={st.tone}>{st.label}</Badge>
                       <span>上次拉取：{formatWhen(feed.lastFetchedAt)}</span>
                       {feed.tagNames.length > 0 && (
