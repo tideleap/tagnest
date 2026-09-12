@@ -4209,5 +4209,106 @@ T01 验收标准 2/3 号探针已固化为回归用例（文件头注释标注 P
 
 ---
 
+## 附录 D：重构后基线（T15 收口实测）
+
+> T01–T15 全战役已上线。本附录用**实测数据**冻结重构后的基线，作为后续任何 UI 改动的回归对照。
+> 采集时间：2026-09-12；生产标记：`build=2026-09-11-t15-final`（commit `2ef472c3c7cf`）。
+
+### D.1 门禁链最终形态（全部 error 级 / 阻断级）
+
+`npm run verify` = `typecheck && lint && test:rules && themes:check && contrast:check && test:ui && build`
+
+| 门禁 | 命令 | T15 实测 |
+|---|---|---|
+| typecheck | `tsc --noEmit` | exit 0 |
+| **lint（全仓）** | `eslint . --max-warnings=0` | **0 error / 0 warning**（三规则均 error 级） |
+| test:rules | `node tools/eslint/no-magic-tokens.test.mjs` | 3 rules · 47 valid + 49 invalid · 74 reports — ALL PASS |
+| themes:check | `node scripts/check-theme-consistency.mjs` | SPA / extension(popup+options) / themes.ts swatch 三源一致 |
+| contrast:check | `node scripts/check-contrast.mjs` | 5 主题 × 全部关键 token 对达标（豁免已登记） |
+| test:ui | `vitest run --config vitest.ui.config.ts` | 22 files · **173 passed** |
+| test（后端） | `vitest run` | 99 files · **1213 passed** |
+| build | `tsc -b && vite build` | 1773 modules · built in ~5s |
+
+CI（`.github/workflows/ci.yml`）已同步加入 `contrast:check` 与 `test:rules` 两个 step，门禁在每次 push/PR 上强制运行，不再仅靠本地。
+
+### D.2 三条自定义规则的最终违规数（应为 0）
+
+| 规则 | T01 基线 | T15 实测 | 严重级 |
+|---|---|---|---|
+| `tagnest/no-magic-tokens` | 88 | **0** | error |
+| `tagnest/no-offscale-tokens` | 36 | **0** | error |
+| `tagnest/require-focus-ring` | 89 | **0** | error |
+| 合计 | 213 | **0** | — |
+
+唯一保留的逐处豁免：`Display.tsx` TagChip 的 `dark:` color-mix（运行时动态、不可 token 化，audit C.6），以**带原因的** `eslint-disable-next-line` 置于 JSX 属性之间（规则在 className 值节点报告）。`CategoryView.tsx` 的 `no-offscale-tokens: 'off'` override 保留（D2 决策：`--shadow-xs/sm` 是其 CSS 私有阶梯）。
+
+### D.3 对比度实测（contrast:check 输出节选，WCAG 2.x）
+
+| 主题 | fg → bg | ratio | 阈值 | 结果 |
+|---|---|---|---|---|
+| dark | ink → canvas | 18.04 | ≥4.5 | PASS |
+| dark | ink-muted → surface | 4.82 | ≥4.5 | PASS |
+| dark | on-brand → brand | 6.31 | ≥4.5 | PASS |
+| dark | focus → surface | 5.95 | ≥3 | PASS |
+| dark | line-strong → surface | 1.72 | ≥3 | EXEMPT（分隔线，非交互） |
+| blossom | ink → canvas | 13.67 | ≥4.5 | PASS |
+| blossom | ink-muted → surface | 5.58 | ≥4.5 | PASS |
+| blossom | on-brand → brand | 3.34 | ≥4.5 | EXEMPT（blossom 品牌色固有，按钮文字另走 ink） |
+| blossom | focus → surface | 3.34 | ≥3 | PASS |
+| blossom | caution → surface | 2.52 | ≥3 | EXEMPT（装饰性强调，非承载文本） |
+
+5 套主题（light / dark / aurora / blossom / starlight）全部通过，豁免项均在 `check-contrast.mjs` 的 EXEMPT 注册表内登记原因。`text-ink-muted` 作为 A-03 的承载文本地板色，在全部 5 主题对 surface/canvas/sunken 均 ≥4.5。
+
+### D.4 量化指标对照表（重构前 → 目标 → 实测）
+
+| 指标 | 重构前 | 目标 | 实测 | 达标 |
+|---|---|---|---|---|
+| ESLint 三规则违规 | 213（门禁失效） | 0 | **0** | ✅ |
+| 半透明 token（`*/NN`） | 112 | ≤20 | **4** | ✅ |
+| 任意值 token（设计 token 家族） | 9 | 0 | **0** | ✅ |
+| 硬编码 hex（tsx，按值） | 42 | ≤8 | 13* | ⚠️ 见注 |
+| `text-white`/`bg-white`/`bg-black` | 25 | ≤6 | **0** | ✅ |
+| 焦点环实现 | 10 套（2 达标） | 1 套（达标） | **1 套**（`.focus-ring` 家族） | ✅ |
+| 零 `focus-visible` 交互文件 | 28 | 0 | **0** | ✅ |
+| 面板标题写法 | 3 套 | 1 套 | **1 套**（`font-display text-panel`） | ✅ |
+| 阴影阶梯 | 2 套并行 | 1 套 + 1 文档化例外 | **1 套 + CategoryView 例外** | ✅ |
+| 裸 `rounded` | 40 | 0 | **0** | ✅ |
+| 触控目标 < 24px | 31 | 0 | **0**（`.hit-area-lg` 覆盖） | ✅ |
+| `themes.ts` swatch 漂移 | 4 / 5 | 0 | **0** | ✅ |
+| extension 调色板漂移 | light+dark 全漂移 | 0 | **0** | ✅ |
+
+\* **hex 13 处注**：全部为非颜色-token 用途，逐处核验合法 —— CartoonMascot 8（SVG 插画固有色：瞳孔/高光/粉彩）、AppLayout 2（`maskImage` 径向渐变的 `#000` alpha 遮罩）、Atmosphere 2（`readColor('--color-brand', '#4F46E5')` 的 CSS var 读取兜底默认值）、AppearanceSection 1（深色 swatch 缩略图边框 `#00000033`）。这些不参与语义配色层，故未计入"硬编码调色板"治理目标；若按严格口径需进一步收敛，可另开专项。
+
+**半透明 4 处注**：DirectoryView `bg-surface/80 backdrop-blur-md`（磨砂侧栏，规则豁免）、SharePage `bg-surface/80 backdrop-blur`（磨砂悬浮按钮）、AiMetricsPanel `bg-brand/60`+`bg-brand/30`（图表数据编码）—— 均为 `no-magic-tokens` 的合法豁免类（磨砂玻璃 bg+blur 成对 / 图表编码）。
+
+### D.5 残留 `text-ink-faint` 的合法性（A-03 收尾结论）
+
+T15 后全仓 `text-ink-faint` 仅剩**装饰性 aria-hidden 图标 / 禁用态 / Spinner 容器**，无一处承载可见文本：
+- 图标类：Compass / Sparkles / ExternalLink / ChevronRight / ArrowRight / History / Link2Off / TagIcon / Zap / Search / Globe / Lock / Upload / GripVertical / Images 等（均 `aria-hidden` 或纯图标按钮的视觉 affordance，accessible name 来自 `aria-label`）。
+- 容器类：App / AppLayout / SharePage 的 Spinner 加载态（`text-ink-faint` 仅给 spinner 着色）。
+- 禁用态：TabGroupsPage「已添加」`cursor-default text-ink-faint`（disabled 按钮，WCAG 豁免）。
+
+承载文本已全部迁移至 `text-ink-muted`（A-03 地板色，全主题 ≥4.5:1）。
+
+### D.6 T01–T15 上线链（BUILD_VERSION 标记）
+
+| 批次 | BUILD 标记 | 范围 |
+|---|---|---|
+| T01 | — | 门禁修复与度量基线（三规则对 `cx()` 复明，213 警告暴露） |
+| T02 | — | Token 层增补（`--color-ink-muted` / `.focus-ring` 家族 / `.glass-*` / `.atelier-eyebrow`） |
+| T03–T04 | — | UI 原语交互态 + 展示态 + 设置卡 |
+| T05 | — | Layout 骨架 |
+| T06–T09 | — | Layout 附属 / 页面 A·B·C（入口·内容·整理·保险库） |
+| T10 | `2026-09-11-t10-settings-a` | 设置分区 A（7 文件） |
+| T11 | `2026-09-11-t11-settings-b` | 设置分区 B（6 文件） |
+| T12 | `2026-09-11-t12-bookmark` | bookmark 组件（6 文件） |
+| T13 | `2026-09-11-t13-organize` | organize 组件（5 文件） |
+| T14 | `2026-09-11-t14-library` | library/directory/command/vault（5 文件） |
+| **T15** | **`2026-09-11-t15-final`** | **门禁升级（warn→error）+ 全量回归收口（27 文件）** |
+
+每批均经 6+ 道门禁全绿 → GitHub REST 推送 → Deploy 轮询 → 生产 `/api/health` 断言 BUILD 标记，逐批可追溯。
+
+---
+
 **文档结束。**
-**下一步：** 请主理人就"附录 · 需人工确认的视觉细节清单"的 18 项做决策（尤其 #1 语义字号阶梯、#15 Dashboard TILE、#18 CategoryView 层级），决策后 T01 即可开工。
+**战役状态：** T01–T15 全部上线，三条设计系统规则已升为 error 级硬门禁并接入 CI，backlog 归零且不可再生。后续任何 UI 改动须通过 `npm run verify` 全链。
