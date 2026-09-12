@@ -23,7 +23,7 @@ const STATUS_META: Record<AiJobStatus, { label: string; cls: string }> = {
   running: { label: '进行中', cls: 'bg-brand-soft text-brand-ink' },
   done: { label: '已完成', cls: 'bg-positive-soft text-positive-ink' },
   failed: { label: '失败', cls: 'bg-caution-soft text-caution-ink' },
-  cancelled: { label: '已取消', cls: 'bg-sunken text-ink-faint' },
+  cancelled: { label: '已取消', cls: 'bg-sunken text-ink-muted' },
   finalizing: { label: '收尾中', cls: 'bg-brand-soft text-brand-ink' },
 };
 
@@ -110,12 +110,12 @@ export function JobsSection() {
                 <button
                   type="button"
                   onClick={() => setExpanded(open ? null : job.id)}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  className="focus-ring flex min-w-0 flex-1 items-center gap-3 rounded-md text-left"
                   aria-expanded={open}
                 >
                   <ChevronDown
                     size={15}
-                    className={`shrink-0 text-ink-faint transition-transform ${open ? 'rotate-180' : ''}`}
+                    className={`shrink-0 text-ink-muted transition-transform ${open ? 'rotate-180' : ''}`}
                     aria-hidden
                   />
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${meta.cls}`}>
@@ -123,11 +123,11 @@ export function JobsSection() {
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs text-ink">
                     {TARGET_LABEL[job.target ?? 'untagged'] ?? '整理'}
-                    <span className="ml-2 text-ink-faint">
+                    <span className="ml-2 text-ink-muted">
                       {job.processed}/{job.total}
                     </span>
                   </span>
-                  <span className="shrink-0 text-2xs tabular-nums text-ink-faint">
+                  <span className="shrink-0 text-2xs tabular-nums text-ink-muted">
                     {relativeTime(job.createdAt)}
                   </span>
                 </button>
@@ -144,7 +144,7 @@ export function JobsSection() {
               <div className="px-3 pb-2.5">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken">
                   <div
-                    className="h-full bg-brand transition-[width]"
+                    className="h-full bg-brand transition-[width] duration-200 ease-out-soft"
                     style={{ width: `${progress(job)}%` }}
                   />
                 </div>

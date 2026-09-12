@@ -88,7 +88,7 @@ export function StorageSection() {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-ink">{usage.data.display}</p>
-              <p className="text-xs text-ink-faint">
+              <p className="text-xs text-ink-muted">
                 {usage.data.snapshotCount} 个快照对象 · 共占用 {usage.data.snapshotFmt}
               </p>
             </div>
@@ -179,7 +179,7 @@ export function StorageSection() {
             </span>
           )}
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+        <p className="mt-3 text-xs leading-relaxed text-ink-muted">
           检查所有快照记录并验证对应 R2 文件是否真实存在；仅清理无效记录，不会删除任何有效快照。
         </p>
       </Card>
@@ -210,7 +210,7 @@ function PreviewStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-1.5">
       <span className="font-semibold text-ink">{value}</span>
-      <span className="text-ink-faint">{label}</span>
+      <span className="text-ink-muted">{label}</span>
     </div>
   );
 }

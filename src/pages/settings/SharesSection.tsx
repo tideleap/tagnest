@@ -233,17 +233,17 @@ export function SharesSection() {
                     <Badge>{SHARE_THEME_LABEL[s.theme]}</Badge>
                     <Badge tone="neutral">{SHARE_PALETTE_LABEL[s.palette]}</Badge>
                     {s.collectionId ? (
-                      <span className="text-2xs text-ink-faint">集合分享</span>
+                      <span className="text-2xs text-ink-muted">集合分享</span>
                     ) : (
                       s.tagIds.length > 0 && (
-                        <span className="text-2xs text-ink-faint">
+                        <span className="text-2xs text-ink-muted">
                           {s.tagIds.length} 个标签筛选
                         </span>
                       )
                     )}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-faint">
-                    <code className="rounded bg-sunken px-1.5 py-0.5">{s.url}</code>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-muted">
+                    <code className="rounded-xs bg-sunken px-1.5 py-0.5">{s.url}</code>
                     <span>· {s.viewCount} 次浏览</span>
                     <span>· 创建于 {relativeTime(s.createdAt)}</span>
                     {s.expiresAt && <span>· {relativeTime(s.expiresAt)}过期</span>}
@@ -261,9 +261,9 @@ export function SharesSection() {
                   <IconButton
                     label="删除"
                     size="sm"
+                    variant="danger"
                     onClick={() => setDeleteId(s.id)}
                     icon={<Trash2 size={15} />}
-                    className="text-critical hover:bg-critical-soft"
                   />
                 </div>
               </li>
@@ -374,7 +374,7 @@ export function SharesSection() {
                   <button
                     type="button"
                     onClick={() => setTagIds([])}
-                    className="self-start text-2xs text-ink-faint underline-offset-2 hover:text-ink-soft hover:underline"
+                    className="focus-ring self-start rounded-xs text-2xs text-ink-muted underline-offset-2 hover:text-ink-soft hover:underline"
                   >
                     清除筛选
                   </button>
@@ -404,7 +404,7 @@ export function SharesSection() {
             hint="关闭后链接将暂时返回 404"
           />
 
-          <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken/40 p-3">
+          <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken-wash p-3">
             <Input
               label="访问密码"
               type="password"
