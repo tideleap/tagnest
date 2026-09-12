@@ -85,7 +85,7 @@ export function CollectionsPage() {
         <Stagger as="ul" className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((c) => (
             <li key={c.id}>
-              <div className="spotlight group flex items-center gap-3 rounded-xl border border-line glass-raised p-3.5 shadow-raised transition-colors duration-150 ease-out-soft hover:border-brand-accent">
+              <div className="spotlight group flex items-center gap-3 rounded-xl border border-line glass-raised p-3.5 shadow-raised transition-colors duration-150 ease-out-soft hover:border-line-strong">
                 <button
                   type="button"
                   onClick={() => navigate(`/collections/${c.id}`)}

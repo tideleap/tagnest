@@ -263,7 +263,7 @@ function FinalizeButton({ id }: { id: string }) {
     if (autoFired.current || finalize.isPending || finalize.isSuccess) return;
     autoFired.current = true;
     finalize.mutate(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once auto-finalize; empty deps are intentional
   }, []);
 
   return (

@@ -96,7 +96,7 @@ function Hero({
 
         <div className="relative shrink-0">
           <CartoonMascot size={120} />
-          <p className="mt-1 text-center text-2xs text-ink-faint">Nesty 陪你看书签</p>
+          <p className="mt-1 text-center text-2xs text-ink-muted">Nesty 陪你看书签</p>
         </div>
       </Reveal>
     </section>
@@ -146,7 +146,7 @@ function AttentionCard({
                 </span>
               )}
             </span>
-            <span className="mt-0.5 block truncate text-2xs text-ink-faint">
+            <span className="mt-0.5 block truncate text-2xs text-ink-muted">
               {failed ? '数据暂不可用' : hint}
             </span>
           </span>
@@ -212,7 +212,7 @@ function SectionHead({ index, title, note }: { index: string; title: string; not
             <span className="absolute -bottom-1 left-0 h-0.5 w-8 rounded-full bg-brand-accent" aria-hidden />
           </span>
         </h2>
-        <span className="hidden text-2xs text-ink-faint sm:block">{note}</span>
+        <span className="hidden text-2xs text-ink-muted sm:block">{note}</span>
       </div>
     </Reveal>
   );
@@ -260,7 +260,7 @@ function RecentBookmarks() {
               <span className="block truncate text-sm font-medium text-ink">
                 {b.title || b.url}
               </span>
-              <span className="mt-0.5 block truncate text-2xs text-ink-faint">
+              <span className="mt-0.5 block truncate text-2xs text-ink-muted">
                 {displayHost(b.url)} · {b.createdAt ? relativeTime(b.createdAt) : ''}
               </span>
             </span>
@@ -295,7 +295,7 @@ function TagCloud() {
   }
   if (top.length === 0) {
     return (
-      <p className="text-sm text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</p>
+      <p className="text-sm text-ink-muted">还没有标签。给书签打上标签后会出现在这里。</p>
     );
   }
 
@@ -355,7 +355,7 @@ function HealthCard() {
               {isLoading ? (
                 <Skeleton className="mt-1 h-4 w-40" />
               ) : isError ? (
-                <p className="mt-1 text-2xs text-ink-faint">体检暂不可用，稍后重试</p>
+                <p className="mt-1 text-2xs text-ink-muted">体检暂不可用，稍后重试</p>
               ) : issues > 0 ? (
                 <p className="mt-0.5 truncate text-2xs text-ink-soft">
                   发现 {issues} 处可优化：{data?.duplicateExtra ?? 0} 条冗余书签 ·{' '}

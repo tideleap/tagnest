@@ -68,7 +68,7 @@ export const NavigationTile = memo(function NavigationTile({ bookmark: b }: { bo
         <NavFavicon bookmark={b} size={36} />
         <div className="flex min-w-0 flex-1 flex-col">
           <p className="line-clamp-2 text-sm font-medium leading-snug text-ink">{title}</p>
-          <p className="mt-0.5 truncate text-2xs text-ink-faint">{host}</p>
+          <p className="mt-0.5 truncate text-2xs text-ink-muted">{host}</p>
         </div>
       </div>
 

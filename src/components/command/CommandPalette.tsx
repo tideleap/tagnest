@@ -275,7 +275,7 @@ export function CommandPalette() {
             placeholder="搜索书签、标签，或执行命令…"
             aria-label="命令面板"
             aria-autocomplete="list"
-            className="focus-ring min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+            className="focus-ring min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
           />
           <Kbd>Esc</Kbd>
         </div>
@@ -287,7 +287,7 @@ export function CommandPalette() {
           className="scrollbar-slim max-h-[min(60dvh,26rem)] overflow-y-auto py-1.5"
         >
           {commands.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-ink-faint">没有匹配的结果</li>
+            <li className="px-4 py-8 text-center text-sm text-ink-muted">没有匹配的结果</li>
           ) : (
             grouped.map(([group, entries]) => (
               <li key={group}>
@@ -324,7 +324,7 @@ export function CommandPalette() {
                         </span>
                         <span className="min-w-0 flex-1 truncate">{command.label}</span>
                         {command.hint && (
-                          <span className="shrink-0 text-2xs tabular-nums text-ink-faint">
+                          <span className="shrink-0 text-2xs tabular-nums text-ink-muted">
                             {command.hint}
                           </span>
                         )}
@@ -340,7 +340,7 @@ export function CommandPalette() {
           )}
         </ul>
 
-        <div className="flex items-center gap-3 border-t border-line px-4 py-2.5 text-2xs text-ink-faint">
+        <div className="flex items-center gap-3 border-t border-line px-4 py-2.5 text-2xs text-ink-muted">
           <span className="inline-flex items-center gap-1">
             <Kbd>↑</Kbd>
             <Kbd>↓</Kbd> 选择

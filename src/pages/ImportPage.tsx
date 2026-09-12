@@ -88,7 +88,7 @@ export function ImportPage() {
             }}
             className={cx(
               'spotlight rounded-2xl border-2 border-dashed p-10 text-center transition-colors duration-150 ease-out-soft',
-              dragging ? 'border-brand bg-brand-soft' : 'border-line bg-surface/85 backdrop-blur-sm',
+              dragging ? 'border-brand bg-brand-soft' : 'border-line glass-raised',
             )}
           >
             {previewMutation.isPending ? (
@@ -128,7 +128,7 @@ export function ImportPage() {
           </Reveal>
 
           <Reveal delay={140}>
-          <section className="rounded-xl border border-line bg-surface/85 p-5 backdrop-blur-sm">
+          <section className="glass-raised rounded-xl border border-line p-5">
             <h2 className="mb-2 font-display text-panel font-semibold tracking-tight text-ink">怎么导出浏览器书签？</h2>
             <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-ink-soft">
               <li>

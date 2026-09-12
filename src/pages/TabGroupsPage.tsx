@@ -66,7 +66,7 @@ export function TabGroupsPage() {
           overflow. min-h-0 is required for the inner overflow-y-auto panes. */}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 md:grid-cols-[16rem_1fr]">
         {/* Group list */}
-        <aside className="flex min-h-0 flex-col rounded-xl border border-line bg-surface/85 shadow-raised backdrop-blur-sm">
+        <aside className="glass-raised flex min-h-0 flex-col rounded-xl border border-line shadow-raised">
           <header className="flex items-center justify-between border-b border-line px-3 py-2.5">
             <h2 className="nav-section">分组 / Groups</h2>
             <IconButton
@@ -229,7 +229,7 @@ function GroupDetail({
   if (!group) return null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-xl border border-line bg-surface/85 shadow-raised backdrop-blur-sm">
+    <div className="glass-raised flex h-full min-h-0 flex-col rounded-xl border border-line shadow-raised">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
         <span
           style={tagColorVars(group.colorIndex)}

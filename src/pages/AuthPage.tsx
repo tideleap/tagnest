@@ -221,7 +221,7 @@ export function AuthPage({ mode }: { mode: 'signin' | 'signup' }) {
             </p>
           </div>
 
-          <p className="mt-6 text-center text-2xs text-ink-faint">
+          <p className="mt-6 text-center text-2xs text-ink-muted">
             继续即表示你同意 TagNest 的服务条款与隐私政策。
           </p>
         </div>

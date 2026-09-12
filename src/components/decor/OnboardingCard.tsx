@@ -71,7 +71,7 @@ export function OnboardingCard() {
               <span className="block text-sm font-semibold text-ink">
                 {i + 1}. {step.title}
               </span>
-              <span className="mt-0.5 block text-2xs leading-relaxed text-ink-faint">
+              <span className="mt-0.5 block text-2xs leading-relaxed text-ink-muted">
                 {step.desc}
               </span>
             </span>

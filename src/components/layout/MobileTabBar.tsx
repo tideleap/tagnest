@@ -18,11 +18,11 @@ const TABS: { to: string; label: string; icon: LucideIcon }[] = [
  * rests, and adding is the action people repeat most.
  *
  * Rendering notes (scroll artifacts on phones):
- *  - Solid bg-surface/95 instead of .glass: backdrop-filter forces the
- *    compositor to resample the scrolling background every frame, which
- *    smears/flickers the icons on mobile Chrome and Safari mid-scroll.
- *    The /95 opacity is deliberate (a hint of page showing through) and the
- *    element is a floating bar, not a card — hence the eslint-disable below.
+ *  - Solid bg-surface + shadow-overlay instead of .glass: backdrop-filter
+ *    forces the compositor to resample the scrolling background every frame,
+ *    which smears/flickers the icons on mobile Chrome and Safari mid-scroll.
+ *    The opaque surface is deliberate (audit §6 decision 13, option b) and the
+ *    element is a floating bar, not a card — so no glass token applies here.
  *  - min-h-14 instead of h-14: the iPhone home-indicator safe area is added
  *    INSIDE the bar by pad-safe-b, and a fixed height would crush the
  *    icon+label stack on devices with a 34px inset.
@@ -67,7 +67,7 @@ function TabLink({ to, label, icon: Icon }: { to: string; label: string; icon: L
       className={({ isActive }) =>
         cx(
           'flex flex-1 flex-col items-center justify-center gap-0.5 text-2xs font-medium transition-colors',
-          isActive ? 'text-brand-ink' : 'text-ink-faint',
+          isActive ? 'text-brand-ink' : 'text-ink-muted',
         )
       }
     >

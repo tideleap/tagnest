@@ -21,12 +21,19 @@ export default tseslint.config(
       'dist',
       'dist_*',
       'dist-bak-*',
+      'dist-stale-*',
+      'dist-verify',
       'dist-ext',
       'dist-ext/**',
       'node_modules',
       '.wrangler',
+      '.tmp-push',
       'parser.bundle.mjs',
       '_tmp_test_parser.mjs',
+      'push-t*.mjs',
+      'verify-t*.mjs',
+      'diff-t*.mjs',
+      'tmp-*.mjs',
       'scripts',
       'extension',
     ],
@@ -70,18 +77,19 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // UI Design System v2 gate — warn only for now; tighten to 'error' in T15
-      // once the existing backlog has been cleared batch by batch.
+      // UI Design System v2 gate — tightened to 'error' in T15 now that the
+      // accumulated backlog has been cleared batch by batch (T01–T14). The
+      // three rules below are the contract; `npm run lint` carries
+      // --max-warnings=0 so any new violation fails CI outright.
       //
       // T01 note: these three rules previously emitted 0 messages because
-      // no-magic-tokens could not see `cx(...)`. After the fix they surface the
-      // accumulated debt — 209 warnings across 44 files (84 + 36 + 89, see
-      // "附录 C：T01 门禁基线" in docs/ui-design-system-audit.md). That is the
-      // intended outcome, not a regression: `npx eslint src` still exits 0
-      // because no `--max-warnings` is configured.
-      'tagnest/no-magic-tokens': 'warn',
-      'tagnest/no-offscale-tokens': 'warn',
-      'tagnest/require-focus-ring': 'warn',
+      // no-magic-tokens could not see `cx(...)`. After the fix they surfaced
+      // the accumulated debt — 209 warnings across 44 files (84 + 36 + 89, see
+      // "附录 C：T01 门禁基线" in docs/ui-design-system-audit.md). T02–T14
+      // cleared that backlog to 0; T15 flips the severity so it cannot regrow.
+      'tagnest/no-magic-tokens': 'error',
+      'tagnest/no-offscale-tokens': 'error',
+      'tagnest/require-focus-ring': 'error',
     },
   },
   {

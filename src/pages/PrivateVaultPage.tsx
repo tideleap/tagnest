@@ -391,7 +391,7 @@ function UnlockedPanel({
         return (
           <li
             key={item.id}
-            className="spotlight group flex items-start gap-3 rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-all hover:border-brand-accent hover:shadow-float sm:items-center"
+            className="spotlight glass-raised group flex items-start gap-3 rounded-xl border border-line p-3.5 shadow-raised transition-all hover:border-line-strong hover:shadow-float sm:items-center"
           >
             <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunken sm:mt-0">
               {d?.faviconUrl ? (
@@ -537,7 +537,7 @@ function CategoryPrivateSection() {
       ) : (
         <ul className="flex flex-col gap-3">
           {entries.map(({ tag, bookmarks }) => (
-            <li key={tag.id} className="spotlight rounded-xl border border-line bg-surface/85 p-3.5 shadow-raised backdrop-blur-sm transition-all hover:border-brand-accent">
+            <li key={tag.id} className="spotlight glass-raised rounded-xl border border-line p-3.5 shadow-raised transition-all hover:border-line-strong">
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   style={tagColorVars(tag.colorIndex)}

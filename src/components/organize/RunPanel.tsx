@@ -89,7 +89,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
   const noEngine = overview ? !overview.modelReady : false;
 
   return (
-    <section className="spotlight flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
+    <section className="spotlight glass-raised flex flex-col gap-3 rounded-xl border border-line p-5 shadow-raised">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Sparkles size={17} className="shrink-0 text-brand-accent" aria-hidden />

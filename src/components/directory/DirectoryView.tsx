@@ -136,7 +136,7 @@ export function DirectoryView({
                     className={cx(
                       'nav-row focus-ring group w-full',
                       isActive && 'is-active',
-                      isUntagged && 'text-ink-faint',
+                      isUntagged && 'text-ink-muted',
                     )}
                   >
                     <span
@@ -149,7 +149,7 @@ export function DirectoryView({
                       }
                     />
                     <span className="min-w-0 flex-1 truncate text-left">{g.name}</span>
-                    <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{count}</span>
+                    <span className="shrink-0 text-2xs tabular-nums text-ink-muted">{count}</span>
                   </button>
                 </li>
               );
@@ -181,7 +181,7 @@ export function DirectoryView({
                   isActive
                     ? 'border-brand-accent bg-brand-soft text-brand-ink'
                     : isUntagged
-                      ? 'border-line text-ink-faint'
+                      ? 'border-line text-ink-muted'
                       : 'border-line text-ink-soft hover:border-line-strong hover:text-ink',
                 )}
               >
@@ -200,7 +200,7 @@ export function DirectoryView({
             <Compass size={13} aria-hidden />
             全部分类
           </p>
-          <p className="text-2xs text-ink-faint tabular-nums">
+          <p className="text-2xs text-ink-muted tabular-nums">
             {groups.length} 个一级分类 · {totalBookmarks} 个书签
           </p>
         </Reveal>
@@ -243,7 +243,7 @@ export function DirectoryView({
                         )}
                         {group.name}
                       </h2>
-                      <span className="text-xs tabular-nums text-ink-faint">
+                      <span className="text-xs tabular-nums text-ink-muted">
                         {childCount > 0 && `${childCount} 个子类 · `}
                         {totalCount} 个书签
                       </span>
@@ -347,7 +347,7 @@ function DirectoryRow({
           />
         )}
         <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">{title}</h3>
-        <span className="text-2xs tabular-nums text-ink-faint">{items.length}</span>
+        <span className="text-2xs tabular-nums text-ink-muted">{items.length}</span>
       </div>
 
       <Reveal as="ul" className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -389,7 +389,7 @@ function DirectoryCard({ bookmark: b }: { bookmark: PublicBookmark }) {
       href={b.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="spotlight group flex h-full items-start gap-2.5 rounded-xl border border-line bg-surface/85 p-3 backdrop-blur-sm transition-all hover:border-line-strong hover:shadow-raised focus-visible:border-brand-accent focus-visible:outline-none"
+      className="spotlight glass-raised group flex h-full items-start gap-2.5 rounded-xl border border-line p-3 transition-all hover:border-line-strong hover:shadow-raised focus-visible:border-brand-accent focus-visible:outline-none"
     >
       <img
         src={faviconFor(b.url, 32)}
@@ -416,7 +416,7 @@ function DirectoryCard({ bookmark: b }: { bookmark: PublicBookmark }) {
             {b.description || b.note}
           </p>
         ) : null}
-        <p className="mt-0.5 truncate text-2xs tabular-nums text-ink-faint">
+        <p className="mt-0.5 truncate text-2xs tabular-nums text-ink-muted">
           {displayHost(b.url)}
         </p>
       </div>

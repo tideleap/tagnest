@@ -65,7 +65,7 @@ export function HealthPanel() {
 
   if (isLoading) {
     return (
-      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
+      <section className="glass-raised flex flex-col gap-3 rounded-xl border border-line p-5 shadow-raised">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-10 w-full" />
@@ -75,7 +75,7 @@ export function HealthPanel() {
 
   if (isError || !report) {
     return (
-      <section className="flex flex-col gap-2 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
+      <section className="glass-raised flex flex-col gap-2 rounded-xl border border-line p-5 shadow-raised">
         <p className="text-sm text-ink-soft">健康报告加载失败。</p>
         <Button size="sm" variant="secondary" onClick={() => void refetch()}>
           重试
@@ -88,7 +88,7 @@ export function HealthPanel() {
   const suspiciousCount = probeResults.filter((r) => r.status === 'suspicious').length;
 
   return (
-    <section className="spotlight flex flex-col gap-4 rounded-xl border border-line bg-surface/85 p-5 shadow-raised backdrop-blur-sm">
+    <section className="spotlight glass-raised flex flex-col gap-4 rounded-xl border border-line p-5 shadow-raised">
       {/* Score header */}
       <div className="flex items-center gap-3">
         <Activity size={15} className="text-brand-accent" aria-hidden />

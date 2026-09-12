@@ -177,21 +177,31 @@ export function TagChip({
 }: TagChipProps) {
   const interactive = Boolean(onClick);
 
+  // TagChip's dark-mode palette is derived at runtime from the per-tag
+  // --tag-dot CSS variable (injected via tagColorVars on the host <span>), so
+  // the two dark: utilities below must use color-mix() arbitrary values — no
+  // static design token can express "22% of THIS tag's own hue". Registered
+  // exception (audit C.6); hoisted out of JSX so the disable directive can sit
+  // between the <span> attributes (the rule reports at the className value
+  // node). Behaviour is identical: cx() is pure and still runs once per render.
+  const chipClass = cx(
+    'inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full border-2 border-transparent font-medium transition-colors',
+    size === 'sm' ? 'h-5.5 px-2 text-2xs' : 'h-6.5 px-2.5 text-xs',
+    'bg-[var(--tag-bg)] text-[var(--tag-fg)]',
+    'dark:bg-[color-mix(in_oklab,var(--tag-dot)_22%,transparent)] dark:text-[color-mix(in_oklab,var(--tag-dot)_88%,white)]',
+    interactive && 'cursor-pointer hover:brightness-97 dark:hover:brightness-125',
+    // Selected state uses a border + bg, not a ring (B-03: ring is reserved
+    // for focus). A transparent base border keeps the box stable so toggling
+    // selection does not shift layout.
+    active && 'border-[var(--tag-dot)]',
+    className,
+  );
+
   return (
     <span
       style={tagColorVars(colorIndex)}
-      className={cx(
-        'inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full border-2 border-transparent font-medium transition-colors',
-        size === 'sm' ? 'h-5.5 px-2 text-2xs' : 'h-6.5 px-2.5 text-xs',
-        'bg-[var(--tag-bg)] text-[var(--tag-fg)]',
-        'dark:bg-[color-mix(in_oklab,var(--tag-dot)_22%,transparent)] dark:text-[color-mix(in_oklab,var(--tag-dot)_88%,white)]',
-        interactive && 'cursor-pointer hover:brightness-97 dark:hover:brightness-125',
-        // Selected state uses a border + bg, not a ring (B-03: ring is reserved
-        // for focus). A transparent base border keeps the box stable so toggling
-        // selection does not shift layout.
-        active && 'border-[var(--tag-dot)]',
-        className,
-      )}
+      // eslint-disable-next-line tagnest/no-magic-tokens -- runtime color-mix on --tag-dot, not tokenizable (audit C.6)
+      className={chipClass}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--tag-dot)]" aria-hidden />
       {interactive ? (
@@ -446,7 +456,7 @@ export function SegmentedControl<T extends string>({
               size === 'sm' ? 'px-2 text-2xs' : 'px-3 text-xs',
               selected
                 ? 'bg-surface text-ink shadow-raised'
-                : 'text-ink-faint hover:text-ink-soft',
+                : 'text-ink-muted hover:text-ink-soft',
             )}
           >
             {seg.icon}

@@ -41,6 +41,18 @@ jobs:
         # SPA's theme.css.
         run: npm run themes:check
 
+      - name: Contrast (WCAG 2.x)
+        # Fails if any checked foreground/background token pair in the 5 theme
+        # palettes drops below its WCAG threshold (AA text ≥4.5, UI ≥3.0),
+        # unless the pair is a registered exception. See scripts/check-contrast.mjs.
+        run: npm run contrast:check
+
+      - name: Design-system lint rules (RuleTester)
+        # Regression suite for the three custom ESLint rules that enforce the
+        # UI Design System contract. The gate degraded once before precisely
+        # because the rules had no tests; this keeps them honest.
+        run: npm run test:rules
+
       - name: Backlog consistency
         # Fails when docs/backlog.json claims a status the repository does not
         # support, in either direction. Keeps the requirement ledger honest.

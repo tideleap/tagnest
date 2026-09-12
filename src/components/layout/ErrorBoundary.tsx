@@ -73,7 +73,7 @@ class BoundaryInner extends Component<Props & { pathname: string }, State> {
             这不是你的操作导致的。可以先重试，若反复出现请刷新页面。切换到其他页面也会自动恢复。
           </p>
         </div>
-        <pre className="max-w-lg overflow-x-auto rounded-md bg-sunken px-3 py-2 text-left text-2xs text-ink-faint">
+        <pre className="max-w-lg overflow-x-auto rounded-md bg-sunken px-3 py-2 text-left text-2xs text-ink-muted">
           {error.message}
         </pre>
         <div className="flex gap-2">

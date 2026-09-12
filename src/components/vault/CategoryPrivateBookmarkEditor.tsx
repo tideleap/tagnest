@@ -164,7 +164,7 @@ export function CategoryPrivateBookmarkEditor({ id, onClose, onDeleted }: Props)
                   <Star size={13} aria-hidden />
                   类别私密
                 </p>
-                <p className="mt-0.5 text-2xs leading-relaxed text-ink-faint">
+                <p className="mt-0.5 text-2xs leading-relaxed text-ink-muted">
                   此书签因带有私密标签而只在保险库中显示。移除所有私密标签即可恢复正常可见。
                 </p>
               </div>
@@ -180,7 +180,7 @@ export function CategoryPrivateBookmarkEditor({ id, onClose, onDeleted }: Props)
             </div>
           )}
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-line pt-3 text-2xs text-ink-faint">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-line pt-3 text-2xs text-ink-muted">
             <div className="flex justify-between">
               <dt>添加于</dt>
               <dd className="tabular-nums">{formatDate(bookmark.createdAt)}</dd>

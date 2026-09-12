@@ -327,7 +327,7 @@ function SidebarContent({
           <Skeleton className="h-5 w-20" />
         </li>
       ) : tagCount === 0 ? (
-        <li className="px-2.5 text-xs leading-relaxed text-ink-faint">还没有标签。给书签打上标签后会出现在这里。</li>
+        <li className="px-2.5 text-xs leading-relaxed text-ink-muted">还没有标签。给书签打上标签后会出现在这里。</li>
       ) : (
         <li>
           <TagTree tags={tags ?? []} activeTagIds={activeTagIds} onToggle={toggleTag} tall={tall} />
@@ -422,7 +422,7 @@ function TagTree({
     setExpanded(new Set(tree.slice(0, 5).map((t) => t.id)));
   }, [tree]);
 
-  if (tree.length === 0) return <p className="px-2.5 text-xs leading-relaxed text-ink-faint">还没有可归类的标签。</p>;
+  if (tree.length === 0) return <p className="px-2.5 text-xs leading-relaxed text-ink-muted">还没有可归类的标签。</p>;
 
   return (
     <ul className="flex flex-col gap-0.5 px-1">
@@ -506,7 +506,7 @@ function TreeNodeRow({
         <button
           type="button"
           onClick={() => onToggleTag(node.id)}
-          className={cx('focus-ring shrink-0 tabular-nums', active ? 'text-brand-ink' : 'text-ink-faint group-hover:text-ink-soft')}
+          className={cx('focus-ring shrink-0 tabular-nums', active ? 'text-brand-ink' : 'text-ink-muted group-hover:text-ink-soft')}
         >
           {node.count}
         </button>
@@ -604,7 +604,7 @@ export function Sidebar() {
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="导航菜单">
-          <div className="anim-fade absolute inset-0 bg-black/35 backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
+          <div className="anim-fade absolute inset-0 bg-scrim-soft backdrop-blur-[2px]" onClick={() => setMobileOpen(false)} aria-hidden />
           <aside className="anim-drawer-in absolute inset-y-0 left-0 flex w-[18rem] max-w-[85vw] flex-col bg-surface shadow-modal">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-line-soft px-3">
               <BrandMark mode="always" />

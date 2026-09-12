@@ -235,7 +235,7 @@ export function SharePage() {
         )}
       >
         <PageHeader eyebrow="公开分享" title={data.title} description={data.description ?? undefined} />
-        <Reveal delay={80} className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
+        <Reveal delay={80} className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-muted">
           <span>由 {data.owner} 分享</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">{data.total} 个书签</span>
@@ -275,7 +275,7 @@ export function SharePage() {
           <ShareList items={data.items} theme={data.theme} authed={authed} onCollect={collectOne} />
         )}
 
-        <footer className="mt-10 border-t border-line pt-4 text-center text-2xs text-ink-faint">
+        <footer className="mt-10 border-t border-line pt-4 text-center text-2xs text-ink-muted">
           由 TagNest 强力驱动 ·{' '}
           <Link to="/" className="underline-offset-2 hover:text-ink-soft hover:underline">
             创建你自己的书签库
@@ -370,7 +370,7 @@ function PublicRow({
             </p>
           )}
           {!compact && (
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-ink-faint">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-ink-muted">
               <span className="shrink-0">{displayHost(b.url)}</span>
               <span aria-hidden>·</span>
               <time dateTime={b.createdAt}>{relativeTime(b.createdAt)}</time>
@@ -417,7 +417,7 @@ function PublicCard({
       >
         <div className="flex items-center gap-2">
           <Favicon url={b.url} size={18} />
-          <span className="min-w-0 truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
+          <span className="min-w-0 truncate text-2xs text-ink-muted">{displayHost(b.url)}</span>
         </div>
         <h3 className="line-clamp-2 text-sm font-semibold text-ink group-hover:text-ink">
           {b.title || displayHost(b.url)}
