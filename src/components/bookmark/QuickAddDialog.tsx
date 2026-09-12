@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Wand2 } from 'lucide-react';
-import { Button, Input, Modal, Textarea } from '@/components/ui';
+import { Button, IconButton, Input, Modal, Textarea } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { TagPicker } from './TagPicker';
 import { useOverlay } from '@/stores/ui';
@@ -136,16 +136,15 @@ export function QuickAddDialog() {
           inputMode="url"
           autoComplete="off"
           slotRight={
-            <button
-              type="button"
+            <IconButton
+              size="sm"
+              variant="ghost"
+              label="自动获取标题"
+              icon={<Wand2 size={14} className={fetchMeta.isPending ? 'anim-pulse' : undefined} />}
               onClick={() => pullMetadata(url)}
               disabled={!url.trim() || fetchMeta.isPending}
-              aria-label="自动获取标题"
-              title="自动获取标题"
-              className="mr-0.5 flex h-7 w-7 items-center justify-center rounded-sm text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-40"
-            >
-              <Wand2 size={14} className={fetchMeta.isPending ? 'anim-pulse' : undefined} />
-            </button>
+              className="mr-0.5"
+            />
           }
         />
 
@@ -170,13 +169,13 @@ export function QuickAddDialog() {
           <button
             type="button"
             onClick={() => setExpanded(true)}
-            className="self-start text-xs font-medium text-brand-ink underline-offset-2 hover:underline"
+            className="focus-ring self-start rounded-xs text-xs font-medium text-brand-ink underline-offset-2 hover:underline"
           >
             添加标题、标签和笔记
           </button>
         )}
 
-        <p className="flex items-center gap-1.5 rounded-md bg-sunken px-2.5 py-2 text-2xs leading-relaxed text-ink-faint">
+        <p className="flex items-center gap-1.5 rounded-md bg-sunken px-2.5 py-2 text-2xs leading-relaxed text-ink-muted">
           <Sparkles size={13} className="shrink-0" aria-hidden />
           配置模型后，新书签保存时会自动生成摘要与标签建议；也可到「AI 整理」对整库批量整理。
         </p>

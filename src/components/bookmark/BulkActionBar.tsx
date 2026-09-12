@@ -225,9 +225,7 @@ function BulkTagDialog({
 
         {suggestions.length > 0 && (
           <div>
-            <p className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-ink-faint">
-              已有标签
-            </p>
+            <p className="atelier-eyebrow mb-1.5">已有标签</p>
             <ul className="flex flex-wrap gap-1.5">
               {suggestions.map((t) => (
                 <li key={t.id}>

@@ -27,9 +27,7 @@ function SimilarBookmarksBase({ id }: { id: string }) {
       aria-label="相关书签"
       className="rounded-md border border-line px-3.5 py-3"
     >
-      <p className="mb-2 text-2xs font-semibold uppercase tracking-wide text-ink-faint">
-        相关书签
-      </p>
+      <p className="atelier-eyebrow mb-2">相关书签</p>
 
       {isLoading ? (
         <ul className="flex flex-col gap-2">
@@ -44,9 +42,9 @@ function SimilarBookmarksBase({ id }: { id: string }) {
           ))}
         </ul>
       ) : isError ? (
-        <p className="text-xs leading-relaxed text-ink-faint">相关书签暂时无法加载。</p>
+        <p className="text-xs leading-relaxed text-ink-muted">相关书签暂时无法加载。</p>
       ) : items.length === 0 ? (
-        <p className="text-xs leading-relaxed text-ink-faint">暂时没有足够相似的书签。</p>
+        <p className="text-xs leading-relaxed text-ink-muted">暂时没有足够相似的书签。</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {items.map((b: Bookmark) => (
@@ -55,7 +53,7 @@ function SimilarBookmarksBase({ id }: { id: string }) {
                 type="button"
                 onClick={() => setEditingBookmarkId(b.id)}
                 className={cx(
-                  'group flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left',
+                  'focus-ring group flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left',
                   'transition-colors hover:bg-surface-hover',
                 )}
               >
@@ -77,14 +75,14 @@ function SimilarBookmarksBase({ id }: { id: string }) {
                   <span className="truncate text-sm text-ink">
                     {b.title || displayHost(b.url)}
                   </span>
-                  <span className="truncate text-2xs text-ink-faint">{displayHost(b.url)}</span>
+                  <span className="truncate text-2xs text-ink-muted">{displayHost(b.url)}</span>
                   {b.tags.length > 0 && (
                     <span className="mt-0.5 flex flex-wrap gap-1">
                       {b.tags.slice(0, 2).map((t) => (
                         <TagChip key={t.id} name={t.name} colorIndex={t.colorIndex} size="sm" />
                       ))}
                       {b.tags.length > 2 && (
-                        <span className="text-2xs text-ink-faint">+{b.tags.length - 2}</span>
+                        <span className="text-2xs text-ink-muted">+{b.tags.length - 2}</span>
                       )}
                     </span>
                   )}

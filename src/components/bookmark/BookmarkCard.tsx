@@ -62,31 +62,22 @@ export interface BookmarkCardProps {
 
 /**
  * Deterministic ZIYK-style colour for a circle badge.
- * Picks from a saturated palette based on the host/title so the same
- * bookmark always renders the same colour, and neighbours feel varied.
+ *
+ * T12 / C-01: drawn from the SAME oklch palette as TagChip (`tagColorVars`)
+ * instead of a private hex list, so domain initials and tag chips speak one
+ * colour language and every hue follows the active theme's calibration.
+ * The hash keeps the colour stable per bookmark and varied across neighbours.
  */
-const CIRCLE_PALETTE = [
-  '#8b5cf6', // violet
-  '#3b82f6', // blue
-  '#06b6d4', // cyan
-  '#14b8a6', // teal
-  '#22c55e', // green
-  '#f59e0b', // amber
-  '#f97316', // orange
-  '#ef4444', // red
-  '#ec4899', // pink
-  '#d946ef', // fuchsia
-  '#6366f1', // indigo
-];
-
 function circleColorFor(seed: string): string {
   let hash = 0;
   for (let i = 0; i < seed.length; i += 1) {
     hash = (hash << 5) - hash + seed.charCodeAt(i);
     hash |= 0;
   }
-  const idx = Math.abs(hash) % CIRCLE_PALETTE.length;
-  return CIRCLE_PALETTE[idx];
+  // tagColorVars normalises negative indices internally. The cast is needed
+  // because the helper's return type is React.CSSProperties, which does not
+  // expose the custom-property keys for direct indexing.
+  return String((tagColorVars(hash) as Record<string, string>)['--tag-dot']);
 }
 
 /**
@@ -122,7 +113,7 @@ function FaviconBadge({
         className="object-contain"
         fallback={
           <span
-            className="flex h-full w-full items-center justify-center text-2xs font-bold uppercase text-brand-ink"
+            className="flex h-full w-full items-center justify-center text-2xs font-semibold uppercase text-brand-ink"
             aria-hidden
           >
             {displayHost(bookmark.url).charAt(0)}
@@ -152,7 +143,7 @@ function CircleBadge({
   return (
     <span
       className={cx(
-        'flex shrink-0 items-center justify-center rounded-full font-bold text-white shadow-sm',
+        'flex shrink-0 items-center justify-center rounded-full font-semibold text-on-brand shadow-raised',
         className,
       )}
       style={{ width: size, height: size, backgroundColor: bg, fontSize: size * 0.42 }}
@@ -166,8 +157,8 @@ function CircleBadge({
 /** Compact single-line host — right-aligned, muted, truncated. */
 function CompactHost({ bookmark }: { bookmark: Bookmark }) {
   return (
-    <span className="hidden shrink-0 items-center gap-1.5 text-2xs text-ink-faint min-[420px]:flex">
-      <FaviconBadge bookmark={bookmark} size={16} className="rounded" />
+    <span className="hidden shrink-0 items-center gap-1.5 text-2xs text-ink-muted @min-[420px]:flex">
+      <FaviconBadge bookmark={bookmark} size={16} className="rounded-xs" />
       <span className="max-w-32 truncate">{displayHost(bookmark.url)}</span>
     </span>
   );
@@ -296,7 +287,7 @@ function BookmarkCardBase({
         onDragStartCard?.(b.id);
       }}
       aria-label="拖动以重新排序"
-      className="flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-sunken hover:text-ink-soft active:cursor-grabbing"
+      className="focus-ring hit-area-lg flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-ink-muted transition-colors duration-150 ease-out-soft hover:bg-sunken hover:text-ink-soft active:cursor-grabbing"
     >
       <GripVertical size={15} aria-hidden />
     </button>
@@ -399,7 +390,7 @@ function BookmarkCardBase({
       checked={selected}
       onChange={(e) => onToggleSelect(b.id, (e.nativeEvent as MouseEvent).shiftKey)}
       className={cx(
-        'absolute left-2 top-2 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity',
+        'absolute left-2 top-2 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 ease-out-soft hit-area-lg',
         selectionActive || selected
           ? 'opacity-100'
           : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100',
@@ -415,7 +406,7 @@ function BookmarkCardBase({
       icon={<Star size={15} className={b.isFavorite ? 'fill-caution text-caution' : ''} aria-hidden />}
       onClick={() => onToggleFavorite(b.id, !b.isFavorite)}
       className={cx(
-        'transition-all duration-150',
+        'transition-all duration-150 ease-out-soft',
         !b.isFavorite && 'opacity-0 focus:opacity-100 group-hover:opacity-100',
         b.isFavorite && 'scale-100',
       )}
@@ -431,7 +422,7 @@ function BookmarkCardBase({
       size="sm"
       icon={<Images size={15} aria-hidden />}
       onClick={() => setShowSnapshots(true)}
-      className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+      className="opacity-0 transition-opacity duration-150 ease-out-soft focus:opacity-100 group-hover:opacity-100"
     />
   ) : null;
 
@@ -445,7 +436,7 @@ function BookmarkCardBase({
           label="更多操作"
           size="sm"
           icon={<MoreHorizontal size={16} />}
-          className="opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
+          className="opacity-0 transition-opacity duration-150 ease-out-soft focus:opacity-100 group-hover:opacity-100 aria-expanded:opacity-100"
         />
       )}
       items={menuItems}
@@ -457,14 +448,19 @@ function BookmarkCardBase({
       <article
       ref={rootRef}
       className={cx(
-        'card-halo spotlight group relative flex bg-surface',
+        // @container scopes CompactHost's @min-[420px] query to the CARD's own
+        // width (D-02) — a grid cell stays narrow on a wide viewport, and the
+        // metadata only appears when this card actually has room for it.
+        'card-halo spotlight group relative flex bg-surface @container',
         'card-lift border border-line hover:border-line-strong',
         isGrid
           ? 'h-full flex-col rounded-lg p-3'
           : 'items-center rounded-lg',
         isCompact ? 'gap-2.5 py-1.5 pl-2.5 pr-2' : 'gap-3.5 py-3.5 pl-3.5 pr-3',
-        selected && 'border-brand bg-brand-soft/30',
-        isDragOver && 'border-brand ring-2 ring-brand/50',
+        // B-03: selected and drag-over are signalled by border + wash + shadow;
+        // ring stays reserved for keyboard focus.
+        selected && 'border-brand bg-brand-wash',
+        isDragOver && 'border-brand bg-brand-wash shadow-float',
       )}
     >
       {checkbox}
@@ -474,7 +470,7 @@ function BookmarkCardBase({
         <>
           {grip}
           {liveSnapshotKey ? (
-            <div className="relative h-6 w-10 overflow-hidden rounded bg-sunken">
+            <div className="relative h-6 w-10 overflow-hidden rounded-xs bg-sunken">
               <RemoteImage
                 src={snapshotServePath(liveSnapshotKey)}
                 alt=""
@@ -488,13 +484,13 @@ function BookmarkCardBase({
           ) : (
             <FaviconBadge bookmark={b} size={22} />
           )}
-          <h3 className="min-w-0 flex-1 truncate text-sm text-ink">
-            <button type="button" onClick={open} className="truncate underline-offset-2 hover:text-brand-ink hover:underline">
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+            <button type="button" onClick={open} className="focus-ring rounded-xs truncate underline-offset-2 hover:text-ink hover:underline">
               {b.title || displayHost(b.url)}
             </button>
           </h3>
           {b.tags.length > 0 && (
-            <span className="hidden shrink-0 text-2xs text-ink-faint sm:inline">
+            <span className="hidden shrink-0 text-2xs text-ink-muted sm:inline">
               {b.tags.length} 标签
             </span>
           )}
@@ -519,7 +515,7 @@ function BookmarkCardBase({
                     alt=""
                     className="h-full w-full object-cover"
                     fallback={
-                      <div className="flex h-full w-full items-center justify-center bg-brand-soft/30">
+                      <div className="flex h-full w-full items-center justify-center bg-brand-wash">
                         <CircleBadge bookmark={b} size={56} />
                       </div>
                     }
@@ -530,13 +526,13 @@ function BookmarkCardBase({
                     alt=""
                     className="h-full w-full object-cover"
                     fallback={
-                      <div className="flex h-full w-full items-center justify-center bg-brand-soft/30">
+                      <div className="flex h-full w-full items-center justify-center bg-brand-wash">
                         <CircleBadge bookmark={b} size={56} />
                       </div>
                     }
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-brand-soft/30">
+                  <div className="flex h-full w-full items-center justify-center bg-brand-wash">
                     <CircleBadge bookmark={b} size={56} />
                   </div>
                 )}
@@ -548,8 +544,8 @@ function BookmarkCardBase({
                   disabled={refreshSnapshot.isPending}
                   className={cx(
                     'absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full',
-                    'bg-black/50 text-white transition-opacity',
-                    'opacity-0 focus:opacity-100 group-hover:opacity-100',
+                    'bg-scrim text-on-dark transition-opacity duration-150 ease-out-soft',
+                    'focus-ring-round hit-area-lg opacity-0 focus:opacity-100 group-hover:opacity-100',
                     refreshSnapshot.isPending && 'opacity-100',
                   )}
                   aria-label="刷新网站快照"
@@ -560,16 +556,16 @@ function BookmarkCardBase({
                 {/* Freshness dot — bottom-right so it never collides with the
                     top-right refresh button or the top-left checkbox. */}
                 {liveSnapshotKey && snapStatus && (
-                  <SnapshotStateDot state={snapStatus.state} className="right-2 bottom-2 z-10 h-2 w-2 ring-2 ring-black/20" />
+                  <SnapshotStateDot state={snapStatus.state} className="right-2 bottom-2 z-10 h-2 w-2 ring-1 ring-scrim-soft" />
                 )}
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-                <h3 className="font-bold leading-snug text-ink">
+                <h3 className="text-sm font-semibold leading-snug text-ink">
                   <button
                     type="button"
                     onClick={open}
-                    className="text-left text-sm underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
+                    className="focus-ring rounded-xs text-left underline-offset-2 transition-colors duration-150 ease-out-soft hover:text-ink hover:underline line-clamp-2"
                   >
                     {b.title || displayHost(b.url)}
                   </button>
@@ -582,26 +578,26 @@ function BookmarkCardBase({
                         <button
                           type="button"
                           onClick={() => onTagClick(tag.id)}
-                          className="inline-flex items-center rounded bg-sunken px-1.5 py-0.5 text-2xs font-medium text-ink-soft transition-colors hover:bg-brand-soft hover:text-brand-ink"
+                          className="focus-ring inline-flex items-center rounded-xs bg-sunken px-1.5 py-0.5 text-2xs font-medium text-ink-soft transition-colors duration-150 ease-out-soft hover:bg-brand-soft hover:text-brand-ink"
                         >
                           #{tag.name}
                         </button>
                       </li>
                     ))}
                     {b.tags.length > 2 && (
-                      <li className="self-center text-2xs text-ink-faint">+{b.tags.length - 2}</li>
+                      <li className="self-center text-2xs text-ink-muted">+{b.tags.length - 2}</li>
                     )}
                   </ul>
                 )}
 
                 {/* Bottom row — left label + right red stat pill / actions */}
                 <div className="mt-auto flex items-center justify-between gap-1 border-t border-line pt-2">
-                  <span className="shrink-0 text-2xs font-medium text-ink-faint">TagNest</span>
+                  <span className="shrink-0 text-2xs font-medium text-ink-muted">TagNest</span>
 
                   <div className="flex shrink-0 items-center gap-1">
                     {b.visitCount > 0 && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-critical px-1.5 py-0.5 text-2xs font-semibold text-white shadow-sm">
-                        <Heart size={10} className="fill-white" aria-hidden />
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-critical px-1.5 py-0.5 text-2xs font-semibold text-on-brand shadow-raised">
+                        <Heart size={10} className="fill-on-brand" aria-hidden />
                         <span className="tabular-nums">{b.visitCount}</span>
                       </span>
                     )}
@@ -638,11 +634,11 @@ function BookmarkCardBase({
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <h3 className="font-semibold leading-snug text-ink">
+                <h3 className="text-sm font-semibold leading-snug text-ink">
                   <button
                     type="button"
                     onClick={open}
-                    className="text-left text-sm underline-offset-2 transition-colors hover:text-brand-ink hover:underline line-clamp-2"
+                    className="focus-ring rounded-xs text-left underline-offset-2 transition-colors duration-150 ease-out-soft hover:text-ink hover:underline line-clamp-2"
                   >
                     {b.title || displayHost(b.url)}
                   </button>
@@ -654,7 +650,7 @@ function BookmarkCardBase({
                   </p>
                 )}
 
-                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-ink-faint">
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-ink-muted">
                   <span className="truncate">{displayHost(b.url)}</span>
                   <span className="h-0.5 w-0.5 shrink-0 rounded-full bg-line-strong" aria-hidden />
                   <time dateTime={b.createdAt} className="shrink-0">
@@ -681,7 +677,7 @@ function BookmarkCardBase({
                       </li>
                     ))}
                     {b.tags.length > 4 && (
-                      <li className="self-center text-2xs text-ink-faint">+{b.tags.length - 4}</li>
+                      <li className="self-center text-2xs text-ink-muted">+{b.tags.length - 4}</li>
                     )}
                   </ul>
                 )}
@@ -698,7 +694,7 @@ function BookmarkCardBase({
       )}
 
       {inTrash && b.deletedAt && (
-        <span className="absolute bottom-1.5 right-2 text-2xs text-ink-faint">
+        <span className="absolute bottom-1.5 right-2 text-2xs text-ink-muted">
           {relativeTime(b.deletedAt)}删除
         </span>
       )}
@@ -711,9 +707,9 @@ function BookmarkCardBase({
       size="lg"
     >
       {snapsLoading ? (
-        <div className="flex h-40 items-center justify-center text-sm text-ink-faint">加载中…</div>
+        <div className="flex h-40 items-center justify-center text-sm text-ink-muted">加载中…</div>
       ) : snapsError ? (
-        <div className="flex h-40 flex-col items-center justify-center gap-2 text-sm text-ink-faint">
+        <div className="flex h-40 flex-col items-center justify-center gap-2 text-sm text-ink-muted">
           <span>快照历史加载失败</span>
           <Button variant="secondary" size="sm" onClick={() => void refetchSnaps()}>
             重试
@@ -721,13 +717,13 @@ function BookmarkCardBase({
         </div>
       ) : snapList && snapList.snapshots.length > 0 ? (
         <>
-          <p className="mb-3 text-xs leading-relaxed text-ink-faint">
+          <p className="mb-3 text-xs leading-relaxed text-ink-muted">
             这里保存了该书签历次抓取的网页快照。点击「恢复到此版本」即可把卡片预览切换回当时的画面；恢复只改预览指向，不会删除任何版本。
           </p>
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {snapList.snapshots.map((s) => (
               <li key={s.key} className="overflow-hidden rounded-lg border border-line">
-                <a href={s.url} target="_blank" rel="noreferrer noopener">
+                <a href={s.url} target="_blank" rel="noreferrer noopener" className="focus-ring block">
                   <RemoteImage
                     src={s.url}
                     alt=""
@@ -735,7 +731,7 @@ function BookmarkCardBase({
                   />
                 </a>
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
-                  <span className="text-2xs text-ink-faint">
+                  <span className="text-2xs text-ink-muted">
                     {s.capturedAt ? new Date(s.capturedAt).toLocaleString() : '未知时间'}
                   </span>
                   {s.isLatest ? (
@@ -761,7 +757,7 @@ function BookmarkCardBase({
         <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
           <Images size={28} aria-hidden className="text-ink-faint" />
           <div className="text-sm text-ink-soft">还没有快照</div>
-          <p className="max-w-xs text-xs leading-relaxed text-ink-faint">
+          <p className="max-w-xs text-xs leading-relaxed text-ink-muted">
             生成快照后，时光机会保存网页历次画面，随时可以回看或恢复到任意版本。
           </p>
           <Button
@@ -790,7 +786,7 @@ function BookmarkCardBase({
     >
       <div className="flex flex-col gap-1">
         {(collections ?? []).length === 0 ? (
-          <p className="px-1 py-6 text-center text-xs leading-relaxed text-ink-faint">
+          <p className="px-1 py-6 text-center text-xs leading-relaxed text-ink-muted">
             还没有集合。先在「集合」页新建一个，再回来把书签归进去。
           </p>
         ) : (
@@ -810,7 +806,7 @@ function BookmarkCardBase({
                       },
                     );
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-surface-hover"
+                  className="focus-ring flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors duration-150 ease-out-soft hover:bg-surface-hover"
                 >
                   <span
                     style={tagColorVars(c.colorIndex)}
@@ -818,7 +814,7 @@ function BookmarkCardBase({
                     aria-hidden
                   />
                   <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                  <span className="shrink-0 text-2xs tabular-nums text-ink-faint">{c.count}</span>
+                  <span className="shrink-0 text-2xs tabular-nums text-ink-muted">{c.count}</span>
                 </button>
               </li>
             ))}

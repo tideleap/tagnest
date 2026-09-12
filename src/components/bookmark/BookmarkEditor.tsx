@@ -106,7 +106,7 @@ export function BookmarkEditor({ id }: { id: string }) {
           {update.isError && (
             <div
               role="alert"
-              className="rounded-md border border-critical/30 bg-critical-soft px-3.5 py-2.5 text-xs leading-relaxed text-critical"
+              className="rounded-md border border-critical bg-critical-soft px-3.5 py-2.5 text-xs leading-relaxed text-critical-ink"
             >
               保存失败：{update.error instanceof Error ? update.error.message : '请稍后重试'}
             </div>
@@ -126,7 +126,7 @@ export function BookmarkEditor({ id }: { id: string }) {
                 rel="noopener noreferrer"
                 aria-label="在新标签页打开"
                 title="在新标签页打开"
-                className="mr-0.5 flex h-7 w-7 items-center justify-center rounded-sm text-ink-faint hover:bg-surface-hover hover:text-ink"
+                className="focus-ring hit-area-lg mr-0.5 flex h-7 w-7 items-center justify-center rounded-md text-ink-muted hover:bg-surface-hover hover:text-ink"
               >
                 <ExternalLink size={14} />
               </a>
@@ -164,7 +164,7 @@ export function BookmarkEditor({ id }: { id: string }) {
                   <Lock size={13} aria-hidden />
                   私密书签
                 </p>
-                <p className="mt-0.5 text-2xs leading-relaxed text-ink-faint">
+                <p className="mt-0.5 text-2xs leading-relaxed text-ink-muted">
                   在本地加密后保存，并从全部列表、搜索、标签与分享中彻底隐藏。请先保存未提交的改动。
                 </p>
               </div>
@@ -181,13 +181,13 @@ export function BookmarkEditor({ id }: { id: string }) {
           </div>
 
           {bookmark.aiSummary && (
-            <div className="rounded-xl bg-brand-soft/70 px-4 py-3.5">
+            <div className="rounded-xl bg-brand-wash px-4 py-3.5">
               <p className="atelier-eyebrow mb-1.5">AI 摘要</p>
               <p className="text-xs leading-relaxed text-ink-soft">{bookmark.aiSummary}</p>
             </div>
           )}
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-line pt-3 text-2xs text-ink-faint">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-line pt-3 text-2xs text-ink-muted">
             <div className="flex justify-between">
               <dt>添加于</dt>
               <dd className="tabular-nums">{formatDate(bookmark.createdAt)}</dd>
@@ -203,7 +203,7 @@ export function BookmarkEditor({ id }: { id: string }) {
             <div className="flex justify-between">
               <dt>状态</dt>
               <dd className="flex items-center gap-1">
-                {isFavorite && <Star size={11} className="fill-caution text-caution" />}
+                {isFavorite && <Star size={12} className="fill-caution text-caution" />}
                 {isArchived && <Archive size={11} />}
                 {!isFavorite && !isArchived && '普通'}
               </dd>

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Input, TagChip } from '@/components/ui';
+import { IconButton, Input, TagChip } from '@/components/ui';
 import { useTags } from '@/hooks/queries';
 
 export interface TagPickerProps {
@@ -66,15 +66,15 @@ export function TagPicker({ value, onChange, label = '标签', hint }: TagPicker
         placeholder="添加标签…"
         slotRight={
           draft.trim() ? (
-            <button
-              type="button"
+            <IconButton
+              size="sm"
+              variant="ghost"
+              label={`添加标签 ${draft}`}
+              icon={<Plus size={15} />}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => add(draft)}
-              aria-label={`添加标签 ${draft}`}
-              className="mr-0.5 flex h-7 w-7 items-center justify-center rounded-sm text-ink-faint hover:bg-surface-hover hover:text-ink"
-            >
-              <Plus size={15} />
-            </button>
+              className="mr-0.5"
+            />
           ) : undefined
         }
       />
@@ -99,7 +99,7 @@ export function TagPicker({ value, onChange, label = '标签', hint }: TagPicker
 
       {focused && suggestions.length > 0 && (
         <div>
-          <p className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-ink-faint">建议</p>
+          <p className="atelier-eyebrow mb-1.5">建议</p>
           <ul className="flex flex-wrap gap-1.5">
             {suggestions.map((t) => (
               <li key={t.id}>
