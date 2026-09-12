@@ -275,7 +275,7 @@ export function CommandPalette() {
             placeholder="搜索书签、标签，或执行命令…"
             aria-label="命令面板"
             aria-autocomplete="list"
-            className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
+            className="focus-ring min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
           />
           <Kbd>Esc</Kbd>
         </div>
@@ -303,14 +303,14 @@ export function CommandPalette() {
                         onMouseMove={() => setActiveIndex(index)}
                         onClick={() => runAt(index)}
                         className={cx(
-                          'relative flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm transition-colors',
-                          index === activeIndex ? 'bg-brand-soft/70 text-ink' : 'text-ink-soft',
+                          'focus-ring relative flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm transition-colors',
+                          index === activeIndex ? 'bg-brand-wash text-ink' : 'text-ink-soft',
                         )}
                       >
                         {index === activeIndex && (
                           <span
                             aria-hidden
-                            className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-brand-accent"
+                            className="absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-full bg-brand-accent"
                           />
                         )}
                         <span

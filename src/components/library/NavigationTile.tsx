@@ -60,7 +60,7 @@ export const NavigationTile = memo(function NavigationTile({ bookmark: b }: { bo
       }}
       title={title}
       className={cx(
-        'group relative flex h-full flex-col gap-2 rounded-xl border border-line bg-surface p-3',
+        'focus-ring group relative flex h-full flex-col gap-2 rounded-xl border border-line bg-surface p-3',
         'transition-all duration-150 hover:-translate-y-0.5 hover:border-brand hover:shadow-float',
       )}
     >
@@ -82,7 +82,7 @@ export const NavigationTile = memo(function NavigationTile({ bookmark: b }: { bo
             toggleFavorite.mutate({ id: b.id, isFavorite: !b.isFavorite });
           }}
           className={cx(
-            'flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-sunken hover:text-ink',
+            'focus-ring hit-area-lg flex h-6 w-6 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-sunken hover:text-ink',
             b.isFavorite && 'text-caution',
           )}
         >

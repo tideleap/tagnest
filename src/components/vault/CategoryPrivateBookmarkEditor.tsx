@@ -126,7 +126,7 @@ export function CategoryPrivateBookmarkEditor({ id, onClose, onDeleted }: Props)
                 rel="noopener noreferrer"
                 aria-label="在新标签页打开"
                 title="在新标签页打开"
-                className="mr-0.5 flex h-7 w-7 items-center justify-center rounded-sm text-ink-faint hover:bg-surface-hover hover:text-ink"
+                className="focus-ring mr-0.5 flex h-7 w-7 items-center justify-center rounded-sm text-ink-muted hover:bg-surface-hover hover:text-ink"
               >
                 <ExternalLink size={14} />
               </a>
@@ -196,8 +196,8 @@ export function CategoryPrivateBookmarkEditor({ id, onClose, onDeleted }: Props)
             <div className="flex justify-between">
               <dt>状态</dt>
               <dd className="flex items-center gap-1">
-                {isFavorite && <Star size={11} className="fill-caution text-caution" />}
-                {isArchived && <Archive size={11} />}
+                {isFavorite && <Star size={12} className="fill-caution text-caution" />}
+                {isArchived && <Archive size={12} />}
                 {!isFavorite && !isArchived && '普通'}
               </dd>
             </div>

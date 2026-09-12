@@ -134,7 +134,7 @@ export function DirectoryView({
                     type="button"
                     onClick={() => jumpTo(g.id)}
                     className={cx(
-                      'nav-row group w-full',
+                      'nav-row focus-ring group w-full',
                       isActive && 'is-active',
                       isUntagged && 'text-ink-faint',
                     )}
@@ -177,7 +177,7 @@ export function DirectoryView({
                 role="tab"
                 aria-selected={isActive}
                 className={cx(
-                  'shrink-0 rounded-full border px-3 py-1 text-xs transition-colors',
+                  'focus-ring shrink-0 rounded-full border px-3 py-1 text-xs transition-colors',
                   isActive
                     ? 'border-brand-accent bg-brand-soft text-brand-ink'
                     : isUntagged
@@ -251,7 +251,7 @@ export function DirectoryView({
                     <button
                       type="button"
                       onClick={() => toggle(group.id)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
+                      className="focus-ring inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
                       aria-expanded={!isCollapsed}
                     >
                       {isCollapsed ? (
@@ -289,7 +289,7 @@ export function DirectoryView({
                       ))}
 
                       {isUntagged && (
-                        <p className="rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3 text-xs leading-relaxed text-ink-soft">
+                        <p className="rounded-md border border-dashed border-line bg-sunken-wash px-4 py-3 text-xs leading-relaxed text-ink-soft">
                           这些书签还没有分类标签。在 TagNest 内选中它们并打上标签，下次分享时它们就会自动归入对应分组。
                         </p>
                       )}
@@ -346,7 +346,7 @@ function DirectoryRow({
             style={{ ...tagColorVars(colorIndex), background: 'var(--tag-dot)' }}
           />
         )}
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{title}</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">{title}</h3>
         <span className="text-2xs tabular-nums text-ink-faint">{items.length}</span>
       </div>
 
@@ -363,7 +363,7 @@ function DirectoryRow({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
+            className="focus-ring inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
           >
             {expanded ? (
               <>
@@ -402,7 +402,7 @@ function DirectoryCard({ bookmark: b }: { bookmark: PublicBookmark }) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
-          <h4 className="min-w-0 truncate text-2xs font-semibold text-ink group-hover:text-brand-ink">
+          <h4 className="min-w-0 truncate text-xs font-semibold text-ink">
             {b.title || displayHost(b.url)}
           </h4>
           <ExternalLink

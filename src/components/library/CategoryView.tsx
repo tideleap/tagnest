@@ -277,7 +277,7 @@ export function CategoryView({
   return (
     <div className="flex flex-col gap-3">
       {/* Category tab bar (sticky) */}
-      <div className="sticky top-0 z-10 -mx-1 flex gap-1.5 overflow-x-auto border-b border-line bg-glass-canvas/85 px-1 py-2 backdrop-blur">
+      <div className="sticky top-0 z-10 -mx-1 flex gap-1.5 overflow-x-auto border-b border-line bg-glass-canvas px-1 py-2 backdrop-blur">
         <TabPill active={activeTab === ALL_TAB} onClick={() => selectTab(ALL_TAB)}>
           全部
         </TabPill>
@@ -356,7 +356,7 @@ export function CategoryView({
                     key={t.id}
                     type="button"
                     onClick={() => (activeGroup ? setChildFilter(isChildActive ? null : t.id) : selectTab(t.id))}
-                    className={cx('cat-chip', isChildActive ? 'cat-chip-active' : 'cat-chip-inactive')}
+                    className={cx('cat-chip focus-ring', isChildActive ? 'cat-chip-active' : 'cat-chip-inactive')}
                   >
                     {activeGroup && (
                       <span
@@ -388,7 +388,7 @@ function Hero({ total, addedToday, weekVisits }: { total: number; addedToday: nu
       <div className="cat-hero-glow" aria-hidden />
       <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <h1 className="atelier-display atelier-display--3 text-ink">{greeting}</h1>
+          <h2 className="atelier-display atelier-display--3 text-ink">{greeting}</h2>
           <p className="mt-1 text-sm text-ink-soft">今天也整理好你的导航</p>
         </div>
         <div className="flex gap-2">
@@ -408,7 +408,7 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
         {icon}
       </span>
       <span className="text-base font-semibold tabular-nums text-ink">{value}</span>
-      <span className="text-2xs text-ink-faint">{label}</span>
+      <span className="text-2xs text-ink-muted">{label}</span>
     </div>
   );
 }
@@ -441,21 +441,21 @@ function QuickAccess({ bookmarks }: { bookmarks: Bookmark[] }) {
           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-accent">
             <Zap size={13} aria-hidden />
           </span>
-          <h2 className="text-sm font-semibold text-ink">常用 / 最近访问</h2>
+          <h2 className="font-display text-panel font-semibold tracking-tight text-ink">常用 / 最近访问</h2>
         </div>
         {pinnedIds.length > 0 && (
           <button
             type="button"
             onClick={clearPins}
             aria-label="清空固定"
-            className="text-2xs text-ink-soft transition-colors hover:text-ink"
+            className="focus-ring hit-area-lg text-2xs text-ink-soft transition-colors hover:text-ink"
           >
             管理
           </button>
         )}
       </div>
       {items.length === 0 ? (
-        <p className="px-1 text-xs leading-relaxed text-ink-faint">
+        <p className="px-1 text-xs leading-relaxed text-ink-muted">
           还没有书签，添加一些网站后再来这里。
         </p>
       ) : (
@@ -500,7 +500,7 @@ function QuickAccessCard({
         type="button"
         onClick={() => onTogglePin(b.id)}
         aria-label={pinned ? `取消固定 ${title}` : `固定 ${title}`}
-        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
+        className="focus-ring hit-area-lg absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-sunken hover:text-ink"
       >
         {pinned ? <PinOff size={14} className="text-brand" /> : <Pin size={14} />}
       </button>
@@ -515,11 +515,11 @@ function QuickAccessCard({
           onOpen(b.url);
         }}
         title={title}
-        className="flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center"
+        className="focus-ring flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center"
       >
         <span className="cat-tile-favicon" aria-hidden>
           {faviconFailed ? (
-            <span className="flex h-full w-full items-center justify-center text-sm font-bold uppercase text-brand-ink">
+            <span className="flex h-full w-full items-center justify-center text-sm font-semibold uppercase text-brand-ink">
               {host.charAt(0)}
             </span>
           ) : (
@@ -535,7 +535,7 @@ function QuickAccessCard({
           )}
         </span>
         <span className="line-clamp-2 text-xs font-medium leading-snug text-ink">{title}</span>
-        <span className="text-2xs tabular-nums text-ink-faint">{b.visitCount ?? 0} 次访问</span>
+        <span className="text-2xs tabular-nums text-ink-muted">{b.visitCount ?? 0} 次访问</span>
       </a>
     </div>
   );
@@ -561,10 +561,10 @@ function RecentAdditions({ bookmarks }: { bookmarks: Bookmark[] }) {
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-accent">
           <Clock size={13} aria-hidden />
         </span>
-        <h2 className="text-sm font-semibold text-ink">最近添加</h2>
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">最近添加</h2>
       </div>
       {items.length === 0 ? (
-        <p className="px-1 text-xs leading-relaxed text-ink-faint">还没有添加书签。</p>
+        <p className="px-1 text-xs leading-relaxed text-ink-muted">还没有添加书签。</p>
       ) : (
         <div className="cat-recent-grid">
           {items.map((b) => (
@@ -601,11 +601,11 @@ function RecentRow({ bookmark: b, onOpen }: { bookmark: Bookmark; onOpen: () => 
         onOpen();
       }}
       title={title}
-      className="cat-recent-row group"
+      className="cat-recent-row focus-ring group"
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-sunken" aria-hidden>
         {faviconFailed ? (
-          <span className="flex h-full w-full items-center justify-center text-xs font-bold uppercase text-brand-ink">
+          <span className="flex h-full w-full items-center justify-center text-xs font-semibold uppercase text-brand-ink">
             {host.charAt(0)}
           </span>
         ) : (
@@ -624,7 +624,7 @@ function RecentRow({ bookmark: b, onOpen }: { bookmark: Bookmark; onOpen: () => 
         <span className="block truncate text-xs font-medium text-ink group-hover:text-brand-ink">
           {title}
         </span>
-        <span className="block truncate text-2xs text-ink-faint">{host}</span>
+        <span className="block truncate text-2xs text-ink-muted">{host}</span>
       </span>
       <ChevronRight
         size={13}
@@ -656,6 +656,7 @@ function CategoryInternalSearch({
       <label htmlFor="category-internal-search" className="sr-only">
         在当前分类内搜索
       </label>
+      {/* eslint-disable-next-line tagnest/require-focus-ring -- .cat-search input:focus 已提供焦点环（border-brand + 3px box-shadow），见 CategoryView.css:253 */}
       <input
         id="category-internal-search"
         type="search"
@@ -686,7 +687,7 @@ function TabPill({
     <button
       type="button"
       onClick={onClick}
-      className={cx('cat-tab', active ? 'cat-tab-active' : 'cat-tab-inactive')}
+      className={cx('cat-tab focus-ring', active ? 'cat-tab-active' : 'cat-tab-inactive')}
     >
       {colorIndex !== undefined && (
         <span
@@ -713,10 +714,10 @@ function HotRanking({ items }: { items: Bookmark[] }) {
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-caution-soft text-caution">
           <Flame size={13} aria-hidden />
         </span>
-        <h3 className="text-sm font-semibold text-ink">全网热搜榜</h3>
+        <h3 className="font-display text-panel font-semibold tracking-tight text-ink">全网热搜榜</h3>
       </div>
       {items.length === 0 ? (
-        <p className="px-1 text-xs leading-relaxed text-ink-faint">
+        <p className="px-1 text-xs leading-relaxed text-ink-muted">
           还没有访问记录。打开书签后，这里会按访问频次排出热门站点。
         </p>
       ) : (
@@ -733,17 +734,17 @@ function HotRanking({ items }: { items: Bookmark[] }) {
                   recordVisit.mutate(b.id);
                   window.open(b.url, '_blank', 'noopener,noreferrer');
                 }}
-                className="cat-rank-item group"
+                className="cat-rank-item focus-ring group"
                 title={b.title || displayHost(b.url)}
               >
                 <span
                   className={cx(
                     'cat-rank-medal',
                     i === 0
-                      ? 'bg-critical text-white'
+                      ? 'bg-critical text-on-brand'
                       : i < 3
                         ? 'bg-brand-soft text-brand-ink'
-                        : 'bg-sunken text-ink-faint',
+                        : 'bg-sunken text-ink-muted',
                   )}
                 >
                   {i + 1}
@@ -752,7 +753,7 @@ function HotRanking({ items }: { items: Bookmark[] }) {
                   {b.title || displayHost(b.url)}
                 </span>
                 {i === 0 && (
-                  <span className="shrink-0 rounded bg-critical-soft px-1 text-2xs font-medium text-critical-ink">
+                  <span className="shrink-0 rounded-xs bg-critical-soft px-1 text-2xs font-medium text-critical-ink">
                     热
                   </span>
                 )}
@@ -799,7 +800,7 @@ function CategoryBlock({ group, onOpen }: { group: CategoryGroup; onOpen: () => 
 
   return (
     <section className="cat-block" style={tagColorVars(group.colorIndex)}>
-      <button type="button" onClick={onOpen} className="cat-block-header group w-full text-left">
+      <button type="button" onClick={onOpen} className="cat-block-header focus-ring group w-full text-left">
         <span className="cat-block-accent" aria-hidden />
         <span
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface text-sm shadow-xs"
@@ -807,7 +808,7 @@ function CategoryBlock({ group, onOpen }: { group: CategoryGroup; onOpen: () => 
         >
           {categoryEmoji(group.name)}
         </span>
-        <h2 className="text-sm font-semibold text-ink">{group.name}</h2>
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">{group.name}</h2>
         <span
           className="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums"
           style={{ background: 'var(--tag-bg)', color: 'var(--tag-fg)' }}
@@ -862,7 +863,7 @@ function CategoryDetail({
         <button
           type="button"
           onClick={onClearFilter}
-          className="inline-flex w-fit items-center gap-1 rounded-full border border-line px-2.5 py-1 text-2xs text-ink-soft transition-colors hover:text-ink"
+          className="focus-ring inline-flex w-fit items-center gap-1 rounded-full border border-line px-2.5 py-1 text-2xs text-ink-soft transition-colors hover:text-ink"
         >
           <ChevronRight size={12} className="rotate-180" aria-hidden />
           返回「{group.name}」全部
@@ -870,7 +871,7 @@ function CategoryDetail({
       )}
 
       {needle && !hasResults && (
-        <p className="text-xs text-ink-faint">没有匹配「{searchQuery}」的书签，换个关键词试试。</p>
+        <p className="text-xs text-ink-muted">没有匹配「{searchQuery}」的书签，换个关键词试试。</p>
       )}
 
       {matchedChildren.map((child) => (
@@ -882,7 +883,7 @@ function CategoryDetail({
       )}
 
       {isUntagged && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken-wash px-4 py-3">
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
             这些书签还没有主分类。运行一次「精确分类」，AI 会为每条书签指定唯一归属，确认后即写入。
           </p>
@@ -917,8 +918,8 @@ function SubSection({
             aria-hidden
           />
         )}
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{title}</h3>
-        <span className="text-2xs tabular-nums text-ink-faint">{items.length}</span>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">{title}</h3>
+        <span className="text-2xs tabular-nums text-ink-muted">{items.length}</span>
       </div>
       <SiteGrid items={items} />
     </div>
@@ -934,7 +935,7 @@ function SiteGrid({ items }: { items: Bookmark[] }) {
   const hasMore = items.length > PER_SECTION_LIMIT;
   const visible = expanded ? items : items.slice(0, PER_SECTION_LIMIT);
 
-  if (items.length === 0) return <p className="text-xs text-ink-faint">该分类下暂无书签。</p>;
+  if (items.length === 0) return <p className="text-xs text-ink-muted">该分类下暂无书签。</p>;
 
   return (
     <div>
@@ -951,7 +952,7 @@ function SiteGrid({ items }: { items: Bookmark[] }) {
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
+            className="focus-ring inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-2xs text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
           >
             {expanded ? '收起多余' : `加载更多（还有 ${items.length - PER_SECTION_LIMIT} 个）`}
           </button>
@@ -969,14 +970,14 @@ function UntaggedBlock({ group, onOrganize }: { group: CategoryGroup; onOrganize
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface text-brand-accent shadow-xs">
           <Sparkles size={14} aria-hidden />
         </span>
-        <h2 className="text-sm font-semibold text-ink">{group.name}</h2>
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">{group.name}</h2>
         <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-2xs font-medium tabular-nums text-brand-ink">
           {items.length} 个书签
         </span>
       </div>
       <div className="p-3">
         <SiteGrid items={items} />
-        <div className="mt-2.5 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken/60 px-4 py-3">
+        <div className="mt-2.5 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line bg-sunken-wash px-4 py-3">
           <p className="min-w-0 flex-1 text-xs leading-relaxed text-ink-soft">
             这些书签还没有主分类。运行一次「精确分类」，AI 会为每条书签指定唯一归属。
           </p>
