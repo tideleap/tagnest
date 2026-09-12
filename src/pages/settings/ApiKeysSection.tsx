@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Trash2 } from 'lucide-react';
 import type { ApiKeyCreated, ApiKeyInput, ApiKeyScope } from '@shared/types';
 import {
   Badge,
@@ -7,6 +7,7 @@ import {
   Checkbox,
   ConfirmDialog,
   EmptyState,
+  IconButton,
   Input,
   Modal,
   Select,
@@ -97,11 +98,11 @@ export function ApiKeysSection() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium text-ink">{k.name}</span>
-                    <code className="rounded bg-sunken px-1.5 py-0.5 text-2xs text-ink-soft">
+                    <code className="rounded-xs bg-sunken px-1.5 py-0.5 text-2xs text-ink-soft">
                       {k.prefix}…
                     </code>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-faint">
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-ink-muted">
                     {k.scopes.map((s) => (
                       <Badge key={s} tone="brand">
                         {s}
@@ -112,14 +113,13 @@ export function ApiKeysSection() {
                     {k.expiresAt && <span>· {relativeTime(k.expiresAt)}过期</span>}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
+                <IconButton
+                  variant="danger"
                   size="sm"
+                  label="删除密钥"
+                  icon={<Trash2 aria-hidden />}
                   onClick={() => setDeleteId(k.id)}
-                  className="shrink-0 text-critical hover:bg-critical-soft"
-                >
-                  删除
-                </Button>
+                />
               </li>
             ))}
           </ul>
@@ -203,14 +203,14 @@ export function ApiKeysSection() {
                 readOnly
                 value={created.token}
                 onFocus={(e) => e.currentTarget.select()}
-                className="w-full truncate rounded-md border border-line bg-sunken px-3 py-2 font-mono text-xs text-ink"
+                className="focus-ring-inset w-full truncate rounded-md border border-line bg-sunken px-3 py-2 font-mono text-xs text-ink"
                 aria-label="密钥令牌"
               />
               <Button variant="primary" size="sm" onClick={() => copyToken(created.token)}>
                 复制
               </Button>
             </div>
-            <p className="text-xs text-ink-faint">
+            <p className="text-xs text-ink-muted">
               名称：{created.key.name} · 权限：{created.key.scopes.join('、')}
             </p>
           </div>

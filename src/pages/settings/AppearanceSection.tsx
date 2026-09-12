@@ -21,9 +21,9 @@ export function AppearanceSection() {
               aria-pressed={active}
               aria-label={`主题：${t.label}`}
               className={cx(
-                'flex flex-col gap-2 rounded-lg border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+                'flex flex-col gap-2 rounded-lg border p-2.5 text-left transition-colors duration-150 ease-out-soft focus-ring',
                 active
-                  ? 'border-brand bg-brand-soft/35 ring-1 ring-brand/50'
+                  ? 'border-brand bg-brand-wash'
                   : 'border-line bg-surface hover:border-line-strong',
               )}
             >
@@ -47,7 +47,7 @@ export function AppearanceSection() {
                 <span className="text-sm font-medium text-ink">{t.label}</span>
                 {active && <Palette size={14} className="text-brand-ink" aria-label="当前主题" />}
               </span>
-              <span className="text-2xs leading-tight text-ink-faint">{t.hint}</span>
+              <span className="text-2xs leading-tight text-ink-muted">{t.hint}</span>
             </button>
           );
         })}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CloudUpload, DatabaseBackup, Play, Trash2 } from 'lucide-react';
 import type { BackupFrequency, BackupKind, BackupTarget, BackupTargetInput } from '@shared/types';
-import { Badge, Button, Card, CardBody, CardHeader, Input, Select, Skeleton } from '@/components/ui';
+import { Badge, Button, Card, CardBody, CardHeader, IconButton, Input, Select, Skeleton } from '@/components/ui';
 import {
   useBackupRuns,
   useBackupTargets,
@@ -68,7 +68,7 @@ export function BackupSection() {
                           <Badge tone={t.kind === 's3' ? 'caution' : 'positive'}>{t.kind.toUpperCase()}</Badge>
                           <span className="truncate">{t.endpoint}</span>
                         </div>
-                        <div className="mt-0.5 text-2xs text-ink-faint">
+                        <div className="mt-0.5 text-2xs text-ink-muted">
                           {t.frequency !== 'off' ? `每 ${t.frequency === 'daily' ? '天' : '周'}` : '手动'} ·{' '}
                           {t.lastStatus === 'ok'
                             ? '上次成功'
@@ -84,9 +84,13 @@ export function BackupSection() {
                         <Button size="sm" variant="ghost" onClick={() => edit(t)}>
                           编辑
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => del.mutate(t.id)}>
-                          <Trash2 size={14} aria-hidden />
-                        </Button>
+                        <IconButton
+                          variant="danger"
+                          size="sm"
+                          label="删除备份目标"
+                          icon={<Trash2 aria-hidden />}
+                          onClick={() => del.mutate(t.id)}
+                        />
                       </div>
                     </li>
                   ))}
@@ -200,7 +204,7 @@ export function BackupSection() {
                       {r.kind.toUpperCase()} · {r.endpoint}
                     </span>
                   </span>
-                  <span className="text-2xs text-ink-faint">
+                  <span className="text-2xs text-ink-muted">
                     {relativeTime(r.startedAt)}
                     {r.bytes ? ` · ${(r.bytes / 1024).toFixed(1)} KB` : ''}
                     {r.error ? ` · ${r.error}` : ''}
@@ -209,7 +213,7 @@ export function BackupSection() {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-ink-faint">还没有备份记录。</p>
+            <p className="text-sm text-ink-muted">还没有备份记录。</p>
           )}
         </CardBody>
       </Card>

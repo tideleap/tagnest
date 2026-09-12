@@ -90,5 +90,5 @@ function AutoClearModule({
 }
 
 function UnitLabel() {
-  return <span className="text-xs text-ink-faint">秒</span>;
+  return <span className="text-xs text-ink-muted">秒</span>;
 }

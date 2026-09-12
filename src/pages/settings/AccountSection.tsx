@@ -86,7 +86,7 @@ export function AccountSection() {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-ink">{user?.email}</p>
-              <p className="text-2xs text-ink-faint">邮箱不可修改</p>
+              <p className="text-2xs text-ink-muted">邮箱不可修改</p>
             </div>
           </div>
 
@@ -174,7 +174,7 @@ export function AccountSection() {
               { label: '近 7 天新增', value: stats?.addedLast7Days ?? 0 },
             ].map((item) => (
               <div key={item.label} className="rounded-md bg-sunken px-3 py-2.5">
-                <dt className="text-2xs text-ink-faint">{item.label}</dt>
+                <dt className="text-2xs text-ink-muted">{item.label}</dt>
                 <dd className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{item.value}</dd>
               </div>
             ))}

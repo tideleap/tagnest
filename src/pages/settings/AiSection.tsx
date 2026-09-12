@@ -202,23 +202,23 @@ export function AiSection() {
               }
             >
               {probeResult.ok ? (
-                <CheckCircle2 size={15} aria-hidden className="mt-px shrink-0 text-positive-ink" />
+                <CheckCircle2 size={16} aria-hidden className="mt-px shrink-0 text-positive-ink" />
               ) : (
-                <XCircle size={15} aria-hidden className="mt-px shrink-0 text-critical-ink" />
+                <XCircle size={16} aria-hidden className="mt-px shrink-0 text-critical-ink" />
               )}
               <div className="min-w-0 text-xs leading-relaxed">
                 <p className={probeResult.ok ? 'font-medium text-positive-ink' : 'font-medium text-critical-ink'}>
                   {probeResult.message}
                 </p>
                 {probeResult.checkedUrl && (
-                  <p className="mt-0.5 break-all text-ink-faint">检测地址：{probeResult.checkedUrl}</p>
+                  <p className="mt-0.5 break-all text-ink-muted">检测地址：{probeResult.checkedUrl}</p>
                 )}
               </div>
             </div>
           )}
           {probe.isError && (
             <div role="status" className="flex items-start gap-2 rounded-md border border-critical bg-critical-soft px-3 py-2.5">
-              <XCircle size={15} aria-hidden className="mt-px shrink-0 text-critical-ink" />
+              <XCircle size={16} aria-hidden className="mt-px shrink-0 text-critical-ink" />
               <p className="text-xs font-medium leading-relaxed text-critical-ink">
                 {probe.error?.message || '测试请求失败，请稍后重试'}
               </p>
@@ -250,7 +250,7 @@ export function AiSection() {
               测试连接
             </Button>
           </div>
-          <p className="text-xs leading-relaxed text-ink-faint">
+          <p className="text-xs leading-relaxed text-ink-muted">
             测试连接会验证地址与密钥是否可用，并自动抓取该端点的可用模型列表；测试不会保存配置。
           </p>
         </div>
