@@ -133,7 +133,7 @@ export function OrganizePage() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <PageHeader
         icon={<Sparkles size={14} aria-hidden />}
         eyebrow="AI 引擎"
@@ -142,7 +142,7 @@ export function OrganizePage() {
         description={TRACK_DESCRIPTION[mode]}
       >
         {pending > 0 && (
-          <span className="mr-1 text-xs tabular-nums text-ink-faint">{pending} 条待确认</span>
+          <span className="mr-1 text-xs tabular-nums text-ink-muted">{pending} 条待确认</span>
         )}
         <Button
           size="sm"
@@ -200,12 +200,12 @@ export function OrganizePage() {
       {tab === 'review' && (
         <div className="flex flex-col gap-3">
           {reviewJobId && (
-            <div className="flex items-center gap-2 text-xs text-ink-faint">
+            <div className="flex items-center gap-2 text-xs text-ink-muted">
               <span>正在查看最近一次整理的结果</span>
               <button
                 type="button"
                 onClick={() => setReviewJobId(null)}
-                className="text-brand-ink underline-offset-2 hover:underline"
+                className="text-brand-ink underline-offset-2 hover:underline focus-ring"
               >
                 查看全部待确认
               </button>
@@ -272,28 +272,29 @@ function HeroRunCard({
   return (
     <section
       className={cx(
-        'flex flex-col gap-3 rounded-xl border p-5 shadow-raised backdrop-blur-sm',
         // Brand-tinted frame: the one deliberately louder surface on the page.
-        'border-brand/30 bg-surface/85',
+        // border-brand-line is the opaque brand-30% border token; glass-raised
+        // supplies the translucent surface + blur as one utility.
+        'flex flex-col gap-3 rounded-xl border border-brand-line p-5 shadow-raised glass-raised',
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand/10 text-brand-ink">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-tint text-brand-ink">
             <Sparkles size={15} aria-hidden />
           </span>
           <h2 className="font-display text-panel font-semibold tracking-tight text-ink">
             {TRACK_TITLE[mode]}
           </h2>
         </div>
-        <p className="min-w-0 flex-1 truncate text-xs text-ink-faint">
+        <p className="min-w-0 flex-1 truncate text-xs text-ink-muted">
           {TRACK_DESCRIPTION[mode]}
         </p>
         {pending > 0 && (
           <button
             type="button"
             onClick={onReview}
-            className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2.5 py-1 text-2xs font-medium text-brand-ink transition-colors hover:bg-brand/20"
+            className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-2xs font-medium text-brand-ink transition-colors duration-150 ease-out-soft hover:bg-brand-tint focus-ring"
           >
             <ListChecks size={12} aria-hidden />
             {pending} 条待确认
@@ -367,7 +368,7 @@ function StatStrip({
       {cells.map((c) => {
         const inner = (
           <>
-            <span className="text-2xs text-ink-faint">{c.label}</span>
+            <span className="text-2xs text-ink-muted">{c.label}</span>
             <span
               className={cx(
                 'text-lg font-semibold tabular-nums leading-tight',
@@ -379,9 +380,9 @@ function StatStrip({
           </>
         );
         const base = cx(
-          'flex flex-col gap-0.5 rounded-lg border px-3 py-2 transition-colors',
+          'flex flex-col gap-0.5 rounded-lg border px-3 py-2 transition-colors duration-150 ease-out-soft',
           c.accent
-            ? 'border-brand/25 bg-brand/5'
+            ? 'border-brand-line bg-brand-wash'
             : 'border-line bg-surface',
         );
         return c.action ? (
@@ -391,7 +392,7 @@ function StatStrip({
             role="listitem"
             onClick={c.action}
             title={c.hint}
-            className={cx(base, 'text-left hover:bg-brand/10')}
+            className={cx(base, 'text-left hover:bg-brand-tint focus-ring')}
           >
             {inner}
           </button>
@@ -441,7 +442,7 @@ function TagExportBar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <p className="text-xs text-ink-faint">导出标签体系</p>
+      <p className="text-xs text-ink-muted">导出标签体系</p>
       <Button size="sm" variant="ghost" iconLeft={<Download size={14} />} onClick={() => download('json')}>
         JSON
       </Button>

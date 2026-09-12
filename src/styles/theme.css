@@ -169,6 +169,9 @@
   /* ---- 品牌淡染（C-05）------------------------------------------ */
   --color-brand-wash: color-mix(in oklab, var(--p-brand-soft) 45%, transparent);
   --color-brand-tint: color-mix(in oklab, var(--p-brand) 10%, transparent);
+  /* 品牌描边（B-01/C-05）：强调面板的柔和靛蓝边框，不透明命名 token，
+     取代手写 border-brand/30（半透明在玻璃豁免移除后会被门禁标记）。 */
+  --color-brand-line: color-mix(in oklab, var(--p-brand) 30%, transparent);
 
   /* ---- 遮罩（C-04）---------------------------------------------- */
   --color-scrim: rgb(3 7 18 / 0.45);

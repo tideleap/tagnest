@@ -87,7 +87,7 @@ export function EvaluationPanel({ overview }: Props) {
             />
           </div>
 
-          <p className="text-2xs tabular-nums text-ink-faint">
+          <p className="text-2xs tabular-nums text-ink-muted">
             接受 <span className="text-ink-soft">{feedback.accepted}</span> ·
             忽略 <span className="text-ink-soft">{feedback.rejected}</span> ·
             改名 <span className="text-ink-soft">{feedback.modified}</span> ·
@@ -128,13 +128,13 @@ function Metric({
 }) {
   const color = tone === 'brand' ? 'text-brand-ink' : 'text-positive-ink';
   return (
-    <div className="flex flex-col gap-0.5 rounded-md border border-line bg-sunken/40 px-3 py-2">
-      <span className="text-2xs text-ink-faint" title={hint}>
+    <div className="flex flex-col gap-0.5 rounded-md border border-line bg-sunken-wash px-3 py-2">
+      <span className="text-2xs text-ink-muted" title={hint}>
         {label}
       </span>
       <span className={cx('text-2xl font-semibold tabular-nums leading-none', color)}>
         {value}
-        <span className="text-sm font-medium text-ink-faint">%</span>
+        <span className="text-sm font-medium text-ink-muted">%</span>
       </span>
     </div>
   );
@@ -155,7 +155,7 @@ function TrendChart({ trend }: { trend: AiOverview['feedbackTrend'] }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <p className="text-2xs font-medium text-ink-soft">近 30 天采纳情况</p>
-        <div className="flex items-center gap-3 text-2xs text-ink-faint">
+        <div className="flex items-center gap-3 text-2xs text-ink-muted">
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-sm bg-brand" aria-hidden />
             接受
@@ -201,7 +201,7 @@ function JobRow({ job }: { job: AiJob }) {
   const engine = job.engine ?? 'none';
   const date = job.createdAt.slice(0, 10);
   return (
-    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-faint">
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-ink-muted">
       <span className="tabular-nums">{date}</span>
       <Badge tone={engine === 'model' ? 'brand' : 'neutral'}>
         <Cpu size={11} aria-hidden />

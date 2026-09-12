@@ -149,7 +149,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
             { value: 'all', label: `全部书签（${total}）` },
           ]}
         />
-        <p className="text-2xs text-ink-faint">
+        <p className="text-2xs text-ink-muted">
           {isRename
             ? // Rename scans every live bookmark — private ones stay excluded
               // server-side; the untagged scope has no meaning for titles.
@@ -177,7 +177,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
                 <span>
                   约 <strong className="font-semibold text-ink">{estimate.estimatedCalls}</strong> 次模型调用
                   {estimate.maxModelCalls > estimate.estimatedCalls && (
-                    <span className="text-ink-faint">（含重试上限 {estimate.maxModelCalls}）</span>
+                    <span className="text-ink-muted">（含重试上限 {estimate.maxModelCalls}）</span>
                   )}
                 </span>
                 <span>
@@ -190,7 +190,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
               <span>未配置模型，将仅使用域名兜底标签（不消耗 tokens）</span>
             )}
           </div>
-          <p className="text-2xs text-ink-faint">
+          <p className="text-2xs text-ink-muted">
             token 数为估算值，实际以模型计费为准；建议先「先试 {TRIAL_SIZE} 条」确认质量再全量运行。
           </p>
           {estimate.capped && (
@@ -208,17 +208,17 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken">
             <div
               className={cx(
-                'h-full rounded-full transition-[width] duration-300',
+                'h-full rounded-full transition-[width] duration-200 ease-out-soft',
                 job.status === 'failed' ? 'bg-critical' : 'bg-brand',
               )}
               style={{ width: `${percent}%` }}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs tabular-nums text-ink-faint">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs tabular-nums text-ink-muted">
             {/* B-19: 补跑趟次徽标 —— 让用户明白进度条为何从新基数继续爬升，
                 而不是误以为整理倒退。 */}
             {run.pass > 0 && (
-              <span className="rounded bg-caution-soft px-1.5 py-0.5 font-medium text-caution-ink">
+              <span className="rounded-xs bg-caution-soft px-1.5 py-0.5 font-medium text-caution-ink">
                 第 {run.pass + 1} 趟 · 补跑未覆盖 {job?.total ?? 0} 条
               </span>
             )}
@@ -242,7 +242,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
                   return (
                     <li key={t.topic} className="flex items-center gap-2 text-2xs">
                       <span
-                        className="w-24 shrink-0 truncate text-ink-faint"
+                        className="w-24 shrink-0 truncate text-ink-muted"
                         title={t.topic}
                       >
                         {t.topic}
@@ -253,7 +253,7 @@ export function RunPanel({ overview, run, target, onTargetChange, kind = 'taggin
                           style={{ width: `${width}%` }}
                         />
                       </span>
-                      <span className="w-6 shrink-0 text-right tabular-nums text-ink-faint">
+                      <span className="w-6 shrink-0 text-right tabular-nums text-ink-muted">
                         {t.count}
                       </span>
                     </li>
@@ -343,7 +343,7 @@ function HierarchySummary({ result }: { result: AutoGroupResult }) {
         <FolderTree size={14} aria-hidden />
         已自动构建三级标签分组
       </p>
-      <p className="text-2xs text-ink-faint">
+      <p className="text-2xs text-ink-muted">
         新建 {result.createdCategories} 个分类 · 调整 {result.relocated} 个标签 ·{' '}
         {result.untouched} 个保持原位
         {/* Orphan governance (2026-09-05): low-frequency top-level orphans were
@@ -356,13 +356,13 @@ function HierarchySummary({ result }: { result: AutoGroupResult }) {
           {result.summary.slice(0, 8).map((line) => (
             <li
               key={line}
-              className="inline-flex items-center rounded bg-surface px-1.5 py-0.5 text-2xs text-ink-soft"
+              className="inline-flex items-center rounded-xs bg-surface px-1.5 py-0.5 text-2xs text-ink-soft"
             >
               {line}
             </li>
           ))}
           {result.summary.length > 8 && (
-            <li className="text-2xs text-ink-faint">+{result.summary.length - 8}</li>
+            <li className="text-2xs text-ink-muted">+{result.summary.length - 8}</li>
           )}
         </ul>
       )}

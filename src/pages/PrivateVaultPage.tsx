@@ -180,7 +180,7 @@ function PrivateBookmarkEditor({
             onChange={(e) => set('isArchived', e.target.checked)}
           />
         </div>
-        <p className="rounded-md bg-sunken px-3 py-2 text-2xs leading-relaxed text-ink-faint">
+        <p className="rounded-md bg-sunken px-3 py-2 text-2xs leading-relaxed text-ink-muted">
           内容会在你的浏览器内加密后上传，服务器只保存密文。
         </p>
       </div>
@@ -194,7 +194,7 @@ function PrivateBookmarkEditor({
 
 function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-3 rounded-xl border border-critical/25 bg-critical-soft p-4 sm:flex-row sm:items-center">
+    <div className="flex flex-col items-start gap-3 rounded-xl border border-critical bg-critical-soft p-4 sm:flex-row sm:items-center">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-critical shadow-raised">
         <AlertTriangle size={17} />
       </span>
@@ -251,16 +251,16 @@ function PassphrasePanel({
   const isSetup = mode === 'setup';
   return (
     <div className="mx-auto mt-6 w-full max-w-md sm:mt-10">
-      <div className="atelier-edge anim-atelier-enter flex flex-col gap-4 rounded-2xl border border-line bg-surface/90 p-5 shadow-float backdrop-blur-sm sm:p-6">
+      <div className="atelier-edge anim-atelier-enter flex flex-col gap-4 rounded-2xl border border-line glass-solid p-5 shadow-overlay sm:p-6">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-soft text-brand-ink">
             {isSetup ? <ShieldCheck size={18} /> : <Lock size={18} />}
           </span>
           <div>
-            <h2 className="atelier-display text-lg text-ink">
+            <h2 className="atelier-display atelier-display--2 text-ink">
               {isSetup ? '创建私密保险库' : '解锁私密保险库'}
             </h2>
-            <p className="text-2xs text-ink-faint">
+            <p className="text-2xs text-ink-muted">
               {isSetup ? '密码仅保存在你的浏览器，无法找回' : '内容仅在本地解密显示'}
             </p>
           </div>
@@ -314,7 +314,7 @@ function PassphrasePanel({
           {isSetup ? '创建保险库' : '解锁'}
         </Button>
 
-        <p className="text-center text-2xs leading-relaxed text-ink-faint">
+        <p className="text-center text-2xs leading-relaxed text-ink-muted">
           {isSetup
             ? '书签会在浏览器内加密，服务器只保存密文，无法读取内容。'
             : '连续输错不会锁定账户，但错误密码无法解密任何内容。'}
@@ -351,7 +351,7 @@ function UnlockedPanel({
 }) {
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-2 py-2" aria-label="正在加载私密书签">
+      <div className="flex flex-col gap-2 py-2" role="status" aria-busy="true" aria-label="正在加载私密书签">
         {[0, 1, 2].map((i) => (
           <div key={i} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3.5">
             <Skeleton className="h-9 w-9 rounded-lg" />
@@ -406,7 +406,7 @@ function UnlockedPanel({
                 <button
                   type="button"
                   onClick={() => onEdit(item.id)}
-                  className="min-w-0 truncate text-left text-sm font-medium text-ink transition-colors hover:text-brand-ink"
+                  className="min-w-0 truncate text-left text-sm font-medium text-ink transition-colors duration-150 ease-out-soft hover:text-brand-ink focus-ring"
                 >
                   {title}
                 </button>
@@ -415,15 +415,15 @@ function UnlockedPanel({
                 {item.isArchived && <Badge tone="neutral">归档</Badge>}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                {host && <span className="truncate text-2xs text-ink-faint">{host}</span>}
+                {host && <span className="truncate text-2xs text-ink-muted">{host}</span>}
                 {tags.slice(0, 3).map((t) => (
                   <TagChip key={t} name={t} size="sm" />
                 ))}
                 {tags.length > 3 && (
-                  <span className="text-2xs text-ink-faint">+{tags.length - 3}</span>
+                  <span className="text-2xs text-ink-muted">+{tags.length - 3}</span>
                 )}
               </div>
-              <p className="mt-1 text-2xs text-ink-faint">更新于 {relativeTime(item.updatedAt)}</p>
+              <p className="mt-1 text-2xs text-ink-muted">更新于 {relativeTime(item.updatedAt)}</p>
             </div>
 
             <div className="flex shrink-0 items-center gap-0.5 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:focus-within:opacity-100">
@@ -482,15 +482,15 @@ function CategoryPrivateSection() {
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-soft text-brand-ink">
           <Lock size={13} aria-hidden />
         </span>
-        <h2 className="font-display text-sm font-semibold tracking-tight text-ink">类别私密</h2>
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">类别私密</h2>
         <Badge tone="neutral">仅对其他人隐藏 · 未加密</Badge>
         {entries.length > 0 && (
-          <span className="text-2xs tabular-nums text-ink-faint">
+          <span className="text-2xs tabular-nums text-ink-muted">
             {entries.length} 个类别 · {totalCount} 个书签
           </span>
         )}
       </div>
-      <p className="mb-3 text-2xs leading-relaxed text-ink-faint">
+      <p className="mb-3 text-2xs leading-relaxed text-ink-muted">
         将某个标签设为私密后，它及其所有子标签下的书签会对其他用户完全隐藏，只有你能在此查看、检索与管理。
       </p>
 
@@ -527,9 +527,9 @@ function CategoryPrivateSection() {
             description={`没有与「${q.trim()}」匹配的类别私密书签。`}
           />
         ) : (
-          <div className="flex items-center gap-3 rounded-xl border border-dashed border-line-strong bg-sunken/50 px-4 py-3.5">
+          <div className="flex items-center gap-3 rounded-xl border border-dashed border-line-strong bg-sunken-wash px-4 py-3.5">
             <Lock size={15} className="shrink-0 text-ink-faint" aria-hidden />
-            <p className="text-2xs leading-relaxed text-ink-faint">
+            <p className="text-2xs leading-relaxed text-ink-muted">
               当前没有类别私密标签。在标签页把某个标签设为私密后，它隐藏的书签会出现在这里。
             </p>
           </div>
@@ -541,7 +541,7 @@ function CategoryPrivateSection() {
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   style={tagColorVars(tag.colorIndex)}
-                  className="h-4 w-4 shrink-0 rounded bg-[var(--tag-bg)] ring-1 ring-inset ring-[var(--tag-dot)]"
+                  className="h-4 w-4 shrink-0 rounded-xs bg-[var(--tag-bg)] ring-1 ring-inset ring-[var(--tag-dot)]"
                   aria-hidden
                 />
                 <span className="text-sm font-medium text-ink">{tag.name}</span>
@@ -564,18 +564,18 @@ function CategoryPrivateSection() {
                       <button
                         type="button"
                         onClick={() => setEditingId(b.id)}
-                        className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-soft transition-colors hover:bg-surface-hover hover:text-ink"
+                        className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-soft transition-colors duration-150 ease-out-soft hover:bg-surface-hover hover:text-ink focus-ring"
                       >
                         <Favicon src={b.faviconUrl} />
                         <span className="truncate">{b.title?.trim() || displayHost(b.url)}</span>
                         {b.isFavorite && (
-                          <Star size={11} className="shrink-0 fill-caution text-caution" />
+                          <Star size={12} className="shrink-0 fill-caution text-caution" />
                         )}
                       </button>
                     </li>
                   ))}
                   {bookmarks.length > 20 && (
-                    <li className="px-2 py-1 text-2xs text-ink-faint">
+                    <li className="px-2 py-1 text-2xs text-ink-muted">
                       …还有 {bookmarks.length - 20} 个
                     </li>
                   )}
@@ -752,7 +752,7 @@ export function PrivateVaultPage() {
 
       <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-1 pb-6">
         {status === 'unknown' ? (
-          <div className="flex h-40 flex-col items-center justify-center gap-3 text-sm text-ink-faint">
+          <div className="flex h-40 flex-col items-center justify-center gap-3 text-sm text-ink-muted">
             <Spinner size={20} label="正在检查保险库状态" />
             正在检查保险库状态…
           </div>

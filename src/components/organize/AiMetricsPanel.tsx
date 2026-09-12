@@ -48,7 +48,7 @@ function StackedBar({
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-md border border-line bg-surface px-2.5 py-1.5">
-      <span className="text-2xs text-ink-faint">{label}</span>
+      <span className="text-2xs text-ink-muted">{label}</span>
       <span className="text-sm font-semibold tabular-nums text-ink" title={hint}>
         {value}
       </span>
@@ -70,10 +70,10 @@ function UsageCard({ usage }: { usage: AiOverview['usage'] }) {
   const outcomeTotal = outcome.accepted + outcome.rejected + outcome.pending || 1;
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 px-4 py-3.5 shadow-raised backdrop-blur-sm">
+    <section className="flex flex-col gap-3 rounded-xl border border-line glass-raised px-4 py-3.5 shadow-raised">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-display text-panel font-semibold tracking-tight text-ink">AI 整理使用率</span>
-        <span className="text-xs tabular-nums text-ink-faint">
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">AI 整理使用率</h2>
+        <span className="text-xs tabular-nums text-ink-muted">
           过去 30 天 {usage.touchedBookmarks} / {usage.totalBookmarks} 条书签被 AI 整理
         </span>
         <span className="ml-auto text-sm font-semibold tabular-nums text-brand-ink">
@@ -96,7 +96,7 @@ function UsageCard({ usage }: { usage: AiOverview['usage'] }) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between text-2xs text-ink-faint">
+        <div className="flex items-center justify-between text-2xs text-ink-muted">
           <span>建议处理结果</span>
           <span className="tabular-nums">
             已采纳 {outcome.accepted} · 已拒绝 {outcome.rejected} · 待确认 {outcome.pending} · 自动应用 {outcome.autoApplied}
@@ -105,14 +105,14 @@ function UsageCard({ usage }: { usage: AiOverview['usage'] }) {
         <StackedBar
           segments={[
             { key: 'accepted', value: outcome.accepted, className: 'bg-brand' },
-            { key: 'rejected', value: outcome.rejected, className: 'bg-rose-400/70' },
-            { key: 'pending', value: outcome.pending, className: 'bg-amber-300/70' },
+            { key: 'rejected', value: outcome.rejected, className: 'bg-critical' },
+            { key: 'pending', value: outcome.pending, className: 'bg-caution' },
           ]}
         />
-        <div className="flex gap-3 text-2xs text-ink-faint">
+        <div className="flex gap-3 text-2xs text-ink-muted">
           <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand align-middle" />已采纳</span>
-          <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400/70 align-middle" />已拒绝</span>
-          <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-300/70 align-middle" />待确认</span>
+          <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-critical align-middle" />已拒绝</span>
+          <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-caution align-middle" />待确认</span>
         </div>
         <div className="sr-only">{outcomeTotal}</div>
       </div>
@@ -143,12 +143,12 @@ function ContributionCard({ contribution }: { contribution: AiOverview['contribu
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl border border-line bg-surface/85 px-4 py-3.5 shadow-raised backdrop-blur-sm"
+      className="flex flex-col gap-3 rounded-xl border border-line glass-raised px-4 py-3.5 shadow-raised"
       title="价值加权模型：直接采纳计 1.0，用户改名后采纳计 0.6，域名兜底采纳计 0.5；被拒绝的建议不计入分母。"
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-display text-panel font-semibold tracking-tight text-ink">AI 贡献度</span>
-        <span className="text-xs tabular-nums text-ink-faint">
+        <h2 className="font-display text-panel font-semibold tracking-tight text-ink">AI 贡献度</h2>
+        <span className="text-xs tabular-nums text-ink-muted">
           价值加权 · 已采纳 {contribution.raw.aiAccepted} · 拒绝 {contribution.raw.rejected}
         </span>
         <span className="ml-auto text-sm font-semibold tabular-nums text-brand-ink">
@@ -165,7 +165,7 @@ function ContributionCard({ contribution }: { contribution: AiOverview['contribu
         ]}
       />
 
-      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-2xs text-ink-faint sm:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-2xs text-ink-muted sm:grid-cols-4">
         {rows.map((r) => (
           <li key={r.label} className="flex flex-col">
             <span className="text-ink">{r.label}</span>

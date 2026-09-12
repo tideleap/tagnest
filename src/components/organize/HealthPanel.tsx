@@ -98,18 +98,18 @@ export function HealthPanel() {
             className={cx(
               'text-lg font-bold tabular-nums',
               report.score >= 90
-                ? 'text-positive'
+                ? 'text-positive-ink'
                 : report.score >= 70
-                  ? 'text-caution'
-                  : 'text-critical',
+                  ? 'text-caution-ink'
+                  : 'text-critical-ink',
             )}
           >
             {report.score}
           </span>
-          <span className="text-2xs text-ink-faint">/ 100</span>
+          <span className="text-2xs text-ink-muted">/ 100</span>
         </span>
       </div>
-      <p className="text-2xs leading-relaxed text-ink-faint">
+      <p className="text-2xs leading-relaxed text-ink-muted">
         共 {report.liveTotal} 条有效书签。分数只反映结构性问题（重复与孤儿标签）；失效链接需单独探测。
       </p>
 
@@ -122,13 +122,13 @@ export function HealthPanel() {
             <Badge tone="caution">{report.duplicateExtra} 条冗余</Badge>
           )}        </div>
         {report.duplicateGroups.length === 0 ? (
-          <p className="text-2xs text-ink-faint">没有发现重复。</p>
+          <p className="text-2xs text-ink-muted">没有发现重复。</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {report.duplicateGroups.slice(0, 8).map((g) => (
               <li
                 key={g.urlKey}
-                className="flex items-center gap-2 rounded-md border border-line/60 bg-sunken/40 px-2.5 py-1.5"
+                className="flex items-center gap-2 rounded-md border border-line-soft bg-sunken-wash px-2.5 py-1.5"
               >
                 <span className="min-w-0 flex-1 truncate text-2xs text-ink-soft" title={g.urlKey}>
                   {displayHost(g.bookmarks[0]?.url ?? g.urlKey)} · {g.count} 份
@@ -145,7 +145,7 @@ export function HealthPanel() {
               </li>
             ))}
             {report.duplicateGroups.length > 8 && (
-              <li className="text-2xs text-ink-faint">
+              <li className="text-2xs text-ink-muted">
                 还有 {report.duplicateGroups.length - 8} 组…
               </li>
             )}
@@ -161,7 +161,7 @@ export function HealthPanel() {
           {report.orphanTags.length > 0 && <Badge tone="caution">{report.orphanTags.length}</Badge>}
         </div>
         {report.orphanTags.length === 0 ? (
-          <p className="text-2xs text-ink-faint">每个标签都至少有一条书签。</p>
+          <p className="text-2xs text-ink-muted">每个标签都至少有一条书签。</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {report.orphanTags.slice(0, 20).map((t) => (
@@ -170,34 +170,34 @@ export function HealthPanel() {
                 type="button"
                 disabled={deleteTag.isPending}
                 onClick={() => deleteTag.mutate(t.id)}
-                className="group flex items-center gap-1 rounded-full border border-line bg-sunken/40 px-2 py-0.5 text-2xs text-ink-soft transition-colors hover:border-critical/40 hover:text-critical"
+                className="group flex items-center gap-1 rounded-full border border-line bg-sunken-wash px-2 py-0.5 text-2xs text-ink-soft transition-colors duration-150 ease-out-soft hover:border-critical hover:text-critical-ink focus-ring-round"
                 title={`删除空标签「${t.name}」`}
               >
                 {t.name}
-                <Trash2 size={11} className="opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                <Trash2 size={11} className="opacity-0 transition-opacity duration-150 ease-out-soft group-hover:opacity-100" aria-hidden />
               </button>
             ))}
             {report.orphanTags.length > 20 && (
-              <span className="text-2xs text-ink-faint">+{report.orphanTags.length - 20}</span>
+              <span className="text-2xs text-ink-muted">+{report.orphanTags.length - 20}</span>
             )}
           </div>
         )}
       </div>
 
       {/* Dead-link probe */}
-      <div className="flex flex-col gap-2 border-t border-line/60 pt-3">
+      <div className="flex flex-col gap-2 divider-soft pt-3">
         <div className="flex items-center gap-2">
           <Zap size={14} className="text-ink-faint" aria-hidden />
           <span className="text-xs font-medium text-ink">失效链接探测</span>
           {probeResults.length > 0 && (
-            <span className="text-2xs tabular-nums text-ink-faint">
+            <span className="text-2xs tabular-nums text-ink-muted">
               已查 {probeResults.length} 条
-              {deadCount > 0 && <span className="text-critical"> · {deadCount} 失效</span>}
-              {suspiciousCount > 0 && <span className="text-caution"> · {suspiciousCount} 存疑</span>}
+              {deadCount > 0 && <span className="text-critical-ink"> · {deadCount} 失效</span>}
+              {suspiciousCount > 0 && <span className="text-caution-ink"> · {suspiciousCount} 存疑</span>}
             </span>
           )}
         </div>
-        <p className="text-2xs leading-relaxed text-ink-faint">
+        <p className="text-2xs leading-relaxed text-ink-muted">
           对当前书签逐批发起访问请求，仅 404/410 判定为失效；需要登录或临时故障的页面只标记为存疑，不会误删。
         </p>
         <div>
@@ -228,7 +228,7 @@ export function HealthPanel() {
                 </li>
               ))}
             {probeResults.every((r) => r.status === 'ok') && (
-              <li className="text-2xs text-positive">这批书签都能正常访问。</li>
+              <li className="text-2xs text-positive-ink">这批书签都能正常访问。</li>
             )}
           </ul>
         )}
