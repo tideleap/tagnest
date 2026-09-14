@@ -168,8 +168,7 @@ export function TagsPage() {
           }
         />
       ) : (
-        <Reveal delay={120}>
-        <ul className="flex flex-col gap-1">
+        <ul className="anim-atelier-enter flex flex-col gap-1">
           {filtered.map((top) => (
             <GroupRow
               key={top.id}
@@ -186,7 +185,6 @@ export function TagsPage() {
             />
           ))}
         </ul>
-        </Reveal>
       )}
 
       <TagFormDialog
